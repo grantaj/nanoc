@@ -1,0 +1,86 @@
+# Compiled object files
+*.o
+*.obj
+
+# Compiled binaries
+*.bin
+*.prg
+*.out
+*.elf
+*.hex
+
+# Emulator snapshots or temporary files
+*.vsf
+*.vsz
+*.d64
+*.t64
+*.tap
+*.crt
+*.sid
+*.log
+
+# Build directories
+/build/
+/dist/
+/bin/
+/obj/
+
+# Dependency files
+*.d
+
+# Temporary files from editors
+*~
+*.swp
+*.swo
+*.bak
+
+# Emacs
+*~
+\#*\#
+.\#*
+*.elc
+auto-save-list/
+.tramp
+
+# VSCode settings
+.vscode/
+
+# MacOS junk
+.DS_Store
+
+# Linux user junk
+*#
+
+# Windows junk
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Makefile auto-deps
+*.dep
+
+# Python caches (if any tooling/scripts used Python)
+__pycache__/
+*.pyc
+
+# C compiler temp files
+*.lst
+*.map
+*.sym
+*.lst
+
+# Test output
+/test-output/
+
+# Generated ROM files or memory maps
+*.mem
+*.map
+*.lst
+
+# Git itself
+.git/
+
+# Archive artifacts
+*.zip
+*.tar.gz
+*.7z
