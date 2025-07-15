@@ -45,6 +45,54 @@ Produce `main.s` assembly from C for comparison with `demo.asm`:
 	make main.s
 ```
 
+## Step 1: Write a Disassembler
+### Opcode Table
+- There is a many to one mapping between opcodes and mnemonics
+- This is due to multiple addressing modes
+- Opcode table has 0xff entries
+- Each entry consists of
 
+  byte mnemonic_index
+  byte mode_index
 
+  By having 0xff entries, we can do a direct lookup based on the opcode without having to search. Table size will be 512 bytes (0x200)
 
+  `mnemonic_index` is an index into the _mnemonic table_
+  `mode_index` is an index into _address mode table_
+  
+  invalid opcodes will map to a sentinel entry
+
+### Mnemonic Table
+- This is an array of strings, indexed by the `mnemonic_index`
+- Each string is 3 bytes
+- Mnemonic outputter writes exactly three bytes from this table
+- There are 56 mnemonics - table is 168 bytes
+```
+ADC AND ASL BCC BCS BEQ BIT BMI BNE BPL BRK BVC BVS
+CLC CLD CLI CLV CMP CPX CPY DEC DEX DEY EOR INC INX INY
+JMP JSR LDA LDX LDY LSR NOP ORA PHA PHP PLA PLP ROL
+ROR RTI RTS SBC SEC SED SEI STA STX STY TAX TAY TSX
+TXA TXS TYA
+```
+
+### Address Mode Table
+- Each entry consists of
+  ```
+  byte width
+  word formatter
+  ```
+- `width` is the number of bytes in the operand
+- `formatter` is the address of the output function for this mode
+- disassembler pushes the next width bytes onto stack and `jsr formatter`
+
+### Outline
+
+1. Set `pointer` to start of disassembly region
+2. Read `opcode`
+3. Retrieve `mnemonic_index` and `mode_index` (indexing into opcode table)
+4. Output mnemonic (from mnemonic index)
+5. Retrieve `width` (indexing into mode table)
+6. Read next `width` bytes, advancing pointer
+7. Call formatter
+8. Check if pointer is at end of region (stop)
+9. Jump to read `opcode`
