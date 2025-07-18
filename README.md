@@ -26,6 +26,11 @@ Not really required, since `cc65` has an assembler (`ca54`) but I wanted to comp
 	cp vasm6502_oldstyle /usr/local/bin/.
 ```	
 
+### 64tass
+```
+	apt-get install 64tass
+```
+	
 ## Demo
 Demo in `examples/border`
 Compile from C:
