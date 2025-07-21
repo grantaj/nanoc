@@ -23,7 +23,47 @@ main:
 	jsr printLDA
 	jsr immediate
 	jsr printCR
-	
+
+	jsr printLDA
+	jsr absolute
+	jsr printCR
+
+	jsr printLDA
+	jsr zeroPage
+	jsr printCR
+
+	jsr printLDA
+	jsr indexedZeroPageX
+	jsr printCR
+
+	jsr printLDA
+	jsr indexedZeroPageY
+	jsr printCR
+
+	jsr printLDA
+	jsr indexedAbsoluteX
+	jsr printCR
+
+	jsr printLDA
+	jsr indexedAbsoluteY
+	jsr printCR
+
+	jsr printLDA
+	jsr indexedIndirectX
+	jsr printCR
+
+	jsr printLDA
+	jsr indexedIndirectY
+	jsr printCR
+
+	jsr printLDA
+	jsr absoluteIndirect
+	jsr printCR
+
+	jsr printBCC
+	jsr relative
+	jsr printCR
+
 	rts
 	
 printLDA:	
@@ -37,13 +77,24 @@ printLDA:
 	jsr CHROUT
 	rts
 
+printBCC:	
+	lda #'B'
+	jsr CHROUT
+	lda #'C'
+	jsr CHROUT
+	jsr CHROUT
+	lda #' '
+	jsr CHROUT
+	rts
+	
 printCR:
 	lda #$0D
 	jsr CHROUT
 	rts
-	
+
+	* = $c100
 data:
-	byte $12, $34
+	byte $ff, $12
 
 ;;; ----------------------------------------------------------------------
 	
@@ -58,7 +109,7 @@ immediate:
 	pha
 	lda #'#'
 	jsr CHROUT
-	lda '$'
+	lda #'$'
 	jsr CHROUT
 	ldy #$0
 	lda (p),y
@@ -72,12 +123,13 @@ absolute:
 	;; of the effective address, third byte specifies high byte
 	tya			; don't clobber Y
 	pha
-	lda '$'
+	lda #'$'
 	jsr CHROUT
 	ldy #$01
 	lda (p),y
 	jsr printHexByte
-	lda (p)
+	dey
+	lda (p),y
 	jsr printHexByte
 	pla			; restore Y
 	tay
@@ -87,11 +139,11 @@ zeroPage:
 	;; Second byte of instruction specifies zero page address
 	tya
 	pha
-	lda $'$'
+	lda #'$'
 	jsr CHROUT
 	ldy #$0
-	lda (p)
-	jsr CHROUT
+	lda (p),y
+	jsr printHexByte
 	pla
 	tay
 	rts
@@ -104,8 +156,8 @@ indexedZeroPageX:
 	lda #'$'
 	jsr CHROUT
 	ldy #$0
-	lda (p),Y
-	jsr CHROUT
+	lda (p),y
+	jsr printHexByte
 	jsr commaX
 	pla
 	tay
@@ -120,7 +172,7 @@ indexedZeroPageY:
 	jsr CHROUT
 	ldy #$0
 	lda (p),Y
-	jsr CHROUT
+	jsr printHexByte
 	jsr commaY
 	pla
 	tay
@@ -152,14 +204,22 @@ relative:
 	pha
 	lda #'$'
 	jsr CHROUT
-	lda p			
+	lda p			; low byte
 	ldy #$0
 	clc
-	adc (p),y
-	adc #$01
-	pha
-	lda p+1
-	adc #$0
+	adc (p),y		; + signed offset
+	adc #$01		; + 1
+	pha			; store result
+	lda (p),y		; reload offset
+	bmi .negative		; check if sign bit set
+.positive:			; offset was positive
+	lda p+1			; high byte
+	adc #$0			; add the carry bit
+	jmp .output
+	.negative:
+	lda p+1			; offset was negative
+	adc #$ff		; add carry and sign extension
+.output:	
 	jsr printHexByte
 	pla
 	jsr printHexByte
@@ -174,7 +234,9 @@ indexedIndirectX:
 	;; high byte of the effective address
 	tya
 	pha
-	lda '('
+	lda #'('
+	jsr CHROUT
+	lda #'$'
 	jsr CHROUT
 	ldy #$0
 	lda (p),y
@@ -195,9 +257,13 @@ indexedIndirectY:
 	pha
 	lda #'('
 	jsr CHROUT
+	lda #'$'
+	jsr CHROUT
 	ldy #$0
 	lda (p),Y
 	jsr printHexByte
+	lda #')'
+	jsr CHROUT
 	jsr commaY
 	pla
 	tay
