@@ -51,6 +51,14 @@ Produce `main.s` assembly from C for comparison with `demo.asm`:
 ```
 
 ## Step 1: Write a Disassembler
+
+Complete! See `dis/dis.asm`
+
+Build with 
+```
+	cd dis
+	vasm6502_oldstyle -Fbin -cbm-prg -o dis.prg dis.asm
+```
 ### Opcode Table
 - There is a many to one mapping between opcodes and mnemonics
 - This is due to multiple addressing modes
