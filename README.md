@@ -83,12 +83,11 @@ TXA TXS TYA
 ### Address Mode Table
 - Each entry consists of
   ```
-  byte width
   word formatter
   ```
-- `width` is the number of bytes in the operand
 - `formatter` is the address of the output function for this mode
-- disassembler pushes the next width bytes onto stack and `jsr formatter`
+- disassembler pushes the next width bytes onto stack and `jsr formatter` (actually it does jmp (vector) where vector points to formatter, with return address manually loaded onto the stack)
+- Formatter routines output the formatted operand and return the width of the operand in the accumulator (to facilitate incrementing the pointer)
 
 ### Outline
 
@@ -96,8 +95,7 @@ TXA TXS TYA
 2. Read `opcode`
 3. Retrieve `mnemonic_index` and `mode_index` (indexing into opcode table)
 4. Output mnemonic (from mnemonic index)
-5. Retrieve `width` (indexing into mode table)
-6. Read next `width` bytes, advancing pointer
-7. Call formatter
-8. Check if pointer is at end of region (stop)
-9. Jump to read `opcode`
+5. Call formatter
+6. Increment pointer
+7. Check if pointer is at end of region (stop)
+8. Jump to read `opcode`
