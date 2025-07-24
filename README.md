@@ -107,3 +107,54 @@ TXA TXS TYA
 6. Increment pointer
 7. Check if pointer is at end of region (stop)
 8. Jump to read `opcode`
+
+## Step 2: Write a Assembler
+Advantages of starting with an assembler:
+- Can work line by line (except for symbols and labels)
+- Simple syntax
+- Direct translation from mnemonic & addressing mode to opcode &
+  operand
+  
+### Tokeniser
+Operate line by line
+Assume the line of text is in memory at a given location
+
+**Token structure**
+type {label | symbol | directive | mnemomic | operand}
+value string
+
+**Supported token syntax:**
+```
+	; comment
+	label:
+	symbol = value
+	.directive
+	LDA
+	#$00
+```
+
+Tokenizer will operate on the string "in place"
+
+1. skipWhitespace
+2. scanLexeme
+3. classifyLexeme
+4. Comment or EOL? Yes -> Next Line
+5 Goto 1.
+
+
+
+skipWhitespace
+	advance position to first non-whitespace character
+
+scanLexeme
+	set lexeme to string from current position to the next whitespace
+	or end of line
+	
+classifyLexeme
+	Starts with Semicolon? Comment, Next Line 
+	Starts with Dot? type = directive, value = lexeme(1:end), return
+	Ends with Colon? type=label, value = lexeme(0:end-1), return
+	Followed by = ? type = symbol, value = lexeme else type=mnemnonic,
+	value = lexeme, scan operand and return 
+	scan operand: type=operand, value = lexeme, return
+	
