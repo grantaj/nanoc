@@ -1,4 +1,4 @@
-;;; skipWhiteSpacxe
+;;; skipWhiteSpace
 ;;; Pointer to string at zero page: ZP_PTR1 (L), ZP_PTR1+1 (H)
 ;;; Advances pointer to first non whitespace character
 ;;;
