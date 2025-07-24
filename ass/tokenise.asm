@@ -18,13 +18,23 @@
 	sta ZP_PTR1+1
 
 .loop:
+	ldy #$0
+	lda (ZP_PTR1),y		; End of file marked with NULL
+	bne .nextToken
+	rts
+	
+.nextToken:	
 	jsr skipWhitespace
 
-	ldy #$0
+	ldy #$0			; skip comments
 	lda (ZP_PTR1),y
 	cmp #';'
 	beq .nextLine
 
+	;; rest of token lexing goes here
+	jsr printString
+	lda #$d
+	jsr CHROUT
 
 .nextLine:
 	;; Skip to the next line (byte after the next null)
@@ -32,14 +42,21 @@
 	lda (ZP_PTR1),Y
 	bne .increment
 	
+	inc ZP_PTR1		; skip the NULL
+	bne .continue
+	inc ZP_PTR1+1
+	
+.continue:
+	jmp .loop
+	
 .increment:
-	inc ZP_PTR
+	inc ZP_PTR1
 	bne .nextLine
 	inc ZP_PTR1+1
 	jmp .nextLine
 	
-	include "printString"
-	include "skipws"
+	include "printString.asm"
+	include "skipws.asm"
 
 ;;; A made up program to test tokenisation
 INPUT:
