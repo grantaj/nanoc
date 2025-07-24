@@ -63,7 +63,7 @@ INPUT:
 	string "     		; COMMENT"
 	string "* = $C000"
 	string "START:   "
-	string "  	LDA #$00"
+	string "  	LDA #$00 ; COMMENT"
 	string "	RTS"
 	string ".BYTE 0, 1, 2"
 	byte 0			; end of file
