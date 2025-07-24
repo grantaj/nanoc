@@ -1,15 +1,12 @@
 ;;; skipWhiteSpacxe
-;;; Pointer to string at $FE (L), $FF (H)
+;;; Pointer to string at zero page: ZP_PTR1 (L), ZP_PTR1+1 (H)
 ;;; Advances pointer to first non whitespace character
 ;;;
 ;;; whitespace characters: SPC, TAB
 ;;;
 ;;; A, X, Y preserved
 
-STRLO = $fe
-STRHI = $ff
-	
-skipWitespace:
+skipWhitespace:
 	pha
 	tya
 	pha
@@ -18,7 +15,7 @@ skipWitespace:
 
 .loop:
 
-	lda (STRLO),Y
+	lda (ZP_PTR1),Y
 	cmp #' '         	; space
 	beq .inc
 	cmp #$09         	; tab
@@ -34,7 +31,7 @@ skipWitespace:
 
 .inc:
 	
-	inc STRLO
+	inc ZP_PTR1
 	bne .loop
-	inc STRHI
+	inc ZP_PTR1+1
 	jmp .loop
