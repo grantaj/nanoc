@@ -134,27 +134,36 @@ value string
 ```
 
 Tokenizer will operate on the string "in place"
+Approach is to have a simple tokeniser where everything is either a
+"symbol" ( a string of characters - mnemonic, operand, number, label
+string, symbol) or a special character. Classification of tokens based
+on structure (e.g. symbol followed by : = label) will be done by the parser. 
 
 1. skipWhitespace
 2. scanLexeme
-3. classifyLexeme
-4. Comment or EOL? Yes -> Next Line
-5 Goto 1.
-
+3. Comment or EOL? Yes -> Next Line
+4 Goto 1.
 
 
 skipWhitespace
 	advance position to first non-whitespace character
 
+comment?
+	if ; throw away rest of line
+	
 scanLexeme
-	set lexeme to string from current position to the next whitespace
-	or end of line
+	set lexeme to string from current position to the token boundary
 	
-classifyLexeme
-	Starts with Semicolon? Comment, Next Line 
-	Starts with Dot? type = directive, value = lexeme(1:end), return
-	Ends with Colon? type=label, value = lexeme(0:end-1), return
-	Followed by = ? type = symbol, value = lexeme else type=mnemnonic,
-	value = lexeme, scan operand and return 
-	scan operand: type=operand, value = lexeme, return
+Token Boundary
+	Anything that ends a token: whitespace/EOL or any special character
 	
+Special Characters (single character tokens)
+.
+:
+=
++
+,
+(
+)
+EOF (we will treat EOF as a token)
+
