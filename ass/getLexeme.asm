@@ -86,7 +86,7 @@ getLexeme:
 	bne .done
 	inc ZP_PTR0+1
 	
-	cpx #$00		; token was a special character - stop
+	cpx #SYMBOL		; token was a special character - stop
 	beq .done
 
 	jmp .loop		; otherwise continue

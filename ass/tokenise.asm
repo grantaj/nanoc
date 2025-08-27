@@ -3,13 +3,6 @@
 	
 ;;; Token types
 	
-	LABEL = 1
-	SYMBOL = 2
-	DIRECTIVE = 3
-	MNEMONIC = 4
-	OPERAND = 5
-	EQUALS = 6
-
 
 	* = $c000
 
@@ -107,13 +100,9 @@
 .getTokenValue:
 	jsr getLexeme
 
-	;; X = 0: token is special character
-	;; X = 1: token is a "SYMBOL"
-	
+;;; X contains token type
+;;; token value has been stored at ZP_PTR0
 
-
-	
-.nextToken:
 	lda ZP_PTR0
 	sta prevTokenType
 	lda ZP_PTR0+1
@@ -151,18 +140,24 @@
 	include "getLexeme.asm"
 
 ;;; Token Strings Array
+
 .tokenStrings:
-	string "LABEL"
-	byte 0,0,0,0
 	string "SYMBOL"
-	byte 0,0
-	string "DIRECTIVE"
-	string "MNEMONIC"
-	byte 0
-	string "OPERAND"
-	byte 0,0,0
+	byte 0,0,0,0
+	string "COMMA"
+	byte 0,0,0,0,0
+	string "PERIOD"
+	byte 0,0,0,0
+	string "COLON"
+	byte 0,0,0,0,0
 	string "EQUALS"
 	byte 0,0,0,0
+	string "LPAREN"
+	byte 0,0,0,0
+	string "RPAREN"
+	byte 0,0,0,0
+	string "PLUS"
+	byte 0,0,0,0,0,0
 
 ;;; A made up program to test tokenisation
 INPUT:
