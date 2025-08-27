@@ -13,56 +13,61 @@
 ;;; For now, tokens must be delimited by whitespace
 ;;;
 ;;; Y preserved
-;;; X = token type
+;;; X = token type: 0 = SYMBOL, 1 = SPECIAL CHARACTER ,.:=()+#$
 
 ;;; Token Types
 	SYMBOL = 0
-	COMMA = 1
-	PERIOD = 2
-	COLON = 3
-	EQUALS = 4
-	LPAREN = 5
-	RPAREN = 6
-	PLUS = 7
+	SPECIAL = 1
+	UNDEFINED = $FF
 
 getLexeme:
 	tya			; save Y
 	pha
 
-	ldx #$0			; X=1 - token is string, X=0 - token is special character
 	ldy #$0			; Index for pointer
+	ldx #UNDEFINED		; Default value
 .loop:
 	lda (ZP_PTR1),Y
-	cmp #' '		; space
+	cmp #' '		; whitespace terminates token: space
 	beq .done
 	cmp #$09		; tab
 	beq .done
 	cmp #$0			; NULL
 	beq .done
 
+;;; Check all the special characters
+.COMMA:
 	cmp #','
-	bne .tokenIsSymbol
-	ldx #COMMA
-	jmp .specialCharacter
-	
+	beq .specialCharacter
+.PERIOD:	
 	cmp #'.'
-	bne .tokenIsSymbol
-	ldx #PERIOD
-	jmp .specialCharacter
+	beq .specialCharacter
+.COLON:	
 	cmp #':'
-	beq .specialCharacter	
+	beq .specialCharacter
+.EQUALS:
 	cmp #'='
-	beq .specialCharacter	
+	beq .specialCharacter
+.LPAREN:
 	cmp #'('
-	beq .specialCharacter	
+	beq .specialCharacter
+.RPAREN:
 	cmp #')'
-	beq .specialCharacter	
+	beq .specialCharacter
+.PLUS:
 	cmp #'+'
 	beq .specialCharacter
-
-.tokenIsSymbol:
+.HASH:
+	cmp #'#'
+	beq .specialCharacter
+.DOLLAR:
+	cmp #'$'
+	beq .specialCharacter
+	
+;;; Default: Not SPECIAL -> SYMBOL
+.SYMBOL:
 	ldx #SYMBOL	   	; token is a string
-	jmp .copyCharacter	; no special character - copy the character
+	jmp .copyCharacter	
 	
 ;;; If we are at the start of a token, the special character IS the token.
 ;;; Otherwise, the special character terminates the current token and we
@@ -70,23 +75,23 @@ getLexeme:
 
 .specialCharacter:
 	cpx #SYMBOL
-	beq .done		; special character ends current token
-	;; fall-through: copy the special character as the token
+	beq .done		; special character ends SYMBOL
+	ldx #SPECIAL		; fall-through: copy special character as the token
 	
 .copyCharacter:
 	sta (ZP_PTR0),Y		; copy character to ouput
 	
-	inc ZP_PTR1
+	inc ZP_PTR1		; increment input pointer
 	bne .incTokenPtr
 	inc ZP_PTR1+1
 
 .incTokenPtr:
 
-	inc ZP_PTR0
+	inc ZP_PTR0		; increment token value pointer
 	bne .done
 	inc ZP_PTR0+1
 	
-	cpx #SYMBOL		; token was a special character - stop
+	cpx #SPECIAL		
 	beq .done
 
 	jmp .loop		; otherwise continue
