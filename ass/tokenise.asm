@@ -13,56 +13,42 @@
 	lda #>INPUT
 	sta ZP_PTR1+1
 
-	lda #<TOKEN		; Pointer to tokenised output
+	lda #<TOKENS		; Pointer to tokenised output
 	sta ZP_PTR0
-	lda #>TOKEN
+	lda #>TOKENS
 	sta ZP_PTR0+1
 
 	jsr .loop		; tokenise
 
-	;; output tokens
-	lda #<TOKEN		; Pointer to tokenised output
+	
+	lda #<TOKENS 		; Rewind to start of output tokens
 	sta ZP_PTR0
-	lda #>TOKEN
+	lda #>TOKENS
 	sta ZP_PTR0+1
 
 .nextTokenChar:
 	lda (ZP_PTR0),Y
-	beq .tokenType        	; Null-terminator check
+	beq .tokenDone        	; Null-terminator check
 	jsr CHROUT
 	inc ZP_PTR0
-	bne .nextTokenChar	; Keep printing if not page boundary	
-	inc ZP_PTR0+1     	; Handle page crossing
+	bne .nextTokenChar	
+	inc ZP_PTR0+1     	
 	jmp .nextTokenChar
 
-.tokenType:
+.tokenDone:
 	inc ZP_PTR0
-	bne .nextTokenChar	; Keep printing if not page boundary	
-	inc ZP_PTR0+1     	; Handle page crossing
-	lda #' '
-	jsr CHROUT
-.getTokenType:
-	lda (ZP_PTR0),y
-	cmp #$FF
-	bne .printTokenString
-	jmp .exit
-	
-.printTokenString:	
-	asl			; token strings are 10 bytes including NULL
-	asl			; multiply token type number by 10
-	asl 
-	clc
-	adc (ZP_PTR0),y
-	adc (ZP_PTR0),y
-
-	tay
-	lda #<.tokenStrings
-	sta ZP_PTR1
-	lda #>.tokenStrings
-	sta ZP_PTR1+1
-	jsr printString
+	bne .printCR		
+	inc ZP_PTR0+1     	
+.printCR:
 	lda #$0d
 	jsr CHROUT
+
+	lda (ZP_PTR0),y
+	cmp #$FF
+	bne .keepGoing
+	jmp .exit
+	
+.keepGoing:	
 	jmp .nextTokenChar
 
 .exit:	
@@ -101,18 +87,9 @@
 	jsr getLexeme
 
 ;;; X contains token type
-;;; token value has been stored at ZP_PTR0
+;;; null terminated token value has been stored at ZP_PTR0
 
-	lda ZP_PTR0
-	sta prevTokenType
-	lda ZP_PTR0+1
-	sta prevTokenType+1
-	lda #$01
-	sta prevTokenValid
-	
-	inc ZP_PTR0
-	bne .jmploop
-	inc ZP_PTR0+1
+
 .jmploop:
 	jmp .loop
 	
@@ -139,28 +116,9 @@
 	include "skipws.asm"
 	include "getLexeme.asm"
 
-;;; Token Strings Array
-
-.tokenStrings:
-	string "SYMBOL"
-	byte 0,0,0,0
-	string "COMMA"
-	byte 0,0,0,0,0
-	string "PERIOD"
-	byte 0,0,0,0
-	string "COLON"
-	byte 0,0,0,0,0
-	string "EQUALS"
-	byte 0,0,0,0
-	string "LPAREN"
-	byte 0,0,0,0
-	string "RPAREN"
-	byte 0,0,0,0
-	string "PLUS"
-	byte 0,0,0,0,0,0
-
 ;;; A made up program to test tokenisation
 INPUT:
+	string "SYMBOL"
 	string "     		; COMMENT"
 	string "* = $C000"
 	string "START:   "
@@ -168,11 +126,5 @@ INPUT:
 	string "	RTS"
 	string ".BYTE 0, 1, 2"
 	byte 0			; end of file
-
-prevTokenType:			; pointer to previous token TYPE 
-	byte 0, 0
-
-prevTokenValid:
-	byte 0			; 1 if there is a previous token 
 	
 TOKENS:	

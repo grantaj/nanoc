@@ -27,12 +27,11 @@ getLexeme:
 	ldy #$0			; Index for pointer
 	ldx #UNDEFINED		; Default value
 .loop:
-	lda (ZP_PTR1),Y
-	cmp #' '		; whitespace terminates token: space
+	lda (ZP_PTR1),Y		; whitespace terminates token
+	beq .done		; NULL
+	cmp #' '		; space
 	beq .done
 	cmp #$09		; tab
-	beq .done
-	cmp #$0			; NULL
 	beq .done
 
 ;;; Check all the special characters
@@ -63,6 +62,9 @@ getLexeme:
 .DOLLAR:
 	cmp #'$'
 	beq .specialCharacter
+.STAR:
+	cmp #'*'
+	beq .specialCharacter
 	
 ;;; Default: Not SPECIAL -> SYMBOL
 .SYMBOL:
@@ -88,12 +90,12 @@ getLexeme:
 .incTokenPtr:
 
 	inc ZP_PTR0		; increment token value pointer
-	bne .done
+	bne .checkSpecial
 	inc ZP_PTR0+1
-	
+
+.checkSpecial:
 	cpx #SPECIAL		
 	beq .done
-
 	jmp .loop		; otherwise continue
 	
 .done:
