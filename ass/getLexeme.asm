@@ -22,7 +22,7 @@ getlexeme:
 	lda (ZP_PTR1),Y
 	cmp #' '		; space
 	beq .done
-	cmp ##09		; tab
+	cmp #$09		; tab
 	beq .done
 	cmp #$0			; NULL
 	beq .done
