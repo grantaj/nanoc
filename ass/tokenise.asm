@@ -20,17 +20,17 @@
 	lda #>INPUT
 	sta ZP_PTR1+1
 
-	lda #<TOKEN		; Pointer to tokenised output
+	lda #<TOKENS		; Pointer to tokenised output
 	sta ZP_PTR0
-	lda #>TOKEN
+	lda #>TOKENS
 	sta ZP_PTR0+1
 
 	jsr .loop		; tokenise
 
 	;; output tokens
-	lda #<TOKEN		; Pointer to tokenised output
+	lda #<TOKENS		; Pointer to tokenised output
 	sta ZP_PTR0
-	lda #>TOKEN
+	lda #>TOKENS
 	sta ZP_PTR0+1
 
 .nextTokenChar:
@@ -80,7 +80,7 @@
 .loop:
 	ldy #$0
 	lda (ZP_PTR1),y		; End of file marked with NULL
-	bne .nextToken
+	bne .startToken
 
 	;; finished - mark end of tokens with $0,$ff
 	lda #$00
@@ -95,7 +95,7 @@
 	
 	rts
 	
-.nextToken:	
+.startToken:	
 	jsr skipWhitespace
 
 	ldy #$0			; skip comments
@@ -116,7 +116,7 @@
 	bne .checkDirective
 	lda #DIRECTIVE
 	sta (ZP_PTR0),y
-	jmp .nextToken
+	jmp .finishToken
 	
 .checkDirective:
 	;; starts with a dot?
@@ -124,7 +124,7 @@
 	bne .checkEquals
 	lda #DIRECTIVE
 	sta (ZP_PTR0),y
-	jmp .nextToken
+	jmp .finishToken
 
 .checkEquals:
 	;; ends with equals?
@@ -140,8 +140,8 @@
 	lda #SYMBOL
 	sta (prevTokenType)
 
-.chackEqualsDone:
-	jmp .nextToken
+.checkEqualsDone:
+	jmp .finishToken
 	
 .mnemonicOrOperand:
 	lda (prevTokenType)
@@ -149,15 +149,15 @@
 	bne .operand
 	lda #MNEMONIC
 	sta (ZP_PTR0),y
-	jmp .nextToken
+	jmp .finishToken
 	
 .operand:
 	lda #OPERAND
 	sta (ZP_PTR0),y
-	jmp .nextToken
+	jmp .finishToken
 
 	
-.nextToken:
+.finishToken:
 	lda ZP_PTR0
 	sta prevTokenType
 	lda ZP_PTR0+1
