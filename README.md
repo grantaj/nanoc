@@ -13,9 +13,17 @@ make clean
 
 Build products are written to `build/`.
 
-`make test` currently checks that the existing 6502 test programs assemble. Issue #2 will make those tests executable under VICE so that the C64 itself performs the assertions and CI only observes the result.
-
 GitHub Actions runs the same `make` and `make test` commands on pushes and pull requests.
+
+## C64-native testing
+
+The testing philosophy for nanoc is deliberately C64-native. The code under test and the assertions about its behaviour should run as ordinary 6502 programs, not in a host-language test framework.
+
+A test program sets up memory and registers, calls the routine under test, checks the result using 6502 instructions, and records PASS or a useful failure code at a known memory location. VICE provides the C64 execution environment. CI is intentionally thin: it assembles the test PRG, starts VICE non-interactively, and observes the result produced by the 6502 program.
+
+In other words: **the C64 tests itself; CI only turns the machine on and looks at the result.**
+
+`make test` currently verifies that the existing test programs assemble. Issue #2 adds the headless VICE execution layer while keeping the assertions themselves in 6502 assembly. No Python test framework is used.
 
 ## Vice
 ```
