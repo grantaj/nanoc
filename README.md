@@ -1,6 +1,22 @@
 # nanoc
 Learning to write a compiler by writing one for the c64
 
+## Build
+
+The repository has a single root-level build interface:
+
+```
+make        # build the disassembler, assembler work-in-progress, and examples
+make test   # assemble the current test programs
+make clean
+```
+
+Build products are written to `build/`.
+
+`make test` currently checks that the existing 6502 test programs assemble. Issue #2 will make those tests executable under VICE so that the C64 itself performs the assertions and CI only observes the result.
+
+GitHub Actions runs the same `make` and `make test` commands on pushes and pull requests.
+
 ## Vice
 ```
 	apt install vice
@@ -18,13 +34,15 @@ Learning to write a compiler by writing one for the c64
 `apt install cc65`
 
 ### vasm
-Not really required, since `cc65` has an assembler (`ca54`) but I wanted to compare...
+Not really required, since `cc65` has an assembler (`ca65`) but I wanted to compare...
 ```
 	git clone https://github.com/StarWolf3000/vasm-mirror.git
 	cd vasm-mirror
-	make CPU=650 SYNTAX=oldstyle
+	make CPU=6502 SYNTAX=oldstyle
 	cp vasm6502_oldstyle /usr/local/bin/.
 ```	
+
+CI pins the vasm mirror to a known commit so that builds do not silently change as upstream changes.
 
 ### 64tass
 ```
