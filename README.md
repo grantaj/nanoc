@@ -7,23 +7,28 @@ The repository has a single root-level build interface:
 
 ```
 make        # build the disassembler, assembler work-in-progress, and examples
-make test   # assemble the current test programs
+make test   # assemble and execute the C64-native tests under VICE
 make clean
 ```
 
 Build products are written to `build/`.
 
-GitHub Actions runs the same `make` and `make test` commands on pushes and pull requests.
+GitHub Actions runs the same `make` and `make test` commands on pull requests and on pushes to `main`.
 
 ## C64-native testing
 
-The testing philosophy for nanoc is deliberately C64-native. The code under test and the assertions about its behaviour should run as ordinary 6502 programs, not in a host-language test framework.
+The testing philosophy for nanoc is deliberately C64-native. The code under test and the assertions about its behaviour run as ordinary 6502 programs, not in a host-language test framework.
 
-A test program sets up memory and registers, calls the routine under test, checks the result using 6502 instructions, and records PASS or a useful failure code at a known memory location. VICE provides the C64 execution environment. CI is intentionally thin: it assembles the test PRG, starts VICE non-interactively, and observes the result produced by the 6502 program.
+Tests include `test.inc`, which reserves `$02` as `TEST_RESULT`. A test writes this byte exactly once, when it is complete:
+
+- `$ff` (`TEST_PASS`) means success.
+- Any other value is a test-specific failure code identifying the assertion that failed.
+
+The VICE monitor watches `$02` for a store. When the 6502 program writes its result, the thin shell runner reads that byte and reports it to `make`. The host side does not reproduce the assertions or decide whether pointer arithmetic, register preservation, tokenisation, or any other C64 behaviour is correct; that logic remains in the 6502 test program.
 
 In other words: **the C64 tests itself; CI only turns the machine on and looks at the result.**
 
-`make test` currently verifies that the existing test programs assemble. Issue #2 adds the headless VICE execution layer while keeping the assertions themselves in 6502 assembly. No Python test framework is used.
+`ass/test_skipws.asm` is the first executable test. It checks whitespace skipping, non-whitespace preservation, page-boundary pointer advancement, and register preservation, with distinct failure codes. Future tests follow the same pattern. No Python test framework is used.
 
 ## Vice
 ```
