@@ -12,9 +12,9 @@ main:
         PHA
 	
 	;; Push end address (low byte, then high)   
-        LDA #<end
+        LDA #<programEnd
         PHA
-        LDA #>end
+        LDA #>programEnd
         PHA
 
         ; Call hexdump
@@ -162,4 +162,4 @@ printHexByte:
         ADC #$30
         JSR CHROUT
         RTS
-end:	
+programEnd:	

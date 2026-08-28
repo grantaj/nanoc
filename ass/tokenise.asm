@@ -20,17 +20,17 @@
 	lda #>INPUT
 	sta ZP_PTR1+1
 
-	lda #<TOKEN		; Pointer to tokenised output
+	lda #<TOKENS		; Pointer to tokenised output
 	sta ZP_PTR0
-	lda #>TOKEN
+	lda #>TOKENS
 	sta ZP_PTR0+1
 
 	jsr .loop		; tokenise
 
 	;; output tokens
-	lda #<TOKEN		; Pointer to tokenised output
+	lda #<TOKENS		; Pointer to tokenised output
 	sta ZP_PTR0
-	lda #>TOKEN
+	lda #>TOKENS
 	sta ZP_PTR0+1
 
 .nextTokenChar:
@@ -63,9 +63,9 @@
 	adc (ZP_PTR0),y
 
 	tay
-	lda #<.tokenStrings
+	lda #<tokenStrings
 	sta ZP_PTR1
-	lda #>.tokenStrings
+	lda #>tokenStrings
 	sta ZP_PTR1+1
 	jsr printString
 	lda #$0d
@@ -80,7 +80,7 @@
 .loop:
 	ldy #$0
 	lda (ZP_PTR1),y		; End of file marked with NULL
-	bne .nextToken
+	bne .startToken
 
 	;; finished - mark end of tokens with $0,$ff
 	lda #$00
@@ -95,7 +95,7 @@
 	
 	rts
 	
-.nextToken:	
+.startToken:	
 	jsr skipWhitespace
 
 	ldy #$0			; skip comments
@@ -116,7 +116,7 @@
 	bne .checkDirective
 	lda #DIRECTIVE
 	sta (ZP_PTR0),y
-	jmp .nextToken
+	jmp .finishToken
 	
 .checkDirective:
 	;; starts with a dot?
@@ -124,7 +124,7 @@
 	bne .checkEquals
 	lda #DIRECTIVE
 	sta (ZP_PTR0),y
-	jmp .nextToken
+	jmp .finishToken
 
 .checkEquals:
 	;; ends with equals?
@@ -136,28 +136,61 @@
 	;; TODO need to add check to make sure there was a previous token
 	lda prevTokenValid
 	beq .checkEqualsDone
-	
-	lda #SYMBOL
-	sta (prevTokenType)
 
-.chackEqualsDone:
-	jmp .nextToken
+	;; prevTokenType is an ordinary-memory pointer. 6502 indirect
+	;; addressing requires the pointer itself to be in zero page, so
+	;; temporarily borrow ZP_PTR0 while preserving the current output ptr.
+	lda ZP_PTR0
+	pha
+	lda ZP_PTR0+1
+	pha
+	lda prevTokenType
+	sta ZP_PTR0
+	lda prevTokenType+1
+	sta ZP_PTR0+1
+	ldy #$0
+	lda #SYMBOL
+	sta (ZP_PTR0),y
+	pla
+	sta ZP_PTR0+1
+	pla
+	sta ZP_PTR0
+
+.checkEqualsDone:
+	jmp .finishToken
 	
 .mnemonicOrOperand:
-	lda (prevTokenType)
+	;; Read the previous token type through the stored pointer. Borrow
+	;; ZP_PTR0 for the legal (zp),Y access and restore it afterwards.
+	lda ZP_PTR0
+	pha
+	lda ZP_PTR0+1
+	pha
+	lda prevTokenType
+	sta ZP_PTR0
+	lda prevTokenType+1
+	sta ZP_PTR0+1
+	ldy #$0
+	lda (ZP_PTR0),y
+	tax
+	pla
+	sta ZP_PTR0+1
+	pla
+	sta ZP_PTR0
+	txa
 	cmp #MNEMONIC
 	bne .operand
 	lda #MNEMONIC
 	sta (ZP_PTR0),y
-	jmp .nextToken
+	jmp .finishToken
 	
 .operand:
 	lda #OPERAND
 	sta (ZP_PTR0),y
-	jmp .nextToken
+	jmp .finishToken
 
 	
-.nextToken:
+.finishToken:
 	lda ZP_PTR0
 	sta prevTokenType
 	lda ZP_PTR0+1
@@ -195,7 +228,7 @@
 	include "getLexeme.asm"
 
 ;;; Token Strings Array
-.tokenStrings:
+tokenStrings:
 	string "LABEL"
 	byte 0,0,0,0
 	string "SYMBOL"

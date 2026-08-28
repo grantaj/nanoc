@@ -7,9 +7,9 @@ p = $FC				; pointer to current byte for dissasembly
 	
 main:
 
-	lda #<data		; initialise pointer
+	lda #<modeData		; initialise pointer
 	sta p
-	lda #>data
+	lda #>modeData
 	sta p+1
 
 	jsr printLDA
@@ -85,7 +85,7 @@ printCR:
 	rts
 
 	* = $c100
-data:
+modeData:
 	byte $fd, $12
 
 	include "modes.asm"	

@@ -1,6 +1,30 @@
 # nanoc
 Learning to write a compiler by writing one for the c64
 
+## Build
+
+The repository has a single root-level build interface:
+
+```
+make        # build the disassembler, assembler work-in-progress, and examples
+make test   # assemble the current test programs
+make clean
+```
+
+Build products are written to `build/`.
+
+GitHub Actions runs the same `make` and `make test` commands on pushes and pull requests.
+
+## C64-native testing
+
+The testing philosophy for nanoc is deliberately C64-native. The code under test and the assertions about its behaviour should run as ordinary 6502 programs, not in a host-language test framework.
+
+A test program sets up memory and registers, calls the routine under test, checks the result using 6502 instructions, and records PASS or a useful failure code at a known memory location. VICE provides the C64 execution environment. CI is intentionally thin: it assembles the test PRG, starts VICE non-interactively, and observes the result produced by the 6502 program.
+
+In other words: **the C64 tests itself; CI only turns the machine on and looks at the result.**
+
+`make test` currently verifies that the existing test programs assemble. Issue #2 adds the headless VICE execution layer while keeping the assertions themselves in 6502 assembly. No Python test framework is used.
+
 ## Vice
 ```
 	apt install vice
@@ -18,13 +42,15 @@ Learning to write a compiler by writing one for the c64
 `apt install cc65`
 
 ### vasm
-Not really required, since `cc65` has an assembler (`ca54`) but I wanted to compare...
+Not really required, since `cc65` has an assembler (`ca65`) but I wanted to compare...
 ```
 	git clone https://github.com/StarWolf3000/vasm-mirror.git
 	cd vasm-mirror
-	make CPU=650 SYNTAX=oldstyle
+	make CPU=6502 SYNTAX=oldstyle
 	cp vasm6502_oldstyle /usr/local/bin/.
 ```	
+
+CI pins the vasm mirror to a known commit so that builds do not silently change as upstream changes.
 
 ### 64tass
 ```

@@ -1,4 +1,4 @@
-;;; getlexeme
+;;; getLexeme
 ;;; 
 ;;; Consume next token
 ;;; ZP_PTR1, ZP_PTR1+1 points to input data
@@ -14,7 +14,7 @@
 ;;; X, Y preserved
 ;;; A returns last character in token
 
-getlexeme:
+getLexeme:
 	tya			; save Y
 	pha
 	
@@ -22,7 +22,7 @@ getlexeme:
 	lda (ZP_PTR1),Y
 	cmp #' '		; space
 	beq .done
-	cmp ##09		; tab
+	cmp #$09		; tab
 	beq .done
 	cmp #$0			; NULL
 	beq .done
