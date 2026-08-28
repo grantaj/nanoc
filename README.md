@@ -147,11 +147,18 @@ Advantages of starting with an assembler:
   operand
   
 ### Tokeniser
-Operate line by line
-Assume the line of text is in memory at a given location
+Operate line by line.
+
+The source buffer has an explicit `[start, end)` contract. `ZP_PTR1` is the current source pointer and `sourceEnd` is the address one byte past the buffer. Lines inside the buffer are NUL terminated:
+
+- NUL means end of line only.
+- EOF means `ZP_PTR1 == sourceEnd`.
+- Blank and consecutive blank lines are therefore unambiguous.
+
+The tokeniser does not depend on a special EOF sentinel byte in the source. `ass/test_tokenise_eof.asm` exercises empty input, comment-only input, consecutive blank lines, whitespace at end of input, and source-pointer page crossing under VICE.
 
 **Token structure**
-type {label | symbol | directive | mnemomic | operand}
+type {label | symbol | directive | mnemonic | operand}
 value string
 
 **Supported token syntax:**
@@ -164,15 +171,13 @@ value string
 	#$00
 ```
 
-Tokenizer will operate on the string "in place"
+The tokeniser operates on the source in place.
 
 1. skipWhitespace
 2. scanLexeme
 3. classifyLexeme
 4. Comment or EOL? Yes -> Next Line
-5 Goto 1.
-
-
+5. Goto 1.
 
 skipWhitespace
 	advance position to first non-whitespace character
@@ -185,7 +190,7 @@ classifyLexeme
 	Starts with Semicolon? Comment, Next Line 
 	Starts with Dot? type = directive, value = lexeme(1:end), return
 	Ends with Colon? type=label, value = lexeme(0:end-1), return
-	Followed by = ? type = symbol, value = lexeme else type=mnemnonic,
+	Followed by = ? type = symbol, value = lexeme else type=mnemonic,
 	value = lexeme, scan operand and return 
 	scan operand: type=operand, value = lexeme, return
 	
