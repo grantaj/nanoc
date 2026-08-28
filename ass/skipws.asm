@@ -1,36 +1,21 @@
-;;; skipWhiteSpace
-;;; Pointer to string at zero page: ZP_PTR1 (L), ZP_PTR1+1 (H)
-;;; Advances pointer to first non whitespace character
+;;; skipWhitespace
 ;;;
-;;; whitespace characters: SPC, TAB
+;;; ZP_PTR1 points to source text.
+;;; Advances it to the first non-space/non-tab byte.
 ;;;
-;;; A, X, Y preserved
-
+;;; A, Y and flags are clobbered. X is preserved.
 skipWhitespace:
-	pha
-	tya
-	pha
-
-	ldy #0
+	ldy #$00
 
 .loop:
+	lda (ZP_PTR1),y
+	cmp #' '
+	beq .advance
+	cmp #$09
+	beq .advance
+	rts
 
-	lda (ZP_PTR1),Y
-	cmp #' '         	; space
-	beq .inc
-	cmp #$09         	; tab
-	beq .inc
-
-	;; non whitespace found
-	
-	pla			; restore A and Y
-	tay
-	pla
-	
-	rts             	
-
-.inc:
-	
+.advance:
 	inc ZP_PTR1
 	bne .loop
 	inc ZP_PTR1+1

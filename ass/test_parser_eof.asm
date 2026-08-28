@@ -13,14 +13,14 @@ main:
 	sta sourceEnd
 	lda #>emptyEnd
 	sta sourceEnd+1
-	jsr runTokenise
+	jsr nextStatement
 	jsr checkCase
 	beq .case2
-	ora #$10		; $11..$13 identify case 1 failure
+	ora #$10
 	jmp .finish
 
 .case2:
-	;; One comment-only source line consumes its EOL then reaches EOF.
+	;; A comment-only line is skipped before EOF is returned.
 	lda #<singleInput
 	sta ZP_PTR1
 	lda #>singleInput
@@ -29,14 +29,14 @@ main:
 	sta sourceEnd
 	lda #>singleEnd
 	sta sourceEnd+1
-	jsr runTokenise
+	jsr nextStatement
 	jsr checkCase
 	beq .case3
-	ora #$20		; $21..$23 identify case 2 failure
+	ora #$20
 	jmp .finish
 
 .case3:
-	;; Consecutive blank lines are ordinary EOLs, not EOF.
+	;; Consecutive blank lines remain ordinary EOLs, not EOF.
 	lda #<blankInput
 	sta ZP_PTR1
 	lda #>blankInput
@@ -45,10 +45,10 @@ main:
 	sta sourceEnd
 	lda #>blankEnd
 	sta sourceEnd+1
-	jsr runTokenise
+	jsr nextStatement
 	jsr checkCase
 	beq .case4
-	ora #$30		; $31..$33 identify case 3 failure
+	ora #$30
 	jmp .finish
 
 .case4:
@@ -61,14 +61,14 @@ main:
 	sta sourceEnd
 	lda #>whitespaceEnd
 	sta sourceEnd+1
-	jsr runTokenise
+	jsr nextStatement
 	jsr checkCase
 	beq .case5
-	ora #$40		; $41..$43 identify case 4 failure
+	ora #$40
 	jmp .finish
 
 .case5:
-	;; Scanning a comment across a page boundary advances both pointer bytes.
+	;; Skipping a comment across a page boundary advances both pointer bytes.
 	lda #<pageInput
 	sta ZP_PTR1
 	lda #>pageInput
@@ -77,59 +77,46 @@ main:
 	sta sourceEnd
 	lda #>pageEnd
 	sta sourceEnd+1
-	jsr runTokenise
+	jsr nextStatement
 	jsr checkCase
 	beq .pass
-	ora #$50		; $51..$53 identify case 5 failure
+	ora #$50
 	jmp .finish
 
 .pass:
 	lda #TEST_PASS
-
 .finish:
 	sta TEST_RESULT
 .halt:
 	jmp .halt
 
-;;; Run the tokeniser with a fresh output cursor.
-runTokenise:
-	lda #<testTokens
-	sta ZP_PTR0
-	lda #>testTokens
-	sta ZP_PTR0+1
-	jsr tokenise
-	rts
-
-;;; Verify the common postcondition for these no-token fixtures.
+;;; Verify EOF and the final source cursor.
 ;;; Returns A = 0 on success, otherwise:
-;;;   1 = source pointer low byte did not reach sourceEnd
-;;;   2 = source pointer high byte did not reach sourceEnd
-;;;   3 = token stream EOF marker was not $00,$ff
+;;;   1 = nextStatement did not return STATEMENT_EOF
+;;;   2 = source pointer low byte did not reach sourceEnd
+;;;   3 = source pointer high byte did not reach sourceEnd
 checkCase:
+	cmp #STATEMENT_EOF
+	beq .checkLow
+	lda #$01
+	rts
+.checkLow:
 	lda ZP_PTR1
 	cmp sourceEnd
 	beq .checkHigh
-	lda #$01
+	lda #$02
 	rts
 .checkHigh:
 	lda ZP_PTR1+1
 	cmp sourceEnd+1
-	beq .checkTokens
-	lda #$02
-	rts
-.checkTokens:
-	lda testTokens
-	bne .badTokens
-	lda testTokens+1
-	cmp #$ff
-	bne .badTokens
-	lda #$00
-	rts
-.badTokens:
+	beq .ok
 	lda #$03
 	rts
+.ok:
+	lda #$00
+	rts
 
-	include "tokeniser.asm"
+	include "parser.asm"
 
 	* = $c400
 emptyInput:
@@ -157,7 +144,3 @@ whitespaceEnd:
 pageInput:
 	string "; page crossing comment"
 pageEnd:
-
-	* = $c600
-testTokens:
-	byte 0,0

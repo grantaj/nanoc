@@ -24,11 +24,11 @@ Tests include `test.inc`, which reserves `$02` as `TEST_RESULT`. A test writes t
 - `$ff` (`TEST_PASS`) means success.
 - Any other value is a test-specific failure code identifying the assertion that failed.
 
-The VICE monitor watches `$02` for a store. When the 6502 program writes its result, the thin shell runner reads that byte and reports it to `make`. The host side does not reproduce the assertions or decide whether pointer arithmetic, register preservation, tokenisation, or any other C64 behaviour is correct; that logic remains in the 6502 test program.
+The VICE monitor watches `$02` for a store. When the 6502 program writes its result, the thin shell runner reads that byte and reports it to `make`. The host side does not reproduce the assertions or decide whether pointer arithmetic, register behaviour, parsing, or any other C64 behaviour is correct; that logic remains in the 6502 test program.
 
 In other words: **the C64 tests itself; CI only turns the machine on and looks at the result.**
 
-`ass/test_skipws.asm` is the first executable test. It checks whitespace skipping, non-whitespace preservation, page-boundary pointer advancement, and register preservation, with distinct failure codes. Future tests follow the same pattern. No Python test framework is used.
+The assembler tests cover whitespace scanning, zero-copy lexeme scanning, statement recognition, EOL/EOF handling, and page-boundary pointer advancement. No Python test framework is used.
 
 ## Vice
 ```
@@ -139,15 +139,15 @@ TXA TXS TYA
 7. Check if pointer is at end of region (stop)
 8. Jump to read `opcode`
 
-## Step 2: Write a Assembler
+## Step 2: Write an Assembler
 Advantages of starting with an assembler:
 - Can work line by line (except for symbols and labels)
 - Simple syntax
-- Direct translation from mnemonic & addressing mode to opcode &
-  operand
-  
-### Tokeniser
-Operate line by line.
+- Direct translation from mnemonic & addressing mode to opcode & operand
+
+### Assembler front end
+
+The assembler walks the source buffer directly. It does not copy lexeme strings or build a persistent token stream between scanning and parsing.
 
 The source buffer has an explicit `[start, end)` contract. `ZP_PTR1` is the current source pointer and `sourceEnd` is the address one byte past the buffer. Lines inside the buffer are NUL terminated:
 
@@ -155,42 +155,52 @@ The source buffer has an explicit `[start, end)` contract. `ZP_PTR1` is the curr
 - EOF means `ZP_PTR1 == sourceEnd`.
 - Blank and consecutive blank lines are therefore unambiguous.
 
-The tokeniser does not depend on a special EOF sentinel byte in the source. `ass/test_tokenise_eof.asm` exercises empty input, comment-only input, consecutive blank lines, whitespace at end of input, and source-pointer page crossing under VICE.
+`scanLexeme` is a small lexical helper. It leaves the text in place, returns `ZP_PTR0` pointing at the lexeme and X containing its length, and advances `ZP_PTR1` to the delimiter.
 
-**Token structure**
-type {label | symbol | directive | mnemonic | operand}
-value string
+`nextStatement` consumes source a line at a time and returns one of:
 
-**Supported token syntax:**
 ```
-	; comment
-	label:
-	symbol = value
-	.directive
-	LDA
-	#$00
+STATEMENT_LABEL
+STATEMENT_SYMBOL
+STATEMENT_DIRECTIVE
+STATEMENT_INSTRUCTION
+STATEMENT_EOF
 ```
 
-The tokeniser operates on the source in place.
+The current statement is represented only by transient views into the source:
 
-1. skipWhitespace
-2. scanLexeme
-3. classifyLexeme
-4. Comment or EOL? Yes -> Next Line
-5. Goto 1.
+```
+statementName + statementNameLength
+statementArgument + statementArgumentLength
+```
 
-skipWhitespace
-	advance position to first non-whitespace character
+These views are overwritten by the next call. Mnemonics, directives, operands and punctuation therefore do not require allocated strings or persistent token objects. Later assembler state should retain a source reference only when textual identity genuinely has to survive, principally for symbols.
 
-scanLexeme
-	set lexeme to string from current position to the next whitespace
-	or end of line
-	
-classifyLexeme
-	Starts with Semicolon? Comment, Next Line 
-	Starts with Dot? type = directive, value = lexeme(1:end), return
-	Ends with Colon? type=label, value = lexeme(0:end-1), return
-	Followed by = ? type = symbol, value = lexeme else type=mnemonic,
-	value = lexeme, scan operand and return 
-	scan operand: type=operand, value = lexeme, return
-	
+Supported statement forms are deliberately small:
+
+```
+; comment
+label:
+symbol = value
+.directive argument
+LDA #$00
+RTS
+```
+
+Conceptually the flow is:
+
+```
+source cursor
+     |
+     +--> skipWhitespace / scanLexeme
+     |
+     v
+nextStatement
+     |
+     +--> label
+     +--> symbol definition
+     +--> directive
+     +--> instruction
+```
+
+Scanning and parsing remain different responsibilities, but there is no intermediate token data structure merely to preserve that conceptual boundary.
