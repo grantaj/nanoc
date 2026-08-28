@@ -10,12 +10,12 @@
 ;;;   sourceEnd one byte past the source buffer
 ;;;
 ;;; Output from nextStatement:
-;;;   A                       statement type
-;;;   statementName          pointer to statement name
-;;;   statementNameLength    name length
-;;;   statementArgument      pointer to argument text, when present
+;;;   A                        statement type
+;;;   statementName           pointer to statement name
+;;;   statementNameLength     name length
+;;;   statementArgument       pointer to argument text, when present
 ;;;   statementArgumentLength argument length, with surrounding whitespace
-;;;                           excluded
+;;;                            excluded
 ;;;
 ;;; On return ZP_PTR1 points to the start of the next source line or sourceEnd.
 
@@ -36,18 +36,31 @@ nextStatement:
 
 .nextLine:
 	jsr sourceAtEnd
-	beq .eof
+	bne .haveSource
+	lda #STATEMENT_EOF
+	rts
 
+.haveSource:
 	jsr skipWhitespace
 	jsr sourceAtEnd
-	beq .eof
+	bne .readFirstByte
+	lda #STATEMENT_EOF
+	rts
 
+.readFirstByte:
 	ldy #$00
 	lda (ZP_PTR1),y
-	beq .blankLine
-	cmp #';'
-	beq .commentLine
+	bne .notBlank
+	jsr advanceSource		; consume NUL EOL
+	jmp .nextLine
 
+.notBlank:
+	cmp #';'
+	bne .statement
+	jsr skipRestOfLine
+	jmp .nextLine
+
+.statement:
 	jsr scanLexeme
 	lda ZP_PTR0
 	sta statementName
@@ -105,18 +118,6 @@ nextStatement:
 	dec statementNameLength
 	jsr skipRestOfLine
 	lda #STATEMENT_LABEL
-	rts
-
-.blankLine:
-	jsr advanceSource		; consume NUL EOL
-	jmp .nextLine
-
-.commentLine:
-	jsr skipRestOfLine
-	jmp .nextLine
-
-.eof:
-	lda #STATEMENT_EOF
 	rts
 
 ;;; scanArgument
