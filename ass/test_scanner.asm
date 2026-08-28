@@ -16,24 +16,42 @@ main:
 	jsr scanLexeme
 
 	cpx #$03
-	bne .fail01
+	beq .case1StartLow
+	lda #$01
+	jmp .finish
+.case1StartLow:
 	lda ZP_PTR0
 	cmp #<wordInput
-	bne .fail02
+	beq .case1StartHigh
+	lda #$02
+	jmp .finish
+.case1StartHigh:
 	lda ZP_PTR0+1
 	cmp #>wordInput
-	bne .fail03
+	beq .case1CursorLow
+	lda #$03
+	jmp .finish
+.case1CursorLow:
 	lda ZP_PTR1
 	cmp #<wordDelimiter
-	bne .fail04
+	beq .case1CursorHigh
+	lda #$04
+	jmp .finish
+.case1CursorHigh:
 	lda ZP_PTR1+1
 	cmp #>wordDelimiter
-	bne .fail05
+	beq .case1Source
+	lda #$05
+	jmp .finish
+.case1Source:
 	lda wordInput
 	cmp #'L'
-	bne .fail06		; scanner must not modify source text
+	beq .case2
+	lda #$06		; scanner must not modify source text
+	jmp .finish
 
-	;; Case 2: punctuation stays in the lexeme; NUL is only a delimiter.
+.case2:
+	;; Punctuation stays in the lexeme; NUL is only a delimiter.
 	lda #<labelInput
 	sta ZP_PTR1
 	lda #>labelInput
@@ -45,15 +63,24 @@ main:
 	jsr scanLexeme
 
 	cpx #$06
-	bne .fail07
+	beq .case2CursorLow
+	lda #$07
+	jmp .finish
+.case2CursorLow:
 	lda ZP_PTR1
 	cmp #<labelEol
-	bne .fail08
+	beq .case2CursorHigh
+	lda #$08
+	jmp .finish
+.case2CursorHigh:
 	lda ZP_PTR1+1
 	cmp #>labelEol
-	bne .fail09
+	beq .case3
+	lda #$09
+	jmp .finish
 
-	;; Case 3: source and lexeme pointers cross a page boundary correctly.
+.case3:
+	;; Source and lexeme pointers cross a page boundary correctly.
 	lda #<pageInput
 	sta ZP_PTR1
 	lda #>pageInput
@@ -65,21 +92,36 @@ main:
 	jsr scanLexeme
 
 	cpx #$04
-	bne .fail10
+	beq .case3StartLow
+	lda #$0a
+	jmp .finish
+.case3StartLow:
 	lda ZP_PTR0
 	cmp #<pageInput
-	bne .fail11
+	beq .case3StartHigh
+	lda #$0b
+	jmp .finish
+.case3StartHigh:
 	lda ZP_PTR0+1
 	cmp #>pageInput
-	bne .fail12
+	beq .case3CursorLow
+	lda #$0c
+	jmp .finish
+.case3CursorLow:
 	lda ZP_PTR1
 	cmp #<pageDelimiter
-	bne .fail13
+	beq .case3CursorHigh
+	lda #$0d
+	jmp .finish
+.case3CursorHigh:
 	lda ZP_PTR1+1
 	cmp #>pageDelimiter
-	bne .fail14
+	beq .case4
+	lda #$0e
+	jmp .finish
 
-	;; Case 4: the explicit source end bounds scanning even without a delimiter.
+.case4:
+	;; The explicit source end bounds scanning even without a delimiter.
 	lda #<boundedInput
 	sta ZP_PTR1
 	lda #>boundedInput
@@ -91,68 +133,24 @@ main:
 	jsr scanLexeme
 
 	cpx #$03
-	bne .fail15
-	lda ZP_PTR1
-	cmp #<boundedEnd
-	bne .fail16
-	lda ZP_PTR1+1
-	cmp #>boundedEnd
-	bne .fail17
-
-	lda #TEST_PASS
-	jmp .finish
-
-.fail01:
-	lda #$01
-	jmp .finish
-.fail02:
-	lda #$02
-	jmp .finish
-.fail03:
-	lda #$03
-	jmp .finish
-.fail04:
-	lda #$04
-	jmp .finish
-.fail05:
-	lda #$05
-	jmp .finish
-.fail06:
-	lda #$06
-	jmp .finish
-.fail07:
-	lda #$07
-	jmp .finish
-.fail08:
-	lda #$08
-	jmp .finish
-.fail09:
-	lda #$09
-	jmp .finish
-.fail10:
-	lda #$0a
-	jmp .finish
-.fail11:
-	lda #$0b
-	jmp .finish
-.fail12:
-	lda #$0c
-	jmp .finish
-.fail13:
-	lda #$0d
-	jmp .finish
-.fail14:
-	lda #$0e
-	jmp .finish
-.fail15:
+	beq .case4CursorLow
 	lda #$0f
 	jmp .finish
-.fail16:
+.case4CursorLow:
+	lda ZP_PTR1
+	cmp #<boundedEnd
+	beq .case4CursorHigh
 	lda #$10
 	jmp .finish
-.fail17:
+.case4CursorHigh:
+	lda ZP_PTR1+1
+	cmp #>boundedEnd
+	beq .pass
 	lda #$11
+	jmp .finish
 
+.pass:
+	lda #TEST_PASS
 .finish:
 	sta TEST_RESULT
 .halt:
