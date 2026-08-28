@@ -34,23 +34,29 @@ tokenise:
 	bne .haveSource
 	lda ZP_PTR1+1
 	cmp sourceEnd+1
-	beq .eof
+	bne .haveSource
+	jmp .eof
 
 .haveSource:
 	ldy #$00
 	lda (ZP_PTR1),y
-	beq .endOfLine
+	bne .beforeWhitespace
+	jmp .endOfLine
 
+.beforeWhitespace:
 	jsr skipWhitespace
 
 	;; Whitespace may have advanced us to the line terminator.
 	ldy #$00
 	lda (ZP_PTR1),y
-	beq .endOfLine
+	bne .checkComment
+	jmp .endOfLine
 
+.checkComment:
 	;; A semicolon comments out the remainder of the current line.
 	cmp #';'
-	beq .nextLine
+	bne .getTokenValue
+	jmp .nextLine
 
 .getTokenValue:
 	tax			; X holds first character
@@ -145,7 +151,9 @@ tokenise:
 	sta prevTokenValid
 
 	inc ZP_PTR0
-	bne .loop
+	beq .tokenPageCross
+	jmp .loop
+.tokenPageCross:
 	inc ZP_PTR0+1
 	jmp .loop
 
@@ -153,7 +161,9 @@ tokenise:
 	;; Consume exactly one line terminator. A blank line is therefore just
 	;; another NUL byte and cannot be confused with EOF.
 	inc ZP_PTR1
-	bne .loop
+	beq .sourcePageCross
+	jmp .loop
+.sourcePageCross:
 	inc ZP_PTR1+1
 	jmp .loop
 
@@ -164,13 +174,16 @@ tokenise:
 	bne .readLineByte
 	lda ZP_PTR1+1
 	cmp sourceEnd+1
-	beq .eof
+	bne .readLineByte
+	jmp .eof
 
 .readLineByte:
 	ldy #$00
 	lda (ZP_PTR1),y
-	beq .endOfLine
+	bne .advanceLineByte
+	jmp .endOfLine
 
+.advanceLineByte:
 	inc ZP_PTR1
 	bne .nextLine
 	inc ZP_PTR1+1
