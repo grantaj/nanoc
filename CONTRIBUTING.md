@@ -94,17 +94,6 @@ When a routine temporarily borrows a zero-page pointer for indirect addressing, 
 
 Use explicit page-crossing logic where pointer arithmetic requires it. Do not hide important 16-bit behaviour behind clever assembler expressions if the resulting machine operation becomes harder to see.
 
-## Source and token buffers
-
-The tokenizer source buffer is an explicit half-open byte range `[start,end)`:
-
-- `ZP_PTR1` points at the current source byte;
-- `sourceEnd` is the one-past-end address;
-- NUL means end of line;
-- EOF means `ZP_PTR1 == sourceEnd`.
-
-Do not reintroduce an in-band EOF sentinel. Blank lines, including consecutive blank lines, must remain representable without ambiguity.
-
 ## Testing
 
 Tests should remain C64-native.
