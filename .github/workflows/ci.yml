@@ -6,16 +6,32 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Check out nanoc
         uses: actions/checkout@v7.0.1
 
-      - name: Install build dependencies
+      - name: Install build and emulator dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cc65
+          sudo apt-get install -y \
+            build-essential \
+            cc65 \
+            vice \
+            subversion \
+            devscripts \
+            cdbs \
+            equivs \
+            fakeroot
+
+      - name: Install VICE ROMs
+        run: |
+          git clone https://github.com/lharsfalvi/vice-roms-deb.git /tmp/vice-roms-deb
+          cd /tmp/vice-roms-deb
+          git checkout 2e594a3fb74c6b8bba88488de2afac170ee7f3d7
+          ./makedeb.sh
+          sudo dpkg -i vice-roms_*_all.deb
 
       - name: Build vasm 6502 oldstyle
         run: |
@@ -28,5 +44,5 @@ jobs:
       - name: Build all targets
         run: make
 
-      - name: Build test programs
+      - name: Run C64-native tests
         run: make test
