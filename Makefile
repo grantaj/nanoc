@@ -11,15 +11,17 @@ DIS_TARGETS = \
 	$(BUILD_DIR)/test_modes.prg
 
 ASS_TARGETS = \
-	$(BUILD_DIR)/tokenise.prg \
+	$(BUILD_DIR)/parse.prg \
 	$(BUILD_DIR)/test_skipws.prg \
-	$(BUILD_DIR)/test_tokenise_eof.prg
+	$(BUILD_DIR)/test_scanner.prg \
+	$(BUILD_DIR)/test_parser.prg \
+	$(BUILD_DIR)/test_parser_eof.prg
 
 EXAMPLE_TARGETS = \
 	$(BUILD_DIR)/border-demo.prg \
 	$(BUILD_DIR)/border-c.prg
 
-.PHONY: all dis ass examples test test-skipws test-tokenise-eof clean
+.PHONY: all dis ass examples test test-skipws test-scanner test-parser test-parser-eof clean
 
 all: dis ass examples
 
@@ -29,13 +31,19 @@ ass: $(ASS_TARGETS)
 
 examples: $(EXAMPLE_TARGETS)
 
-test: test-skipws test-tokenise-eof
+test: test-skipws test-scanner test-parser test-parser-eof
 
 test-skipws: $(BUILD_DIR)/test_skipws.prg
 	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< skipws
 
-test-tokenise-eof: $(BUILD_DIR)/test_tokenise_eof.prg
-	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< tokenise-eof
+test-scanner: $(BUILD_DIR)/test_scanner.prg
+	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< scanner
+
+test-parser: $(BUILD_DIR)/test_parser.prg
+	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< parser
+
+test-parser-eof: $(BUILD_DIR)/test_parser_eof.prg
+	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< parser-eof
 
 $(BUILD_DIR):
 	mkdir -p $@
@@ -49,14 +57,20 @@ $(BUILD_DIR)/hexdump.prg: dis/hexdump.asm | $(BUILD_DIR)
 $(BUILD_DIR)/test_modes.prg: dis/test_modes.asm dis/modes.asm | $(BUILD_DIR)
 	cd dis && $(VASM) $(VASMFLAGS) -o ../$@ test_modes.asm
 
-$(BUILD_DIR)/tokenise.prg: ass/tokenise.asm ass/tokeniser.asm ass/getLexeme.asm ass/printString.asm ass/skipws.asm ass/zp.inc | $(BUILD_DIR)
-	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ tokenise.asm
+$(BUILD_DIR)/parse.prg: ass/parse.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc | $(BUILD_DIR)
+	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ parse.asm
 
 $(BUILD_DIR)/test_skipws.prg: ass/test_skipws.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_skipws.asm
 
-$(BUILD_DIR)/test_tokenise_eof.prg: ass/test_tokenise_eof.asm ass/tokeniser.asm ass/getLexeme.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
-	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_tokenise_eof.asm
+$(BUILD_DIR)/test_scanner.prg: ass/test_scanner.asm ass/scanner.asm ass/zp.inc test.inc | $(BUILD_DIR)
+	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_scanner.asm
+
+$(BUILD_DIR)/test_parser.prg: ass/test_parser.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
+	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_parser.asm
+
+$(BUILD_DIR)/test_parser_eof.prg: ass/test_parser_eof.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
+	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_parser_eof.asm
 
 $(BUILD_DIR)/border-demo.prg: examples/border/demo.asm | $(BUILD_DIR)
 	cd examples/border && $(VASM) $(VASMFLAGS) -o ../../$@ demo.asm
