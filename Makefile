@@ -28,7 +28,7 @@ ass: $(ASS_TARGETS)
 examples: $(EXAMPLE_TARGETS)
 
 # Issue #2 will turn these assembled test programs into executable
-# headless-VDICE tests. For now this target verifies that the test
+# headless-VICE tests. For now this target verifies that the test
 # programs themselves continue to assemble.
 test: $(BUILD_DIR)/test_modes.prg $(BUILD_DIR)/test_skipws.prg
 
