@@ -9,8 +9,10 @@
 ;;; All routines preserve X, Y
 ;;; All routines set A to the opcode width
 ;;;
-;;; Mode indexes refer to addressing mode indexes in opcode_table.asm
+;;; Mode indexes refer to the shared definitions in mode_ids.inc.
 ;;; ----------------------------------------------------------------------
+
+	include "mode_ids.inc"
 
 	;; Jump table
 address_mode_table:	
