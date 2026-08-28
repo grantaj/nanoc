@@ -63,9 +63,9 @@
 	adc (ZP_PTR0),y
 
 	tay
-	lda #<.tokenStrings
+	lda #<tokenStrings
 	sta ZP_PTR1
-	lda #>.tokenStrings
+	lda #>tokenStrings
 	sta ZP_PTR1+1
 	jsr printString
 	lda #$0d
@@ -228,7 +228,7 @@
 	include "getLexeme.asm"
 
 ;;; Token Strings Array
-.tokenStrings:
+tokenStrings:
 	string "LABEL"
 	byte 0,0,0,0
 	string "SYMBOL"
