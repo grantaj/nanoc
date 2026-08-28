@@ -15,9 +15,9 @@ main:
 	lda #>main
 	sta p+1
 
-	lda #<end
+	lda #<disassemblyEnd
 	sta q
-	lda #>end
+	lda #>disassemblyEnd
 	sta q+1
 
 	;; Print address
@@ -162,7 +162,7 @@ main:
 
 	
 .done:
-end:	
+disassemblyEnd:	
 	rts
 
 
