@@ -136,15 +136,48 @@
 	;; TODO need to add check to make sure there was a previous token
 	lda prevTokenValid
 	beq .checkEqualsDone
-	
+
+	;; prevTokenType is an ordinary-memory pointer. 6502 indirect
+	;; addressing requires the pointer itself to be in zero page, so
+	;; temporarily borrow ZP_PTR0 while preserving the current output ptr.
+	lda ZP_PTR0
+	pha
+	lda ZP_PTR0+1
+	pha
+	lda prevTokenType
+	sta ZP_PTR0
+	lda prevTokenType+1
+	sta ZP_PTR0+1
+	ldy #$0
 	lda #SYMBOL
-	sta (prevTokenType)
+	sta (ZP_PTR0),y
+	pla
+	sta ZP_PTR0+1
+	pla
+	sta ZP_PTR0
 
 .checkEqualsDone:
 	jmp .finishToken
 	
 .mnemonicOrOperand:
-	lda (prevTokenType)
+	;; Read the previous token type through the stored pointer. Borrow
+	;; ZP_PTR0 for the legal (zp),Y access and restore it afterwards.
+	lda ZP_PTR0
+	pha
+	lda ZP_PTR0+1
+	pha
+	lda prevTokenType
+	sta ZP_PTR0
+	lda prevTokenType+1
+	sta ZP_PTR0+1
+	ldy #$0
+	lda (ZP_PTR0),y
+	tax
+	pla
+	sta ZP_PTR0+1
+	pla
+	sta ZP_PTR0
+	txa
 	cmp #MNEMONIC
 	bne .operand
 	lda #MNEMONIC
