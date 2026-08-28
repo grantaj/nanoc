@@ -147,7 +147,8 @@ blankInput:
 blankEnd:
 
 whitespaceInput:
-	string "   \t ; final comment   "
+	byte ' ', ' ', ' ', $09, ' '
+	string "; final comment   "
 whitespaceEnd:
 
 	;; Place the final fixture close to a page boundary so comment scanning
