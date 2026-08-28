@@ -14,17 +14,13 @@ main:
 	lda #>emptyEnd
 	sta sourceEnd+1
 	jsr runTokenise
+	jsr checkCase
+	beq .case2
+	ora #$10		; $11..$13 identify case 1 failure
+	jmp .finish
 
-	lda ZP_PTR1
-	cmp #<emptyEnd
-	bne .fail01
-	lda ZP_PTR1+1
-	cmp #>emptyEnd
-	bne .fail02
-	jsr checkEmptyTokenStream
-	bne .fail03
-
-	;; Case 2: one comment-only source line consumes its EOL then reaches EOF.
+.case2:
+	;; One comment-only source line consumes its EOL then reaches EOF.
 	lda #<singleInput
 	sta ZP_PTR1
 	lda #>singleInput
@@ -34,17 +30,13 @@ main:
 	lda #>singleEnd
 	sta sourceEnd+1
 	jsr runTokenise
+	jsr checkCase
+	beq .case3
+	ora #$20		; $21..$23 identify case 2 failure
+	jmp .finish
 
-	lda ZP_PTR1
-	cmp #<singleEnd
-	bne .fail04
-	lda ZP_PTR1+1
-	cmp #>singleEnd
-	bne .fail05
-	jsr checkEmptyTokenStream
-	bne .fail06
-
-	;; Case 3: consecutive blank lines are ordinary EOLs, not EOF.
+.case3:
+	;; Consecutive blank lines are ordinary EOLs, not EOF.
 	lda #<blankInput
 	sta ZP_PTR1
 	lda #>blankInput
@@ -54,17 +46,13 @@ main:
 	lda #>blankEnd
 	sta sourceEnd+1
 	jsr runTokenise
+	jsr checkCase
+	beq .case4
+	ora #$30		; $31..$33 identify case 3 failure
+	jmp .finish
 
-	lda ZP_PTR1
-	cmp #<blankEnd
-	bne .fail07
-	lda ZP_PTR1+1
-	cmp #>blankEnd
-	bne .fail08
-	jsr checkEmptyTokenStream
-	bne .fail09
-
-	;; Case 4: whitespace before a final comment does not confuse EOL/EOF.
+.case4:
+	;; Whitespace before a final comment does not confuse EOL/EOF.
 	lda #<whitespaceInput
 	sta ZP_PTR1
 	lda #>whitespaceInput
@@ -74,17 +62,13 @@ main:
 	lda #>whitespaceEnd
 	sta sourceEnd+1
 	jsr runTokenise
+	jsr checkCase
+	beq .case5
+	ora #$40		; $41..$43 identify case 4 failure
+	jmp .finish
 
-	lda ZP_PTR1
-	cmp #<whitespaceEnd
-	bne .fail0a
-	lda ZP_PTR1+1
-	cmp #>whitespaceEnd
-	bne .fail0b
-	jsr checkEmptyTokenStream
-	bne .fail0c
-
-	;; Case 5: scanning a comment across a page boundary advances both bytes.
+.case5:
+	;; Scanning a comment across a page boundary advances both pointer bytes.
 	lda #<pageInput
 	sta ZP_PTR1
 	lda #>pageInput
@@ -94,63 +78,13 @@ main:
 	lda #>pageEnd
 	sta sourceEnd+1
 	jsr runTokenise
+	jsr checkCase
+	beq .pass
+	ora #$50		; $51..$53 identify case 5 failure
+	jmp .finish
 
-	lda ZP_PTR1
-	cmp #<pageEnd
-	bne .fail0d
-	lda ZP_PTR1+1
-	cmp #>pageEnd
-	bne .fail0e
-	jsr checkEmptyTokenStream
-	bne .fail0f
-
+.pass:
 	lda #TEST_PASS
-	jmp .finish
-
-.fail01:
-	lda #$01
-	jmp .finish
-.fail02:
-	lda #$02
-	jmp .finish
-.fail03:
-	lda #$03
-	jmp .finish
-.fail04:
-	lda #$04
-	jmp .finish
-.fail05:
-	lda #$05
-	jmp .finish
-.fail06:
-	lda #$06
-	jmp .finish
-.fail07:
-	lda #$07
-	jmp .finish
-.fail08:
-	lda #$08
-	jmp .finish
-.fail09:
-	lda #$09
-	jmp .finish
-.fail0a:
-	lda #$0a
-	jmp .finish
-.fail0b:
-	lda #$0b
-	jmp .finish
-.fail0c:
-	lda #$0c
-	jmp .finish
-.fail0d:
-	lda #$0d
-	jmp .finish
-.fail0e:
-	lda #$0e
-	jmp .finish
-.fail0f:
-	lda #$0f
 
 .finish:
 	sta TEST_RESULT
@@ -166,16 +100,33 @@ runTokenise:
 	jsr tokenise
 	rts
 
-;;; Comment/blank-line fixtures produce no tokens, only the stream EOF marker.
-;;; Return Z set when the marker is exactly $00,$ff.
-checkEmptyTokenStream:
+;;; Verify the common postcondition for these no-token fixtures.
+;;; Returns A = 0 on success, otherwise:
+;;;   1 = source pointer low byte did not reach sourceEnd
+;;;   2 = source pointer high byte did not reach sourceEnd
+;;;   3 = token stream EOF marker was not $00,$ff
+checkCase:
+	lda ZP_PTR1
+	cmp sourceEnd
+	beq .checkHigh
+	lda #$01
+	rts
+.checkHigh:
+	lda ZP_PTR1+1
+	cmp sourceEnd+1
+	beq .checkTokens
+	lda #$02
+	rts
+.checkTokens:
 	lda testTokens
-	bne .bad
+	bne .badTokens
 	lda testTokens+1
 	cmp #$ff
+	bne .badTokens
+	lda #$00
 	rts
-.bad:
-	lda #$01
+.badTokens:
+	lda #$03
 	rts
 
 	include "tokeniser.asm"
