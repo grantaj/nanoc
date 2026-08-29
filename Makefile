@@ -27,7 +27,7 @@ ASS_TARGETS = \
 	$(BUILD_DIR)/test_streaming.prg
 
 ASSEMBLER_DEPS = \
-	ass/assembler.asm ass/capture.asm ass/representation.asm ass/source.asm ass/data.asm \
+	ass/assembler.asm ass/representation.asm ass/source.asm ass/data.asm \
 	ass/symbols.asm ass/value.asm ass/emitter.asm ass/instruction.asm ass/parser.asm \
 	ass/scanner.asm ass/skipws.asm ass/zp.inc dis/kernal.inc dis/mode_ids.inc \
 	dis/mode_widths.asm dis/opcode_table.asm dis/mnemonic_table.asm test.inc
