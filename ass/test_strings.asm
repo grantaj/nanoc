@@ -14,11 +14,13 @@ OUTPUT      = $2200
 PAGE_OUTPUT = $20ff
 SYMBOLS     = $3000
 SYMBOLS_END = $3600
+STAGING     = $3600
+STAGING_END = $4000
 
 	* = ASSEMBLER_TEST_ENTRY
 
 main:
-	jsr setupSymbols
+	jsr setupWorkspace
 	jsr testStringBytes
 	bcc finish
 	jsr testEmptyString
@@ -33,7 +35,7 @@ finish:
 .halt:
 	jmp .halt
 
-setupSymbols:
+setupWorkspace:
 	lda #<SYMBOLS
 	sta symbolTableStart
 	lda #>SYMBOLS
@@ -42,10 +44,18 @@ setupSymbols:
 	sta symbolTableLimit
 	lda #>SYMBOLS_END
 	sta symbolTableLimit+1
+	lda #<STAGING
+	sta stagingStart
+	lda #>STAGING
+	sta stagingStart+1
+	lda #<STAGING_END
+	sta stagingLimit
+	lda #>STAGING_END
+	sta stagingLimit+1
 	rts
 
-;;; string copies its literal bytes and appends one NUL, matching the vasm form
-;;; already used to build nanoc's in-memory source lines.
+;;; string copies its literal bytes and appends one NUL into staging, then the
+;;; final commit copies exactly those bytes to the target region.
 testStringBytes:
 	lda #<stringSource
 	sta ZP_PTR1
@@ -152,7 +162,7 @@ testBadString:
 	sec
 	rts
 
-;;; The terminator crosses the page along with the literal bytes.
+;;; The committed literal and terminator cross a destination page boundary.
 testStringPageCrossing:
 	lda #<pageStringSource
 	sta ZP_PTR1
@@ -197,8 +207,8 @@ testStringPageCrossing:
 	include "value.asm"
 	include "assembler.asm"
 
-;;; Build the source lines with byte so the host vasm `string` directive does
-;;; not insert its own terminator before our embedded quotes.
+;;; Build source lines with byte so host vasm `string` does not insert its own
+;;; terminator before our embedded quotes.
 stringSource:
 	byte 's','t','r','i','n','g',' ',DOUBLE_QUOTE,'A','B','C',DOUBLE_QUOTE,0
 stringSourceEnd:

@@ -13,11 +13,13 @@ OUTPUT      = $2100
 PAGE_OUTPUT = $20ff
 SYMBOLS     = $3000
 SYMBOLS_END = $3600
+STAGING     = $3600
+STAGING_END = $4000
 
 	* = ASSEMBLER_TEST_ENTRY
 
 main:
-	jsr setupSymbols
+	jsr setupWorkspace
 	jsr testDataBytes
 	bcc finish
 	jsr testPageCrossing
@@ -36,7 +38,7 @@ finish:
 .halt:
 	jmp .halt
 
-setupSymbols:
+setupWorkspace:
 	lda #<SYMBOLS
 	sta symbolTableStart
 	lda #>SYMBOLS
@@ -45,10 +47,18 @@ setupSymbols:
 	sta symbolTableLimit
 	lda #>SYMBOLS_END
 	sta symbolTableLimit+1
+	lda #<STAGING
+	sta stagingStart
+	lda #>STAGING
+	sta stagingStart+1
+	lda #<STAGING_END
+	sta stagingLimit
+	lda #>STAGING_END
+	sta stagingLimit+1
 	rts
 
 ;;; Origin, byte, word, spaces around commas, character values, and forward
-;;; labels all use the ordinary two-pass path.
+;;; labels all reduce into the compact pass-1 representation.
 testDataBytes:
 	lda #<dataSource
 	sta ZP_PTR1
@@ -58,7 +68,7 @@ testDataBytes:
 	sta sourceEnd
 	lda #>dataSourceEnd
 	sta sourceEnd+1
-	lda #$00			; source origin should replace this initial address
+	lda #$00
 	sta assemblyPtr
 	sta assemblyPtr+1
 	jsr assemble
@@ -91,7 +101,7 @@ testDataBytes:
 	clc
 	rts
 
-;;; Direct data writes naturally cross a destination page boundary.
+;;; Final copy naturally crosses a destination page boundary.
 testPageCrossing:
 	lda #<pageSource
 	sta ZP_PTR1
@@ -174,7 +184,7 @@ testBadList:
 	sec
 	rts
 
-;;; Origin must be known when encountered; it does not get fixup machinery.
+;;; Origin must be known when encountered; it does not get hole machinery.
 testBadOrigin:
 	lda #<badOriginSource
 	sta ZP_PTR1
@@ -198,9 +208,8 @@ testBadOrigin:
 	sec
 	rts
 
-;;; Pass 1 reserves three bytes for LDA target; pass 2 would prefer two because
-;;; target is in zero page. A later origin would erase that size difference, so
-;;; reject the origin instead of adding per-origin phase records.
+;;; There is still exactly one origin position: constants may precede it, but an
+;;; origin after code/data is rejected rather than creating segmented layout.
 testLateOrigin:
 	lda #<lateOriginSource
 	sta ZP_PTR1

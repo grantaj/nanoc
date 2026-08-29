@@ -25,10 +25,21 @@ bsave "$RESULT_FILE" 0 0002 0003
 quit
 EOF
 
-if ! timeout 15s "$VICE" -console -warp +sound -initbreak ready -moncommands "$MONITOR_FILE" >"$LOG_FILE" 2>&1; then
-    echo "FAIL $NAME: VICE did not complete the test" >&2
-    cat "$LOG_FILE" >&2
-    exit 1
+if [ -n "${VICE_FS_DIR:-}" ]; then
+    if ! timeout 15s "$VICE" -console -warp +sound \
+        -iecdevice8 -device8 1 -fs8 "$VICE_FS_DIR" \
+        -initbreak ready -moncommands "$MONITOR_FILE" >"$LOG_FILE" 2>&1; then
+        echo "FAIL $NAME: VICE did not complete the test" >&2
+        cat "$LOG_FILE" >&2
+        exit 1
+    fi
+else
+    if ! timeout 15s "$VICE" -console -warp +sound \
+        -initbreak ready -moncommands "$MONITOR_FILE" >"$LOG_FILE" 2>&1; then
+        echo "FAIL $NAME: VICE did not complete the test" >&2
+        cat "$LOG_FILE" >&2
+        exit 1
+    fi
 fi
 
 if [ ! -s "$RESULT_FILE" ]; then

@@ -84,10 +84,10 @@ CLOSE      = $FFC3  ; Close file
 ;  A = Logical file #
 
 CHKIN      = $FFC6  ; Set input channel
-;  A = Logical file #
+;  X = Logical file #
 
 CHKOUT     = $FFC9  ; Set output channel
-;  A = Logical file #
+;  X = Logical file #
 
 CLRCHN     = $FFCC  ; Clear all I/O channels
 
@@ -117,7 +117,7 @@ SETTIM     = $FFDB  ; Set jiffy clock
 ;  X/Y/A = 24-bit time value (jiffies since power-on)
 
 RDTIM      = $FFDE  ; Read jiffy clock
-;  Returns: X/Y/A = current time
+;  Returns X/Y/A = current time
 
 UDTIM      = $FFEA  ; Update jiffy clock
 ;  Called from IRQ — advances system clock
@@ -135,7 +135,7 @@ CLALL      = $FFE7  ; Close all files and clear channels
 ;===== Screen and Cursor =====
 
 SCREEN     = $FFED  ; Get screen memory base
-;  Returns: X/Y = base address of screen RAM
+;  Returns: X/Y = base address
 
 PLOT       = $FFF0  ; Get/set cursor position
 ;  On entry: A = 0 to read, A = 1 to set
