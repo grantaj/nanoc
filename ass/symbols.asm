@@ -115,6 +115,12 @@ findSymbol:
 .scopeReady:
 	sta symbolWantedScope
 
+	;; The requested name is one zero-copy source view.
+	lda symbolName
+	sta ZP_PTR0
+	lda symbolName+1
+	sta ZP_PTR0+1
+
 	;; Borrow ZP_PTR1 while walking the table, but give the source pointer back.
 	lda ZP_PTR1
 	pha
@@ -149,8 +155,7 @@ findSymbol:
 	cmp symbolWantedScope
 	bne .advance
 
-	;; ZP_PTR0 already points at the requested name. Point ZP_PTR1 at the
-	;; stored source text and compare the bytes directly in place.
+	;; Point ZP_PTR1 at the stored source text and compare the names in place.
 	ldy #SYMBOL_NAME_LO
 	lda (ZP_PTR1),y
 	tax
