@@ -7,6 +7,7 @@ FAIL_PAGE_CROSS   = $03
 FAIL_BYTE_RANGE   = $04
 FAIL_BAD_LIST     = $05
 FAIL_BAD_ORIGIN   = $06
+FAIL_LATE_ORIGIN  = $07
 
 OUTPUT      = $2100
 PAGE_OUTPUT = $20ff
@@ -26,6 +27,8 @@ main:
 	jsr testBadList
 	bcc finish
 	jsr testBadOrigin
+	bcc finish
+	jsr testLateOrigin
 	bcc finish
 	lda #TEST_PASS
 finish:
@@ -128,11 +131,11 @@ testByteRange:
 	lda #<rangeSource
 	sta ZP_PTR1
 	lda #>rangeSource
-	sta ZP_PTR1+1
-	lda #<rangeSourceEnd
 	sta sourceEnd
 	lda #>rangeSourceEnd
 	sta sourceEnd+1
+	lda #<rangeSourceEnd
+	sta sourceEnd
 	lda #<OUTPUT
 	sta assemblyPtr
 	lda #>OUTPUT
@@ -195,6 +198,31 @@ testBadOrigin:
 	sec
 	rts
 
+;;; A later origin could erase a pass-1/pass-2 size difference. Reject it
+;;; instead of adding per-origin layout records or relaxation machinery.
+testLateOrigin:
+	lda #<lateOriginSource
+	sta ZP_PTR1
+	lda #>lateOriginSource
+	sta ZP_PTR1+1
+	lda #<lateOriginSourceEnd
+	sta sourceEnd
+	lda #>lateOriginSourceEnd
+	sta sourceEnd+1
+	lda #<OUTPUT
+	sta assemblyPtr
+	lda #>OUTPUT
+	sta assemblyPtr+1
+	jsr assemble
+	cmp #ASSEMBLE_BAD_ORIGIN
+	beq .ok
+	lda #FAIL_LATE_ORIGIN
+	clc
+	rts
+.ok:
+	sec
+	rts
+
 	include "parser.asm"
 	include "instruction.asm"
 	include "emitter.asm"
@@ -232,3 +260,10 @@ badListSourceEnd:
 badOriginSource:
 	string "* = missing"
 badOriginSourceEnd:
+
+lateOriginSource:
+	string "LDA target"
+	string "* = $0080"
+	string "target:"
+	string "RTS"
+lateOriginSourceEnd:
