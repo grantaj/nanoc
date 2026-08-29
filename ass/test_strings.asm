@@ -42,7 +42,8 @@ setupSymbols:
 	sta symbolTableLimit+1
 	rts
 
-;;; string copies exactly the bytes inside its quotes and adds no terminator.
+;;; string copies its literal bytes and appends one NUL, matching the vasm form
+;;; already used to build nanoc's in-memory source lines.
 testStringBytes:
 	lda #<stringSource
 	sta ZP_PTR1
@@ -68,11 +69,13 @@ testStringBytes:
 	lda OUTPUT+2
 	cmp #'C'
 	bne .failBytes
+	lda OUTPUT+3
+	bne .failBytes
 	lda assemblyPtr
-	cmp #<(OUTPUT+3)
+	cmp #<(OUTPUT+4)
 	bne .failPointer
 	lda assemblyPtr+1
-	cmp #>(OUTPUT+3)
+	cmp #>(OUTPUT+4)
 	bne .failPointer
 	sec
 	rts
@@ -89,8 +92,10 @@ testStringBytes:
 	clc
 	rts
 
-;;; An empty literal is valid and emits no bytes.
+;;; An empty literal still emits its NUL byte.
 testEmptyString:
+	lda #$ff
+	sta OUTPUT
 	lda #<emptySource
 	sta ZP_PTR1
 	lda #>emptySource
@@ -106,11 +111,13 @@ testEmptyString:
 	jsr assemble
 	cmp #ASSEMBLE_OK
 	bne .fail
+	lda OUTPUT
+	bne .fail
 	lda assemblyPtr
-	cmp #<OUTPUT
+	cmp #<(OUTPUT+1)
 	bne .fail
 	lda assemblyPtr+1
-	cmp #>OUTPUT
+	cmp #>(OUTPUT+1)
 	bne .fail
 	sec
 	rts
@@ -143,7 +150,7 @@ testBadString:
 	sec
 	rts
 
-;;; Literal copying uses assemblyPtr directly and crosses pages normally.
+;;; The terminator crosses the page along with the literal bytes.
 testStringPageCrossing:
 	lda #<pageStringSource
 	sta ZP_PTR1
@@ -166,8 +173,10 @@ testStringPageCrossing:
 	lda PAGE_OUTPUT+1
 	cmp #'Y'
 	bne .fail
+	lda PAGE_OUTPUT+2
+	bne .fail
 	lda assemblyPtr
-	cmp #$01
+	cmp #$02
 	bne .fail
 	lda assemblyPtr+1
 	cmp #$21
@@ -186,30 +195,20 @@ testStringPageCrossing:
 	include "value.asm"
 	include "assembler.asm"
 
-;;; Build source lines explicitly so the fixture itself does not depend on a
-;;; host-assembler escape syntax for embedded double quotes.
+;;; Build the source lines with byte so the host vasm `string` directive does
+;;; not insert its own terminator before our embedded quotes.
 stringSource:
-	string "string "
-	byte 34
-	string "ABC"
-	byte 34,0
+	byte 's','t','r','i','n','g',' ',34,'A','B','C',34,0
 stringSourceEnd:
 
 emptySource:
-	string "string "
-	byte 34,34,0
+	byte 's','t','r','i','n','g',' ',34,34,0
 emptySourceEnd:
 
 badStringSource:
-	string "string "
-	byte 34
-	string "ABC"
-	byte 0
+	byte 's','t','r','i','n','g',' ',34,'A','B','C',0
 badStringSourceEnd:
 
 pageStringSource:
-	string "string "
-	byte 34
-	string "XY"
-	byte 34,0
+	byte 's','t','r','i','n','g',' ',34,'X','Y',34,0
 pageStringSourceEnd:
