@@ -103,9 +103,10 @@ internLabel:
 	rts
 
 ;;; defineLabel
-;;; Define a label at the current final assemblyPtr. If an earlier reference
-;;; interned it, findSymbolEntry leaves that old reference-chain head in
-;;; symbolRefs while the entry payload is replaced with the now-final value.
+;;; Define a label at the current final assemblyPtr. For an existing undefined
+;;; entry, first capture its reference-chain head, then change the shared payload
+;;; from "pending references" to "final value", and patch that captured chain.
+;;; The whole undefined -> defined transition therefore happens in this routine.
 defineLabel:
 	jsr symbolScope
 	bcc .noScope
@@ -114,6 +115,11 @@ defineLabel:
 	lda symbolKind
 	cmp #SYMBOL_LABEL_UNDEFINED
 	bne .duplicate
+
+	lda symbolRefs
+	sta pendingReferences
+	lda symbolRefs+1
+	sta pendingReferences+1
 
 	lda symbolEntry
 	sta ZP_PTR0
@@ -133,13 +139,14 @@ defineLabel:
 	sta symbolValue
 	lda assemblyPtr+1
 	sta symbolValue+1
+	jsr resolvePendingWordReferences
 	lda #SYMBOL_OK
 	rts
 
 .new:
 	lda #$00
-	sta symbolRefs
-	sta symbolRefs+1
+	sta pendingReferences
+	sta pendingReferences+1
 	lda assemblyPtr
 	sta symbolValue
 	lda assemblyPtr+1
@@ -157,8 +164,8 @@ defineLabel:
 
 ;;; findSymbolEntry
 ;;; Look up symbolName/symbolNameLength in the current local-label scope.
-;;; The entry payload is copied to both symbolValue and symbolRefs; symbolKind
-;;; tells the caller which interpretation is meaningful. ZP_PTR1 is preserved.
+;;; The shared payload is copied to both scratch interpretations; symbolKind tells
+;;; the caller whether symbolValue or symbolRefs is meaningful. ZP_PTR1 is preserved.
 findSymbolEntry:
 	jsr symbolScope
 	bcs .scopeReady
@@ -437,13 +444,14 @@ linkWordReference:
 	sta ZP_PTR1
 	rts
 
-;;; resolveWordReferencesForSymbol
-;;; symbolRefs is the chain head captured just before defineLabel replaced the
-;;; symbol payload with its final value. Patch every staged link immediately.
-resolveWordReferencesForSymbol:
-	lda symbolRefs
+;;; resolvePendingWordReferences
+;;; pendingReferences is the chain head explicitly captured by defineLabel before
+;;; the shared symbol payload changed meaning. Replace every temporary link with
+;;; the label's final value.
+resolvePendingWordReferences:
+	lda pendingReferences
 	sta referencePtr
-	lda symbolRefs+1
+	lda pendingReferences+1
 	sta referencePtr+1
 .reference:
 	lda referencePtr
@@ -472,8 +480,8 @@ resolveWordReferencesForSymbol:
 	jmp .reference
 .done:
 	lda #$00
-	sta symbolRefs
-	sta symbolRefs+1
+	sta pendingReferences
+	sta pendingReferences+1
 	rts
 
 ;;; allLabelsDefined
@@ -578,5 +586,6 @@ symbolWantedScope:	byte 0
 symbolNext:		word 0
 symbolNewName:		word 0
 symbolScan:		word 0
+pendingReferences:	word 0
 referencePtr:		word 0
 referenceNext:		word 0
