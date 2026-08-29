@@ -31,12 +31,13 @@ ASSEMBLER_SYMBOLS      = $a000
 ASSEMBLER_SYMBOLS_END  = $d000
 ASSEMBLER_STAGING      = $6000
 ASSEMBLER_STAGING_END  = $a000
-ASSEMBLER_SOURCE_DIRECTORY_LENGTH = 4
+SELFHOST_SOURCE_DIRECTORY_LENGTH = 4
 
 ;;; assemblerEntry
 ;;; Configure the fixed workspaces, copy the small command block into the
 ;;; assembler's normal inputs, assemble one file from device 8, store/return the
-;;; ASSEMBLE_* status.
+;;; ASSEMBLE_* status. The self-host job mounts the repository root, so local
+;;; includes are explicitly rooted at ASS/ below.
 assemblerEntry:
 	lda $01
 	sta assemblerMemoryConfig
@@ -73,11 +74,11 @@ assemblerEntry:
 	sta sourceLineBuffer
 	lda #>ASSEMBLER_LINE_BUFFER
 	sta sourceLineBuffer+1
-	lda #<assemblerSourceDirectory
+	lda #<selfhostSourceDirectory
 	sta sourceDirectory
-	lda #>assemblerSourceDirectory
+	lda #>selfhostSourceDirectory
 	sta sourceDirectory+1
-	lda #ASSEMBLER_SOURCE_DIRECTORY_LENGTH
+	lda #SELFHOST_SOURCE_DIRECTORY_LENGTH
 	sta sourceDirectoryLength
 	lda #<ASSEMBLER_PATH_BUFFER
 	sta sourcePathBuffer
@@ -98,9 +99,10 @@ assemblerEntry:
 assemblerMemoryConfig:
 	byte 0
 
-;;; C64 filename form for the repository's one assembler source directory.
-;;; Local includes are prefixed with this; ../dis/... drops it.
-assemblerSourceDirectory:
+;;; Self-host source-tree configuration, not assembler language semantics.
+;;; The repository root is mounted as the C64 filesystem; local includes live in
+;;; ASS/, while ../dis/... deliberately drops that prefix.
+selfhostSourceDirectory:
 	byte 'A','S','S','/'
 
 	include "parser.asm"
