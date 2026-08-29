@@ -79,7 +79,8 @@ assemble:
 	rts
 
 ;;; runAssemblyPass
-;;; A = PASS_LAYOUT or PASS_EMIT.
+;;; A = PASS_LAYOUT or PASS_EMIT. Constants may precede the origin; the first
+;;; origin, label, instruction, or data statement closes the origin position.
 runAssemblyPass:
 	sta assemblyPass
 	lda #$01
