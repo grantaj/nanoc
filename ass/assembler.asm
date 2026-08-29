@@ -4,7 +4,7 @@
 ;;;
 ;;; Pass 1 records labels/constants and advances the program counter without
 ;;; writing bytes. Pass 2 walks the same text again, verifies the layout, and
-;;; streams bytes through emitInstruction.
+;;; streams instructions and data directly to their final addresses.
 ;;;
 ;;; Input to assemble:
 ;;;   ZP_PTR1            source start
@@ -25,9 +25,11 @@ ASSEMBLE_BAD_INSTRUCTION = $05
 ASSEMBLE_UNDEFINED       = $06
 ASSEMBLE_EMIT_ERROR      = $07
 ASSEMBLE_PHASE_ERROR     = $08
+ASSEMBLE_BAD_DATA        = $09
+ASSEMBLE_BAD_ORIGIN      = $0a
 
 ;;; assemble
-;;; Pass-2 failure may leave earlier instructions already emitted.
+;;; Pass-2 failure may leave earlier instructions/data already emitted.
 assemble:
 	lda ZP_PTR1
 	sta assemblySource
@@ -77,9 +79,12 @@ assemble:
 	rts
 
 ;;; runAssemblyPass
-;;; A = PASS_LAYOUT or PASS_EMIT.
+;;; A = PASS_LAYOUT or PASS_EMIT. Constants may precede the origin; the first
+;;; origin, label, instruction, or data statement closes the origin position.
 runAssemblyPass:
 	sta assemblyPass
+	lda #$01
+	sta originAllowed
 	lda #$00
 	sta currentScope
 .loop:
@@ -91,14 +96,25 @@ runAssemblyPass:
 	cmp #STATEMENT_SYMBOL
 	beq .symbol
 	cmp #STATEMENT_INSTRUCTION
-	beq .instruction
+	beq .codeOrData
 	lda #ASSEMBLE_BAD_STATEMENT
 	rts
 .label:
+	lda #$00
+	sta originAllowed
 	jsr assembleLabel
 	jmp .status
 .symbol:
 	jsr assembleSymbol
+	jmp .status
+.codeOrData:
+	;; Bare byte/word/string names are the only data declarations. Everything
+	;; else on this parser path is a normal 6502 instruction.
+	lda #$00
+	sta originAllowed
+	jsr dataStatementKind
+	beq .instruction
+	jsr assembleData
 	jmp .status
 .instruction:
 	jsr assembleInstruction
@@ -156,9 +172,22 @@ assembleLabel:
 	rts
 
 ;;; assembleSymbol
-;;; Constants are pass-1 facts. They do not affect layout, so pass 2 can simply
-;;; step over the statement and use the value already stored in the table.
+;;; `* = value` is allowed once, before labels/code/data. Every other symbol
+;;; definition is a pass-1 constant and is simply skipped on pass 2.
 assembleSymbol:
+	lda statementNameLength
+	cmp #$01
+	bne .constant
+	lda statementName
+	sta ZP_PTR0
+	lda statementName+1
+	sta ZP_PTR0+1
+	ldy #$00
+	lda (ZP_PTR0),y
+	cmp #'*'
+	beq .origin
+
+.constant:
 	lda assemblyPass
 	cmp #PASS_LAYOUT
 	bne .ok
@@ -185,11 +214,31 @@ assembleSymbol:
 	jsr defineSymbol
 	jmp mapSymbolStatus
 
+.origin:
+	lda originAllowed
+	beq .badOrigin
+	lda #$00
+	sta originAllowed
+	lda statementArgument
+	sta ZP_PTR0
+	lda statementArgument+1
+	sta ZP_PTR0+1
+	ldx statementArgumentLength
+	jsr parseValue
+	cmp #VALUE_OK
+	bne .badOrigin
+	lda valueResult
+	sta assemblyPtr
+	lda valueResult+1
+	sta assemblyPtr+1
 .ok:
 	lda #ASSEMBLE_OK
 	rts
 .bad:
 	lda #ASSEMBLE_BAD_SYMBOL
+	rts
+.badOrigin:
+	lda #ASSEMBLE_BAD_ORIGIN
 	rts
 
 ;;; assembleInstruction
@@ -354,6 +403,9 @@ advanceAssemblyPtr:
 	rts
 
 assemblyPass:		byte 0
+originAllowed:		byte 0
 assemblySource:		word 0
 assemblyStart:		word 0
 assemblyPassEnd:	word 0
+
+	include "data.asm"

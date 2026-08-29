@@ -13,7 +13,12 @@
 ;;;   carry clear = failed, with a FAIL_* code in A
 ;;;
 ;;; This is only a convention. Do not build an assertion framework around it.
+;;;
+;;; Ordinary tests start at $c000. Tests that include the complete assembler
+;;; start at $4000 because the assembler no longer fits below the $d000 I/O
+;;; window. Their output and symbol-table scratch remain below $4000.
 
-TEST_RESULT = $02
-TEST_PASS   = $ff
-TEST_ENTRY  = $c000
+TEST_RESULT          = $02
+TEST_PASS            = $ff
+TEST_ENTRY           = $c000
+ASSEMBLER_TEST_ENTRY = $4000
