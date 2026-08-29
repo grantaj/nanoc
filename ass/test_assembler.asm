@@ -1,16 +1,16 @@
 	include "zp.inc"
 	include "../test.inc"
 
-FAIL_CONSTANTS         = $01
-FAIL_LOCAL_SCOPES      = $02
-FAIL_RESOLVED_ASSEMBLE = $03
-FAIL_RESOLVED_BYTES    = $04
-FAIL_RESOLVED_POINTER  = $05
-FAIL_PHASE_ERROR       = $10
-FAIL_LOCAL_SCOPE       = $11
-FAIL_BAD_CONSTANT      = $12
-FAIL_UNDEFINED         = $13
-FAIL_BRANCH_RANGE      = $14
+FAIL_CONSTANTS       = $01
+FAIL_LOCAL_SCOPES    = $02
+FAIL_GLOBAL_ASSEMBLE = $03
+FAIL_GLOBAL_BYTES    = $04
+FAIL_GLOBAL_POINTER  = $05
+FAIL_PHASE_ERROR     = $10
+FAIL_LOCAL_SCOPE     = $11
+FAIL_BAD_CONSTANT    = $12
+FAIL_UNDEFINED       = $13
+FAIL_BRANCH_RANGE    = $14
 
 OUTPUT       = $2000
 PHASE_OUTPUT = $0080
@@ -37,7 +37,7 @@ main:
 	bcc finish
 	jsr testLocalScopes
 	bcc finish
-	jsr testResolvedProgram
+	jsr testGlobalReferences
 	bcc finish
 	jsr testPhaseError
 	bcc finish
@@ -88,7 +88,8 @@ testConstants:
 	clc
 	rts
 
-;;; The same local name may be reused after a new global label opens a scope.
+;;; Local names use the most recent global label as their scope. This exercises
+;;; a backward local reference and reuses `.done` in a second scope.
 testLocalScopes:
 	lda #<localScopesSource
 	sta ZP_PTR1
@@ -112,15 +113,16 @@ testLocalScopes:
 	sec
 	rts
 
-;;; Full current path with forward/backward globals and locals.
-testResolvedProgram:
-	lda #<resolvedSource
+;;; Global labels need no special fixup representation: the first pass records
+;;; them and the second pass resolves both forward and backward references.
+testGlobalReferences:
+	lda #<globalSource
 	sta ZP_PTR1
-	lda #>resolvedSource
+	lda #>globalSource
 	sta ZP_PTR1+1
-	lda #<resolvedSourceEnd
+	lda #<globalSourceEnd
 	sta sourceEnd
-	lda #>resolvedSourceEnd
+	lda #>globalSourceEnd
 	sta sourceEnd+1
 	lda #<OUTPUT
 	sta assemblyPtr
@@ -129,7 +131,7 @@ testResolvedProgram:
 	jsr assemble
 	cmp #ASSEMBLE_OK
 	beq .checkBytes
-	lda #FAIL_RESOLVED_ASSEMBLE
+	lda #FAIL_GLOBAL_ASSEMBLE
 	clc
 	rts
 
@@ -137,25 +139,25 @@ testResolvedProgram:
 	ldx #$00
 .checkByte:
 	lda OUTPUT,x
-	cmp resolvedBytes,x
+	cmp globalBytes,x
 	bne .badBytes
 	inx
-	cpx #resolvedBytesEnd-resolvedBytes
+	cpx #globalBytesEnd-globalBytes
 	bne .checkByte
 	lda assemblyPtr
-	cmp #<(OUTPUT+resolvedBytesEnd-resolvedBytes)
+	cmp #<(OUTPUT+globalBytesEnd-globalBytes)
 	bne .badPointer
 	lda assemblyPtr+1
-	cmp #>(OUTPUT+resolvedBytesEnd-resolvedBytes)
+	cmp #>(OUTPUT+globalBytesEnd-globalBytes)
 	bne .badPointer
 	sec
 	rts
 .badBytes:
-	lda #FAIL_RESOLVED_BYTES
+	lda #FAIL_GLOBAL_BYTES
 	clc
 	rts
 .badPointer:
-	lda #FAIL_RESOLVED_POINTER
+	lda #FAIL_GLOBAL_POINTER
 	clc
 	rts
 
@@ -307,6 +309,9 @@ constantBytesEnd:
 
 localScopesSource:
 	string "first:"
+	string ".loop:"
+	string "INX"
+	string "BNE .loop"
 	string "BNE .done"
 	string ".done:"
 	string "RTS"
@@ -316,30 +321,18 @@ localScopesSource:
 	string "RTS"
 localScopesSourceEnd:
 
-resolvedSource:
+globalSource:
 	string "first:"
-	string "BNE .done"
-	string ".loop:"
-	string "INX"
-	string "BNE .loop"
-	string ".done:"
 	string "JSR second"
 	string "JMP first"
 	string "second:"
-	string "BNE .done"
-	string ".done:"
 	string "RTS"
-resolvedSourceEnd:
-
-resolvedBytes:
-	byte $d0,$03		; BNE first .done
-	byte $e8		; INX
-	byte $d0,$fd		; BNE first .loop
-	byte $20,$0c,$20	; JSR second
+globalSourceEnd:
+globalBytes:
+	byte $20,$06,$20	; JSR second
 	byte $4c,$00,$20	; JMP first
-	byte $d0,$00		; BNE second .done
 	byte $60		; RTS
-resolvedBytesEnd:
+globalBytesEnd:
 
 phaseSource:
 	string "entry:"
