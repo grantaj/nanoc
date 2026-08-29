@@ -110,40 +110,56 @@ dataStatementKind:
 
 ;;; assembleData
 ;;; A contains DATA_BYTE, DATA_WORD, or DATA_STRING.
+;;; ZP_PTR1 is the assembler source cursor. Borrow it as the argument base while
+;;; handling this one statement, then restore it before returning.
 assembleData:
+	tax
+	lda ZP_PTR1
+	pha
+	lda ZP_PTR1+1
+	pha
+	lda statementArgument
+	sta ZP_PTR1
+	lda statementArgument+1
+	sta ZP_PTR1+1
+
+	txa
 	cmp #DATA_BYTE
 	beq .byte
 	cmp #DATA_WORD
 	beq .word
-	jmp assembleString
+	jsr assembleString
+	jmp .restore
 .byte:
 	lda #$01
-	sta dataWidth
-	jmp assembleDataList
+	jsr assembleDataList
+	jmp .restore
 .word:
 	lda #$02
-	sta dataWidth
-	jmp assembleDataList
+	jsr assembleDataList
+
+.restore:
+	tax				; keep status while restoring source cursor
+	pla
+	sta ZP_PTR1+1
+	pla
+	sta ZP_PTR1
+	txa
+	rts
 
 ;;; assembleDataList
-;;; Walk a comma-separated byte/word list directly in the statement argument.
+;;; A = bytes per item (1 for byte, 2 for word).
+;;; Walk the argument directly with a one-byte offset. nextDataItem returns the
+;;; current item as ZP_PTR0/X for parseValue and leaves dataOffset at the next
+;;; item (or at the end of the argument).
 assembleDataList:
-	lda statementArgument
-	sta dataCursor
-	lda statementArgument+1
-	sta dataCursor+1
-	lda statementArgumentLength
-	sta dataLeft
+	sta dataWidth
+	lda #$00
+	sta dataOffset
 
 .next:
 	jsr nextDataItem
 	bcc .bad
-
-	lda dataItem
-	sta ZP_PTR0
-	lda dataItem+1
-	sta ZP_PTR0+1
-	ldx dataItemLength
 	jsr parseValue
 	cmp #VALUE_BAD
 	beq .bad
@@ -181,7 +197,8 @@ assembleDataList:
 	jsr advanceAssemblyPtr
 
 .itemDone:
-	lda dataLeft
+	lda dataOffset
+	cmp statementArgumentLength
 	bne .next
 	lda #ASSEMBLE_OK
 	rts
@@ -194,63 +211,55 @@ assembleDataList:
 	rts
 
 ;;; nextDataItem
-;;; Return the next trimmed list item in dataItem/dataItemLength. On return,
-;;; dataCursor/dataLeft already point at the next item, or dataLeft is zero.
+;;; Return the next trimmed item as ZP_PTR0/X. The argument base is ZP_PTR1.
 ;;; Empty items and trailing commas return carry clear.
 nextDataItem:
+	ldy dataOffset
 	jsr skipDataSpaces
-	lda dataLeft
+	cpy statementArgumentLength
 	beq .bad
-
-	lda dataCursor
-	sta dataItem
-	lda dataCursor+1
-	sta dataItem+1
-	lda #$00
-	sta dataItemLength
-	ldx #$00
+	sty dataOffset			; current item start
+	ldx #$00			; trimmed item length
 
 .scan:
-	lda dataLeft
+	cpy statementArgumentLength
 	beq .last
-	lda dataCursor
-	sta ZP_PTR0
-	lda dataCursor+1
-	sta ZP_PTR0+1
-	ldy #$00
-	lda (ZP_PTR0),y
+	lda (ZP_PTR1),y
 	cmp #','
 	beq .comma
 	cmp #' '
-	beq .consume
+	beq .advance
 	cmp #$09
-	beq .consume
+	beq .advance
 
-	;; Remember the extent through the latest non-whitespace byte. This trims
-	;; spaces before a comma without copying or rescanning the item.
-	txa
-	clc
-	adc #$01
-	sta dataItemLength
-
-.consume:
+	;; Length extends through the most recent non-whitespace byte.
+	tya
+	sec
+	sbc dataOffset
+	tax
 	inx
-	jsr advanceDataCursor
+
+.advance:
+	iny
 	jmp .scan
 
 .comma:
-	lda dataItemLength
+	cpx #$00
 	beq .bad
-	jsr advanceDataCursor		; consume comma
+	jsr setDataItemPointer
+	iny				; consume comma
 	jsr skipDataSpaces
-	lda dataLeft
+	cpy statementArgumentLength
 	beq .bad			; trailing comma
+	sty dataOffset			; next item start
 	sec
 	rts
 
 .last:
-	lda dataItemLength
+	cpx #$00
 	beq .bad
+	jsr setDataItemPointer
+	sty dataOffset			; end of argument
 	sec
 	rts
 .bad:
@@ -258,127 +267,84 @@ nextDataItem:
 	rts
 
 ;;; skipDataSpaces
-;;; Skip spaces/tabs at dataCursor.
+;;; Y is an offset into the argument at ZP_PTR1. Skip spaces/tabs in place.
 skipDataSpaces:
 .loop:
-	lda dataLeft
+	cpy statementArgumentLength
 	beq .done
-	lda dataCursor
-	sta ZP_PTR0
-	lda dataCursor+1
-	sta ZP_PTR0+1
-	ldy #$00
-	lda (ZP_PTR0),y
+	lda (ZP_PTR1),y
 	cmp #' '
 	beq .skip
 	cmp #$09
 	bne .done
 .skip:
-	jsr advanceDataCursor
+	iny
 	jmp .loop
 .done:
 	rts
 
-;;; advanceDataCursor
-;;; Advance the ordinary-memory data cursor by one byte.
-advanceDataCursor:
-	inc dataCursor
-	bne .noCarry
-	inc dataCursor+1
-.noCarry:
-	dec dataLeft
+;;; setDataItemPointer
+;;; dataOffset is the item's start and X is its length. Point ZP_PTR0 at it.
+;;; X and Y are preserved.
+setDataItemPointer:
+	clc
+	lda ZP_PTR1
+	adc dataOffset
+	sta ZP_PTR0
+	lda ZP_PTR1+1
+	adc #$00
+	sta ZP_PTR0+1
 	rts
 
 ;;; assembleString
-;;; Accept one quoted literal. Like vasm oldstyle, string emits the literal
-;;; bytes followed by one NUL byte; nanoc already relies on this for source
-;;; lines. Quotes inside the literal are not supported because there is no
-;;; escape language yet.
+;;; ZP_PTR1 points at the string argument. Like vasm oldstyle, string emits the
+;;; literal bytes followed by one NUL byte; nanoc already relies on this for
+;;; source lines. There is deliberately no escape language yet.
 assembleString:
 	lda statementArgumentLength
 	cmp #$02
 	bcs .hasArgument
 	jmp .bad
 .hasArgument:
-
-	lda statementArgument
-	sta ZP_PTR0
-	lda statementArgument+1
-	sta ZP_PTR0+1
 	ldy #$00
-	lda (ZP_PTR0),y
+	lda (ZP_PTR1),y
 	cmp #'"'
-	beq .openingQuote
+	beq .scan
 	jmp .bad
-.openingQuote:
 
-	;; Scan to the closing quote. It must be the final argument byte.
-	clc
-	lda statementArgument
-	adc #$01
-	sta dataCursor
-	lda statementArgument+1
-	adc #$00
-	sta dataCursor+1
-	lda statementArgumentLength
-	sec
-	sbc #$01
-	sta dataLeft
-	lda #$00
-	sta dataItemLength		; literal length
-
-.scanString:
-	lda dataLeft
+.scan:
+	iny
+	cpy statementArgumentLength
 	beq .bad
-	lda dataCursor
-	sta ZP_PTR0
-	lda dataCursor+1
-	sta ZP_PTR0+1
-	ldy #$00
-	lda (ZP_PTR0),y
+	lda (ZP_PTR1),y
 	cmp #'"'
-	beq .closingQuote
-	inc dataItemLength
-	jsr advanceDataCursor
-	jmp .scanString
+	bne .scan
 
-.closingQuote:
-	lda dataLeft
-	cmp #$01
+	;; The first closing quote must also be the final argument byte. Its offset
+	;; is exactly the output size: literal bytes plus the NUL terminator.
+	sty dataOffset
+	iny
+	cpy statementArgumentLength
 	bne .bad
 
 	lda assemblyPass
 	cmp #PASS_LAYOUT
 	bne .emit
-	lda dataItemLength
-	clc
-	adc #$01			; vasm string includes its NUL terminator
+	lda dataOffset
 	jsr advanceAssemblyPtr
 	lda #ASSEMBLE_OK
 	rts
 
 .emit:
-	clc
-	lda statementArgument
-	adc #$01
-	sta dataCursor
-	lda statementArgument+1
-	adc #$00
-	sta dataCursor+1
-	lda dataItemLength
-	sta dataLeft
-
+	lda #$01			; first literal byte, after the opening quote
+	sta dataOffset
 .emitLoop:
-	lda dataLeft
+	ldy dataOffset
+	lda (ZP_PTR1),y
+	cmp #'"'
 	beq .terminator
-	lda dataCursor
-	sta ZP_PTR0
-	lda dataCursor+1
-	sta ZP_PTR0+1
-	ldy #$00
-	lda (ZP_PTR0),y
+	inc dataOffset
 	jsr emitAssemblyByte
-	jsr advanceDataCursor
 	jmp .emitLoop
 
 .terminator:
@@ -392,14 +358,14 @@ assembleString:
 
 ;;; emitAssemblyByte
 ;;; A is written at assemblyPtr, then assemblyPtr advances by one.
-;;; ZP_PTR0 and Y are clobbered.
+;;; ZP_PTR0, A, X and Y are clobbered.
 emitAssemblyByte:
-	pha
+	tax
 	lda assemblyPtr
 	sta ZP_PTR0
 	lda assemblyPtr+1
 	sta ZP_PTR0+1
-	pla
+	txa
 	ldy #$00
 	sta (ZP_PTR0),y
 	inc assemblyPtr
@@ -408,9 +374,6 @@ emitAssemblyByte:
 .done:
 	rts
 
-;;; Small explicit state used only while walking one data declaration.
-dataWidth:		byte 0
-dataCursor:		word 0
-dataLeft:		byte 0
-dataItem:		word 0
-dataItemLength:	byte 0
+;;; Two bytes of explicit state are enough for one data declaration.
+dataWidth:	byte 0
+dataOffset:	byte 0
