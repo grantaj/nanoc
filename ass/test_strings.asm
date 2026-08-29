@@ -8,6 +8,8 @@ FAIL_EMPTY_STRING    = $04
 FAIL_BAD_STRING      = $05
 FAIL_STRING_PAGE     = $06
 
+DOUBLE_QUOTE = 34
+
 OUTPUT      = $2200
 PAGE_OUTPUT = $20ff
 SYMBOLS     = $3000
@@ -198,17 +200,17 @@ testStringPageCrossing:
 ;;; Build the source lines with byte so the host vasm `string` directive does
 ;;; not insert its own terminator before our embedded quotes.
 stringSource:
-	byte 's','t','r','i','n','g',' ',34,'A','B','C',34,0
+	byte 's','t','r','i','n','g',' ',DOUBLE_QUOTE,'A','B','C',DOUBLE_QUOTE,0
 stringSourceEnd:
 
 emptySource:
-	byte 's','t','r','i','n','g',' ',34,34,0
+	byte 's','t','r','i','n','g',' ',DOUBLE_QUOTE,DOUBLE_QUOTE,0
 emptySourceEnd:
 
 badStringSource:
-	byte 's','t','r','i','n','g',' ',34,'A','B','C',0
+	byte 's','t','r','i','n','g',' ',DOUBLE_QUOTE,'A','B','C',0
 badStringSourceEnd:
 
 pageStringSource:
-	byte 's','t','r','i','n','g',' ',34,'X','Y',34,0
+	byte 's','t','r','i','n','g',' ',DOUBLE_QUOTE,'X','Y',DOUBLE_QUOTE,0
 pageStringSourceEnd:
