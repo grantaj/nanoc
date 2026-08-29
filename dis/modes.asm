@@ -1,21 +1,21 @@
 ;;; modes.asm
 ;;; Output formatter for 6502 addressing modes
 ;;;
-;;; First bye of instruction is opcode
+;;; First byte of instruction is opcode
 ;;; It is assumed that this, as well as the separating space
 ;;; have been output already
 ;;; Second byte of the instruction is pointed to by
 ;;; zero page pointer p (low) / p+1 (high)
-;;; All routines preserve X, Y
-;;; All routines set A to the opcode width
+;;; All routines preserve X, Y. A and flags are clobbered.
 ;;;
 ;;; Mode indexes refer to the shared definitions in mode_ids.inc.
+;;; Operand widths are shared separately in mode_widths.asm.
 ;;; ----------------------------------------------------------------------
 
 	include "mode_ids.inc"
 
 	;; Jump table
-address_mode_table:	
+address_mode_table:
 	word implied
 	word accumulator
 	word immediate
@@ -30,21 +30,19 @@ address_mode_table:
 	word indexedIndirectY
 	word relative
 	word undocumented
-	
-	
+
+
 implied:
 	;; Mode 0
 	;; No operand nothing to output
-	lda #$0
 	rts
-	
+
 accumulator:
 	;; Mode 1
 	;; Operation on the accumulator
 	;; No operand, nothing to output
-	lda #$0
 	rts
-	
+
 immediate:
 	;; Mode 2
 	;; Operand contained in the second byte of the instruction
@@ -59,9 +57,8 @@ immediate:
 	jsr printHexByte
 	pla
 	tay
-	lda #$1
 	rts
-	
+
 zeroPage:
 	;; Mode 3
 	;; Second byte of instruction specifies zero page address
@@ -74,9 +71,8 @@ zeroPage:
 	jsr printHexByte
 	pla
 	tay
-	lda #$1
 	rts
-	
+
 indexedZeroPageX:
 	;; Mode 4
 	;; Second byte is added to X with no carry
@@ -91,9 +87,8 @@ indexedZeroPageX:
 	jsr commaX
 	pla
 	tay
-	lda #$1
 	rts
-	
+
 indexedZeroPageY:
 	;; Mode 5
 	;; Second byte is added to Y with no carry
@@ -108,12 +103,11 @@ indexedZeroPageY:
 	jsr commaY
 	pla
 	tay
-	lda #$1
 	rts
 
 absolute:
 	;; Mode 6
-	;; Second btye of instruction specifies the low byte
+	;; Second byte of instruction specifies the low byte
 	;; of the effective address, third byte specifies high byte
 	tya			; don't clobber Y
 	pha
@@ -127,27 +121,24 @@ absolute:
 	jsr printHexByte
 	pla			; restore Y
 	tay
-	lda #$2
 	rts
-	
+
 indexedAbsoluteX:
 	;; Mode 7
 	;; Second and third bytes are L/H of address
 	;; X is added to L with carry to H forming effective address
 	jsr absolute
 	jsr commaX
-	lda #$2
 	rts
-	
+
 indexedAbsoluteY:
 	;; Mode 8
 	;; Second and third bytes are L/H of address
 	;; Y is added to L with carry to H forming effective address
 	jsr absolute
 	jsr commaY
-	lda #$2
 	rts
-	
+
 absoluteIndirect:
 	;; Mode 9
 	;; second and third byte are low and high byte form a pointer
@@ -157,7 +148,6 @@ absoluteIndirect:
 	jsr absolute
 	lda #')'
 	jsr CHROUT
-	lda #$2
 	rts
 
 indexedIndirectX:
@@ -180,7 +170,6 @@ indexedIndirectX:
 	jsr CHROUT
 	pla
 	tay
-	lda #$1
 	rts
 
 indexedIndirectY:
@@ -203,7 +192,6 @@ indexedIndirectY:
 	jsr commaY
 	pla
 	tay
-	lda #$1
 	rts
 
 
@@ -228,23 +216,21 @@ relative:
 	lda p+1			; high byte
 	adc #$0			; add the carry bit
 	jmp .output
-	.negative:
+.negative:
 	lda p+1			; offset was negative
 	adc #$ff		; add carry and sign extension
-.output:	
+.output:
 	jsr printHexByte
 	pla
 	jsr printHexByte
 	pla
 	tay
-	lda #$1
 	rts
 
 undocumented:
 	;; for undocumented opcodes
-	lda #$0
 	rts
-	
+
 ;;; ----------------------------------------------------------------------
 ;;; helpers
 
@@ -254,14 +240,14 @@ commaX:
 	lda #'X'
 	jsr CHROUT
 	rts
-	
+
 commaY:
 	lda #','
 	jsr CHROUT
 	lda #'Y'
 	jsr CHROUT
 	rts
-	
+
 printHexByte:
         PHA
         LSR

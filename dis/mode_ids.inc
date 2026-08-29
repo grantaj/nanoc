@@ -1,6 +1,6 @@
 ;;; Shared 6502 addressing-mode indexes.
 ;;; These indexes are the values stored in opcode_table and used to index
-;;; the disassembler formatter table.
+;;; shared mode metadata and the disassembler formatter table.
 
 MODE_IMPLIED        = $00
 MODE_ACCUMULATOR    = $01
