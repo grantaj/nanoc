@@ -6,6 +6,13 @@
 ;;;
 ;;; The host test runner watches TEST_RESULT for a store. The assertions
 ;;; themselves live entirely in 6502 code.
+;;;
+;;; A small test may simply run straight through its assertions. When named
+;;; subtests make a larger test clearer, use this return convention:
+;;;   carry set   = passed
+;;;   carry clear = failed, with a FAIL_* code in A
+;;;
+;;; This is only a convention. Do not build an assertion framework around it.
 
 TEST_RESULT = $02
 TEST_PASS   = $ff
