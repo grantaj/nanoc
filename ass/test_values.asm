@@ -105,13 +105,15 @@ constantSource:
 	string "entry:"
 	string "LDX #COUNT+1"
 	string "LDA #<ADDR"
-	string "LDY #'A'-10"
+	string "LDY #>ADDR"
+	string "CMP #'A'-10"
 	string "RTS"
 constantSourceEnd:
 constantBytes:
 	byte $a2,$0a
 	byte $a9,$34
-	byte $a0,$37
+	byte $a0,$12
+	byte $c9,$37
 	byte $60
 constantBytesEnd:
 
