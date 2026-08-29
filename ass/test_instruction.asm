@@ -1,29 +1,32 @@
 	include "zp.inc"
 	include "../test.inc"
 
-FAIL_KNOWN_MNEMONIC   = $01
-FAIL_UNKNOWN_MNEMONIC = $02
-FAIL_PAGE_ADVANCE     = $03
-FAIL_RTS              = $10
-FAIL_ACCUMULATOR      = $11
-FAIL_IMMEDIATE        = $12
-FAIL_ZERO_PAGE        = $13
-FAIL_ABSOLUTE         = $14
-FAIL_ZERO_PAGE_X      = $15
-FAIL_ABSOLUTE_X       = $16
-FAIL_ZERO_PAGE_Y      = $17
-FAIL_ABSOLUTE_Y       = $18
-FAIL_INDIRECT         = $19
-FAIL_INDIRECT_X       = $1a
-FAIL_INDIRECT_Y       = $1b
-FAIL_RELATIVE         = $1c
-FAIL_SYMBOL_ABSOLUTE  = $1d
-FAIL_SYMBOL_DEFERRED  = $1e
-FAIL_BAD_MNEMONIC     = $1f
-FAIL_BAD_MODE         = $20
-FAIL_OPCODE_LOOKUP    = $21
-FAIL_INVALID_PAIR     = $22
-FAIL_EOF              = $23
+FAIL_KNOWN_MNEMONIC     = $01
+FAIL_UNKNOWN_MNEMONIC   = $02
+FAIL_PAGE_ADVANCE       = $03
+FAIL_RTS                = $10
+FAIL_ACCUMULATOR        = $11
+FAIL_IMMEDIATE          = $12
+FAIL_ZERO_PAGE          = $13
+FAIL_ABSOLUTE           = $14
+FAIL_ZERO_PAGE_X        = $15
+FAIL_ABSOLUTE_X         = $16
+FAIL_ZERO_PAGE_Y        = $17
+FAIL_ABSOLUTE_Y         = $18
+FAIL_INDIRECT           = $19
+FAIL_INDIRECT_X         = $1a
+FAIL_INDIRECT_Y         = $1b
+FAIL_RELATIVE           = $1c
+FAIL_SYMBOL_ABSOLUTE    = $1d
+FAIL_SYMBOL_DEFERRED    = $1e
+FAIL_BAD_MNEMONIC       = $1f
+FAIL_BAD_MODE           = $20
+FAIL_OPCODE_LOOKUP      = $21
+FAIL_INVALID_PAIR       = $22
+FAIL_EOF                = $23
+FAIL_SMALL_ABSOLUTE_Y   = $24
+FAIL_SYMBOL_DEFERRED_X  = $25
+FAIL_BAD_OPERAND        = $26
 
 PARSE_NOT_INSTRUCTION = $fe
 
@@ -226,9 +229,23 @@ main:
 	bne .failAbsoluteY
 	lda instructionOpcode
 	cmp #$be
-	beq .indirect
+	beq .smallAbsoluteY
 .failAbsoluteY:
 	lda #FAIL_ABSOLUTE_Y
+	jmp finish
+
+	;; LDA has no zero-page,Y form, so even $20 must use absolute,Y.
+.smallAbsoluteY:
+	jsr parseNext
+	bne .failSmallAbsoluteY
+	lda instructionMode
+	cmp #MODE_ABSOLUTE_Y
+	bne .failSmallAbsoluteY
+	lda instructionOpcode
+	cmp #$b9
+	beq .indirect
+.failSmallAbsoluteY:
+	lda #FAIL_SMALL_ABSOLUTE_Y
 	jmp finish
 
 	;; JMP ($2000): absolute indirect.
@@ -324,7 +341,7 @@ main:
 	cmp #MODE_DEFERRED
 	bne .failSymbolDeferred
 	lda instructionOpcode
-	cmp #$ff
+	cmp #OPCODE_DEFERRED
 	bne .failSymbolDeferred
 	lda instructionIndex
 	cmp #INDEX_NONE
@@ -334,9 +351,46 @@ main:
 	bne .failSymbolDeferred
 	lda instructionSymbol+1
 	cmp #>ldaSymbol
-	beq .badMnemonic
+	beq .symbolDeferredX
 .failSymbolDeferred:
 	lda #FAIL_SYMBOL_DEFERRED
+	jmp finish
+
+	;; LDA target,X remains deferred and keeps only the unresolved index fact.
+.symbolDeferredX:
+	jsr parseNext
+	bne .failSymbolDeferredX
+	lda instructionMode
+	cmp #MODE_DEFERRED
+	bne .failSymbolDeferredX
+	lda instructionOpcode
+	cmp #OPCODE_DEFERRED
+	bne .failSymbolDeferredX
+	lda instructionIndex
+	cmp #INDEX_X
+	bne .failSymbolDeferredX
+	lda instructionOperandKind
+	cmp #OPERAND_SYMBOL
+	bne .failSymbolDeferredX
+	lda instructionSymbol
+	cmp #<ldaIndexedSymbol
+	bne .failSymbolDeferredX
+	lda instructionSymbol+1
+	cmp #>ldaIndexedSymbol
+	bne .failSymbolDeferredX
+	lda instructionSymbolLength
+	cmp #$06
+	beq .badOperand
+.failSymbolDeferredX:
+	lda #FAIL_SYMBOL_DEFERRED_X
+	jmp finish
+
+	;; Malformed hexadecimal is an operand error, not an unknown mnemonic/mode.
+.badOperand:
+	jsr parseNext
+	cmp #INSTRUCTION_BAD_OPERAND
+	beq .badMnemonic
+	lda #FAIL_BAD_OPERAND
 	jmp finish
 
 	;; Unknown mnemonic is distinct from a known mnemonic with an illegal mode.
@@ -425,6 +479,7 @@ input:
 	string "LDA $2000,X"
 	string "LDX $20,Y"
 	string "LDX $2000,Y"
+	string "LDA $20,Y"
 	string "JMP ($2000)"
 	string "LDA ($20,X)"
 	string "LDA ($20),Y"
@@ -435,6 +490,10 @@ jmpSymbol:
 	byte 'L','D','A',' '
 ldaSymbol:
 	string "target"
+	byte 'L','D','A',' '
+ldaIndexedSymbol:
+	string "target,X"
+	string "LDA #$GG"
 	string "XYZ $20"
 	string "STA #$20"
 inputEnd:

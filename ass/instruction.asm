@@ -8,10 +8,10 @@
 ;;;   A                       status (INSTRUCTION_*)
 ;;;   instructionMnemonic     mnemonic-table index
 ;;;   instructionMode         MODE_* or MODE_DEFERRED
-;;;   instructionOpcode       opcode, or $ff while mode is deferred
+;;;   instructionOpcode       opcode, or OPCODE_DEFERRED while mode is deferred
 ;;;   instructionOperandKind  OPERAND_NONE / NUMBER / SYMBOL
 ;;;   instructionOperandValue 16-bit numeric value
-;;;   instructionSymbol       zero-copy pointer/length for a symbol
+;;;   instructionSymbol       zero-copy pointer/length for a symbol candidate
 ;;;   instructionIndex        INDEX_* only when MODE_DEFERRED needs it
 ;;;
 ;;; ZP_PTR1 and the source buffer are preserved. A, X, Y, ZP_PTR0 and flags
@@ -32,8 +32,8 @@ INDEX_NONE = $00
 INDEX_X    = $01
 INDEX_Y    = $02
 
-MODE_DEFERRED = $ff
-MNEMONIC_COUNT = $38		; $38 is the ??? sentinel, not a source mnemonic
+MODE_DEFERRED   = $ff
+OPCODE_DEFERRED = $ff
 
 ;;; parseInstruction
 ;;;
@@ -86,6 +86,7 @@ clearInstruction:
 	sta operandIndex
 	lda #MODE_DEFERRED
 	sta instructionMode
+	lda #OPCODE_DEFERRED
 	sta instructionOpcode
 	rts
 
@@ -322,7 +323,8 @@ stripIndexSuffix:
 ;;;
 ;;; ZP_PTR0/X identify the value after addressing punctuation has been removed.
 ;;; '$' plus hex digits is reduced immediately to a number. Other text is kept
-;;; as its source pointer/length, because a later pass may need the symbol name.
+;;; as a zero-copy unresolved symbol candidate; symbol syntax and resolution
+;;; belong to the later symbol pass.
 ;;; Returns carry set on success. A, X, Y and flags may be clobbered.
 parseOperandCore:
 	cpx #$00
@@ -470,6 +472,7 @@ selectDirectMode:
 	sta instructionIndex
 	lda #MODE_DEFERRED
 	sta instructionMode
+	lda #OPCODE_DEFERRED
 	sta instructionOpcode
 	jmp .ok
 
@@ -487,8 +490,10 @@ selectDirectMode:
 
 ;;; findMnemonic
 ;;;
-;;; ZP_PTR0 points to mnemonic text and X is its length. Returns the shared
-;;; mnemonic-table index in A with carry set, or carry clear if it is unknown.
+;;; ZP_PTR0 points to mnemonic text and X is its length. Walk the fixed-width
+;;; mnemonic table until the three-byte name matches or the ??? sentinel is
+;;; reached. Returns the shared mnemonic-table index in A with carry set, or
+;;; carry clear if it is unknown.
 ;;; ZP_PTR0 is preserved. A, X, Y and flags are clobbered.
 findMnemonic:
 	cpx #$03
@@ -504,6 +509,9 @@ findMnemonic:
 	clc
 	adc mnemonicCandidate		; fixed-width table: offset = index * 3
 	tax
+	lda mnemonic_table,x
+	cmp #'?'
+	beq .unknown
 	ldy #$00
 .compare:
 	lda (ZP_PTR0),y
@@ -518,9 +526,8 @@ findMnemonic:
 	rts
 .mismatch:
 	inc mnemonicCandidate
-	lda mnemonicCandidate
-	cmp #MNEMONIC_COUNT
-	bne .nextMnemonic
+	jmp .nextMnemonic
+.unknown:
 	clc
 	rts
 
@@ -583,7 +590,7 @@ directLongModes:
 
 instructionMnemonic:	byte 0
 instructionMode:	byte MODE_DEFERRED
-instructionOpcode:	byte MODE_DEFERRED
+instructionOpcode:	byte OPCODE_DEFERRED
 instructionOperandKind:	byte OPERAND_NONE
 instructionOperandValue:	word 0
 instructionSymbol:	word 0
