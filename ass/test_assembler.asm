@@ -10,7 +10,7 @@ PHASE_OUTPUT = $0080
 SYMBOLS      = $3000
 SYMBOLS_END  = $3600
 
-	* = TEST_ENTRY
+	* = ASSEMBLER_TEST_ENTRY
 
 main:
 	;; The phase test deliberately emits into zero page, so own the machine while
