@@ -11,6 +11,10 @@ VALUE_OK         = $00
 VALUE_UNRESOLVED = $01
 VALUE_BAD        = $02
 
+VALUE_PREFIX_NONE = $00
+VALUE_PREFIX_LOW  = $01
+VALUE_PREFIX_HIGH = $02
+
 ;;; parseValue
 ;;;
 ;;; Input: ZP_PTR0/X point to the complete value text.
@@ -25,8 +29,9 @@ parseValue:
 	lda #VALUE_BAD
 	rts
 .hasValue:
-	lda #$00
+	lda #VALUE_PREFIX_NONE
 	sta valuePrefix
+	lda #$00
 	sta valueUnresolved
 
 	ldy #$00
@@ -37,12 +42,12 @@ parseValue:
 	beq .high
 	jmp .first
 .low:
-	lda #$01
+	lda #VALUE_PREFIX_LOW
 	sta valuePrefix
 	jsr advanceValue
 	jmp .first
 .high:
-	lda #$02
+	lda #VALUE_PREFIX_HIGH
 	sta valuePrefix
 	jsr advanceValue
 
@@ -98,7 +103,7 @@ parseValue:
 .finish:
 	lda valuePrefix
 	beq .status
-	cmp #$01
+	cmp #VALUE_PREFIX_LOW
 	beq .lowByte
 	lda valueResult+1		; >value
 	sta valueResult
@@ -166,10 +171,10 @@ parseHexAtom:
 	beq .done
 	jsr valueHexNibble
 	bcc .bad
-	pha
+	tay				; nibble is local scratch
 	inx
 	cpx #$05
-	bcs .badPop
+	bcs .bad
 	asl valueAtom
 	rol valueAtom+1
 	asl valueAtom
@@ -178,7 +183,7 @@ parseHexAtom:
 	rol valueAtom+1
 	asl valueAtom
 	rol valueAtom+1
-	pla
+	tya
 	ora valueAtom
 	sta valueAtom
 	jsr advanceValue
@@ -188,8 +193,6 @@ parseHexAtom:
 	beq .bad
 	sec
 	rts
-.badPop:
-	pla
 .bad:
 	clc
 	rts
@@ -239,7 +242,7 @@ parseDecimalAtom:
 	bcs .bad
 	sec
 	sbc #'0'
-	pha				; keep this digit while multiplying by ten
+	tax				; current digit is local scratch
 
 	lda valueAtom
 	sta valueTemp
@@ -261,7 +264,7 @@ parseDecimalAtom:
 	adc valueTemp+1
 	sta valueAtom+1
 
-	pla
+	txa
 	clc
 	adc valueAtom
 	sta valueAtom
