@@ -21,7 +21,10 @@ VALUE_BAD        = $02
 ;;; ZP_PTR1 is preserved by findSymbol.
 parseValue:
 	stx valueLeft
-	beq .bad
+	bne .hasValue
+	lda #VALUE_BAD
+	rts
+.hasValue:
 	lda #$00
 	sta valuePrefix
 	sta valueUnresolved
@@ -45,7 +48,9 @@ parseValue:
 
 .first:
 	jsr parseValueAtom
-	bcc .bad
+	bcs .firstOk
+	jmp .bad
+.firstOk:
 	lda valueAtom
 	sta valueResult
 	lda valueAtom+1
