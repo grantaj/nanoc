@@ -5,6 +5,7 @@ VICE=${VICE:-x64sc}
 BUILD_DIR=${BUILD_DIR:-build}
 PRG=$1
 NAME=${2:-$(basename "$PRG" .prg)}
+ENTRY=${3:-c000}
 
 MONITOR_FILE="$BUILD_DIR/$NAME.mon"
 RESULT_FILE="$BUILD_DIR/$NAME.result"
@@ -15,7 +16,7 @@ rm -f "$MONITOR_FILE" "$RESULT_FILE" "$LOG_FILE"
 cat > "$MONITOR_FILE" <<EOF
 load "$PRG" 0
 watch store 0002
-g c000
+g $ENTRY
 bsave "$RESULT_FILE" 0 0002 0003
 quit
 EOF
