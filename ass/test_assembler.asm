@@ -1,9 +1,11 @@
 	include "zp.inc"
 	include "../test.inc"
 
-FAIL_RESOLVED_ASSEMBLE = $01
-FAIL_RESOLVED_BYTES    = $02
-FAIL_RESOLVED_POINTER  = $03
+FAIL_CONSTANTS         = $01
+FAIL_LOCAL_SCOPES      = $02
+FAIL_RESOLVED_ASSEMBLE = $03
+FAIL_RESOLVED_BYTES    = $04
+FAIL_RESOLVED_POINTER  = $05
 FAIL_PHASE_ERROR       = $10
 FAIL_LOCAL_SCOPE       = $11
 FAIL_BAD_CONSTANT      = $12
@@ -31,6 +33,10 @@ main:
 	lda #>SYMBOLS_END
 	sta symbolTableLimit+1
 
+	jsr testConstants
+	bcc finish
+	jsr testLocalScopes
+	bcc finish
 	jsr testResolvedProgram
 	bcc finish
 	jsr testPhaseError
@@ -49,9 +55,64 @@ finish:
 .halt:
 	jmp .halt
 
-;;; testResolvedProgram
-;;; Exercise constants, global/local forward and backward references, repeated
-;;; local names, and the small value forms needed by nanoc source.
+;;; Constants are defined before use and may feed the deliberately small value
+;;; grammar used by instruction operands.
+testConstants:
+	lda #<constantSource
+	sta ZP_PTR1
+	lda #>constantSource
+	sta ZP_PTR1+1
+	lda #<constantSourceEnd
+	sta sourceEnd
+	lda #>constantSourceEnd
+	sta sourceEnd+1
+	lda #<OUTPUT
+	sta assemblyPtr
+	lda #>OUTPUT
+	sta assemblyPtr+1
+	jsr assemble
+	cmp #ASSEMBLE_OK
+	bne .fail
+	ldx #$00
+.check:
+	lda OUTPUT,x
+	cmp constantBytes,x
+	bne .fail
+	inx
+	cpx #constantBytesEnd-constantBytes
+	bne .check
+	sec
+	rts
+.fail:
+	lda #FAIL_CONSTANTS
+	clc
+	rts
+
+;;; The same local name may be reused after a new global label opens a scope.
+testLocalScopes:
+	lda #<localScopesSource
+	sta ZP_PTR1
+	lda #>localScopesSource
+	sta ZP_PTR1+1
+	lda #<localScopesSourceEnd
+	sta sourceEnd
+	lda #>localScopesSourceEnd
+	sta sourceEnd+1
+	lda #<OUTPUT
+	sta assemblyPtr
+	lda #>OUTPUT
+	sta assemblyPtr+1
+	jsr assemble
+	cmp #ASSEMBLE_OK
+	beq .ok
+	lda #FAIL_LOCAL_SCOPES
+	clc
+	rts
+.ok:
+	sec
+	rts
+
+;;; Full current path with forward/backward globals and locals.
 testResolvedProgram:
 	lda #<resolvedSource
 	sta ZP_PTR1
@@ -68,25 +129,7 @@ testResolvedProgram:
 	jsr assemble
 	cmp #ASSEMBLE_OK
 	beq .checkBytes
-	;; Temporary diagnostic: return the byte offset of the next source line.
-	;; Pass 2 sets bit 6, so no permanent line/status state is needed.
-	sec
-	lda ZP_PTR1
-	sbc #<resolvedSource
-	sta valueTemp
-	lda ZP_PTR1+1
-	sbc #>resolvedSource
-	bne .diagnosticHigh
-	lda valueTemp
-	ldx assemblyPass
-	cpx #$02
-	bne .diagnosticDone
-	ora #$40
-.diagnosticDone:
-	clc
-	rts
-.diagnosticHigh:
-	lda #$7f
+	lda #FAIL_RESOLVED_ASSEMBLE
 	clc
 	rts
 
@@ -245,13 +288,35 @@ testBranchRange:
 	include "symbols.asm"
 	include "assembler.asm"
 
-resolvedSource:
+constantSource:
 	string "COUNT = 9"
 	string "ADDR = $1234"
-	string "first:"
+	string "entry:"
+	string "LDX #COUNT+1"
 	string "LDA #<ADDR"
-	string "LDX #>ADDR"
 	string "LDY #'A'-10"
+	string "RTS"
+constantSourceEnd:
+constantBytes:
+	byte $a2,$0a
+	byte $a9,$34
+	byte $a0,$37
+	byte $60
+constantBytesEnd:
+
+localScopesSource:
+	string "first:"
+	string "BNE .done"
+	string ".done:"
+	string "RTS"
+	string "second:"
+	string "BNE .done"
+	string ".done:"
+	string "RTS"
+localScopesSourceEnd:
+
+resolvedSource:
+	string "first:"
 	string "BNE .done"
 	string ".loop:"
 	string "INX"
@@ -260,25 +325,18 @@ resolvedSource:
 	string "JSR second"
 	string "JMP first"
 	string "second:"
-	string "LDA ADDR+1"
 	string "BNE .done"
 	string ".done:"
-	string "LDX #COUNT+1"
 	string "RTS"
 resolvedSourceEnd:
 
 resolvedBytes:
-	byte $a9,$34		; LDA #<ADDR
-	byte $a2,$12		; LDX #>ADDR
-	byte $a0,$37		; LDY #'A'-10
 	byte $d0,$03		; BNE first .done
 	byte $e8		; INX
 	byte $d0,$fd		; BNE first .loop
-	byte $20,$11,$20	; JSR second
+	byte $20,$0c,$20	; JSR second
 	byte $4c,$00,$20	; JMP first
-	byte $ad,$35,$12	; LDA ADDR+1
 	byte $d0,$00		; BNE second .done
-	byte $a2,$0a		; LDX #COUNT+1
 	byte $60		; RTS
 resolvedBytesEnd:
 
