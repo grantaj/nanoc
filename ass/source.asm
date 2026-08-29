@@ -35,8 +35,8 @@ openRootSource:
 ;;; includeSource
 ;;; statementArgument must be exactly one quoted filename. Open it as the next
 ;;; input channel; the parent remains open and positioned after the include line.
-;;; Include-name construction borrows ZP_PTR1 internally, so preserve the parser
-;;; cursor here rather than making every caller know about that implementation.
+;;; Include-name construction borrows ZP_PTR1 internally, so this routine owns
+;;; preserving the parser cursor rather than requiring its caller to know that.
 includeSource:
 	lda ZP_PTR1
 	pha
@@ -104,10 +104,9 @@ includeSourceBody:
 ;;;     "parser.asm"        -> sourceDirectory + "PARSER.ASM"
 ;;;     "../dis/table.asm"  -> "DIS/TABLE.ASM"
 ;;;
-;;; ZP_PTR0 walks input and copyPathBytes appends it to the output buffer. Source
-;;; files are ASCII text while the C64 filename bytes expected by VICE's
-;;; filesystem device use the upper-case PETSCII/ASCII range, so copying folds
-;;; a-z to A-Z. Carry set means openName/openNameLength are ready.
+;;; Source files are ASCII text while the C64 filename bytes expected by VICE's
+;;; filesystem device use the upper-case PETSCII/ASCII range, so a-z is folded to
+;;; A-Z while copying. Carry set means openName/openNameLength are ready.
 prepareIncludeName:
 	lda sourceDirectoryLength
 	bne .build
@@ -141,8 +140,8 @@ prepareIncludeName:
 	lda #$00
 	sta sourcePathLength
 
-	;; Point at the first byte inside the quotes and recognize the only parent
-	;; form needed by the production tree.
+	;; Point ZP_PTR0 at the first byte inside the quotes and detect the only
+	;; parent form needed by the production tree: ../dis/...
 	clc
 	lda statementArgument
 	adc #$01
@@ -150,9 +149,12 @@ prepareIncludeName:
 	lda statementArgument+1
 	adc #$00
 	sta ZP_PTR0+1
+	lda #$00
+	sta sourceInputOffset
 	lda statementArgumentLength
 	sec
 	sbc #$02
+	sta sourceInputLength
 	cmp #$03
 	bcc .local
 	ldy #$00
@@ -167,29 +169,31 @@ prepareIncludeName:
 	lda (ZP_PTR0),y
 	cmp #'/'
 	bne .local
-
-	clc
-	lda ZP_PTR0
-	adc #$03
-	sta ZP_PTR0
-	bcc .parentReady
-	inc ZP_PTR0+1
-.parentReady:
-	lda statementArgumentLength
-	sec
-	sbc #$05			; quotes plus leading ../
-	jsr copyPathBytes
-	bcc .bad
-	jmp .done
+	lda #$03
+	sta sourceInputOffset
+	jmp .filename
 
 .local:
+	;; Every local production include lives in the configured one directory.
 	lda sourceDirectory
 	sta ZP_PTR0
 	lda sourceDirectory+1
 	sta ZP_PTR0+1
-	lda sourceDirectoryLength
-	jsr copyPathBytes
+	lda #$00
+	sta sourceInputOffset
+.copyDirectory:
+	lda sourceInputOffset
+	cmp sourceDirectoryLength
+	beq .directoryDone
+	ldy sourceInputOffset
+	lda (ZP_PTR0),y
+	jsr appendPathByte
 	bcc .bad
+	inc sourceInputOffset
+	jmp .copyDirectory
+.directoryDone:
+	lda #$00
+	sta sourceInputOffset
 
 	clc
 	lda statementArgument
@@ -198,12 +202,23 @@ prepareIncludeName:
 	lda statementArgument+1
 	adc #$00
 	sta ZP_PTR0+1
-	lda statementArgumentLength
-	sec
-	sbc #$02
-	jsr copyPathBytes
-	bcc .bad
 
+.filename:
+	lda sourceInputOffset
+	cmp sourceInputLength
+	beq .done
+	ldy sourceInputOffset
+	lda (ZP_PTR0),y
+	cmp #'a'
+	bcc .copy
+	cmp #'z'+1
+	bcs .copy
+	and #$df			; ASCII lower-case source -> C64 filename byte
+.copy:
+	jsr appendPathByte
+	bcc .bad
+	inc sourceInputOffset
+	jmp .filename
 .done:
 	lda sourcePathLength
 	beq .bad
@@ -211,37 +226,6 @@ prepareIncludeName:
 	sec
 	rts
 .bad:
-	clc
-	rts
-
-;;; copyPathBytes
-;;; Append A bytes from ZP_PTR0 to sourcePathBuffer, advancing the input pointer.
-;;; Lower-case ASCII is folded while copying. Carry clear means the output filled.
-copyPathBytes:
-	sta sourceCopyLeft
-.loop:
-	lda sourceCopyLeft
-	beq .done
-	ldy #$00
-	lda (ZP_PTR0),y
-	cmp #'a'
-	bcc .copy
-	cmp #'z'+1
-	bcs .copy
-	and #$df
-.copy:
-	jsr appendPathByte
-	bcc .full
-	inc ZP_PTR0
-	bne .next
-	inc ZP_PTR0+1
-.next:
-	dec sourceCopyLeft
-	jmp .loop
-.done:
-	sec
-	rts
-.full:
 	clc
 	rts
 
@@ -469,4 +453,5 @@ sourceDirectory:	word 0
 sourceDirectoryLength:	byte 0
 sourcePathBuffer:	word 0
 sourcePathLength:	byte 0
-sourceCopyLeft:		byte 0
+sourceInputOffset:	byte 0
+sourceInputLength:	byte 0
