@@ -156,9 +156,13 @@ assembleLabel:
 	rts
 
 ;;; assembleSymbol
-;;; `name = value` must already be resolvable when encountered on pass 1.
-;;; Pass 2 simply confirms that it still has the same value.
+;;; Constants are pass-1 facts. They do not affect layout, so pass 2 can simply
+;;; step over the statement and use the value already stored in the table.
 assembleSymbol:
+	lda assemblyPass
+	cmp #PASS_LAYOUT
+	bne .ok
+
 	lda statementArgument
 	sta ZP_PTR0
 	lda statementArgument+1
@@ -174,10 +178,6 @@ assembleSymbol:
 	sta symbolName+1
 	lda statementNameLength
 	sta symbolNameLength
-
-	lda assemblyPass
-	cmp #PASS_LAYOUT
-	bne .verify
 	lda valueResult
 	sta symbolValue
 	lda valueResult+1
@@ -185,22 +185,11 @@ assembleSymbol:
 	jsr defineSymbol
 	jmp mapSymbolStatus
 
-.verify:
-	jsr findSymbol
-	bcc .bad
-	lda symbolValue
-	cmp valueResult
-	bne .phase
-	lda symbolValue+1
-	cmp valueResult+1
-	bne .phase
+.ok:
 	lda #ASSEMBLE_OK
 	rts
 .bad:
 	lda #ASSEMBLE_BAD_SYMBOL
-	rts
-.phase:
-	lda #ASSEMBLE_PHASE_ERROR
 	rts
 
 ;;; assembleInstruction
@@ -256,7 +245,7 @@ assembleInstruction:
 
 ;;; resolveInstructionValue
 ;;; The instruction parser keeps symbolic operand text in place. Resolve that
-;;; text here; only a deferred direct operand needs a new short/long mode choice.
+;;; text here, then let its existing direct-mode selector handle zp vs absolute.
 resolveInstructionValue:
 	lda instructionOperandKind
 	cmp #OPERAND_SYMBOL
@@ -299,16 +288,7 @@ resolveInstructionValue:
 	jmp .bad
 
 .direct:
-	lda instructionOperandValue+1
-	bne .long
-	ldx instructionIndex
-	lda directShortModes,x
-	jsr tryMode
-	bcs .ok
-.long:
-	ldx instructionIndex
-	lda directLongModes,x
-	jsr tryMode
+	jsr selectDirectMode
 	bcc .bad
 .ok:
 	lda #VALUE_OK
