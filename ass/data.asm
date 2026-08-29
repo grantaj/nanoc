@@ -299,7 +299,9 @@ advanceDataCursor:
 assembleString:
 	lda statementArgumentLength
 	cmp #$02
-	bcc .bad
+	bcs .hasArgument
+	jmp .bad
+.hasArgument:
 
 	lda statementArgument
 	sta ZP_PTR0
@@ -308,7 +310,9 @@ assembleString:
 	ldy #$00
 	lda (ZP_PTR0),y
 	cmp #'"'
-	bne .bad
+	beq .openingQuote
+	jmp .bad
+.openingQuote:
 
 	;; Scan to the closing quote. It must be the final argument byte.
 	clc
