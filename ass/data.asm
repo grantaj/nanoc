@@ -6,8 +6,8 @@
 ;;;     word value [, value ...]
 ;;;     string "literal"
 ;;;
-;;; Pass 1 only advances assemblyPtr. Pass 2 writes directly to assemblyPtr.
-;;; There is no stored data list or separate output representation.
+;;; Fixed values become staged bytes immediately.  A label-dependent value gets
+;;; one compact hole and placeholder byte(s); the source text is then disposable.
 
 DATA_NONE   = $00
 DATA_BYTE   = $01
@@ -16,7 +16,6 @@ DATA_STRING = $03
 
 ;;; dataStatementKind
 ;;; Return DATA_* in A for the bare statement names byte, word, and string.
-;;; ZP_PTR0 and Y are clobbered. X is preserved.
 dataStatementKind:
 	lda statementNameLength
 	cmp #$04
@@ -25,7 +24,6 @@ dataStatementKind:
 	beq .string
 	lda #DATA_NONE
 	rts
-
 .four:
 	lda statementName
 	sta ZP_PTR0
@@ -39,7 +37,6 @@ dataStatementKind:
 	beq .word
 	lda #DATA_NONE
 	rts
-
 .byte:
 	iny
 	lda (ZP_PTR0),y
@@ -55,7 +52,6 @@ dataStatementKind:
 	bne .none
 	lda #DATA_BYTE
 	rts
-
 .word:
 	iny
 	lda (ZP_PTR0),y
@@ -71,7 +67,6 @@ dataStatementKind:
 	bne .none
 	lda #DATA_WORD
 	rts
-
 .string:
 	lda statementName
 	sta ZP_PTR0
@@ -103,18 +98,12 @@ dataStatementKind:
 	bne .none
 	lda #DATA_STRING
 	rts
-
 .none:
 	lda #DATA_NONE
 	rts
 
 ;;; assembleData
-;;; Input: A = DATA_BYTE, DATA_WORD, or DATA_STRING.
-;;; Output: A = ASSEMBLE_* status.
-;;; ZP_PTR1 is preserved. A, X, Y, ZP_PTR0 and flags are clobbered.
-;;;
-;;; ZP_PTR1 is normally the assembler source cursor. Borrow it as the argument
-;;; base while handling this one statement, then restore it before returning.
+;;; A = DATA_*.  ZP_PTR1 is preserved because it is normally the source cursor.
 assembleData:
 	tax
 	lda ZP_PTR1
@@ -125,7 +114,6 @@ assembleData:
 	sta ZP_PTR1
 	lda statementArgument+1
 	sta ZP_PTR1+1
-
 	txa
 	cmp #DATA_BYTE
 	beq .byte
@@ -140,9 +128,8 @@ assembleData:
 .word:
 	lda #$02
 	jsr assembleDataList
-
 .restore:
-	tax				; keep status while restoring source cursor
+	tax
 	pla
 	sta ZP_PTR1+1
 	pla
@@ -151,84 +138,116 @@ assembleData:
 	rts
 
 ;;; assembleDataList
-;;; Input: A = bytes per item (1 for byte, 2 for word); ZP_PTR1 = argument base.
-;;; Output: A = ASSEMBLE_* status.
-;;; ZP_PTR1 is preserved. A, X, Y, ZP_PTR0 and flags are clobbered.
-;;;
-;;; Walk the argument directly with a one-byte offset. nextDataItem returns the
-;;; current item as ZP_PTR0/X for parseValue and leaves dataOffset at the next
-;;; item (or at the end of the argument).
+;;; A = fixed output width per item; ZP_PTR1 = complete argument base.
 assembleDataList:
 	sta dataWidth
 	lda #$00
 	sta dataOffset
-
 .next:
 	jsr nextDataItem
-	bcc .bad
-	jsr parseValue
-	cmp #VALUE_BAD
-	beq .bad
+	bcs .itemReady
+	jmp .bad
+.itemReady:
+	jsr captureValue
+	cmp #VALUE_OK
+	beq .fixed
 	cmp #VALUE_UNRESOLVED
-	beq .unresolved
+	beq .hole
+	cmp #VALUE_SYMBOL_FULL
+	bne .notSymbolFull
+	jmp .symbolFull
+.notSymbolFull:
+	cmp #VALUE_SCOPE_ERROR
+	bne .captureBad
+	jmp .scope
+.captureBad:
+	jmp .bad
 
-	;; A byte declaration must really fit in one byte.
+.fixed:
 	lda dataWidth
 	cmp #$01
-	bne .resolved
+	bne .fixedWord
 	lda valueResult+1
-	bne .bad
-
-.resolved:
-	lda assemblyPass
-	cmp #PASS_LAYOUT
-	beq .count
-
+	beq .fixedByteOk
+	jmp .bad
+.fixedByteOk:
 	lda valueResult
-	jsr emitDataByte
-	lda dataWidth
-	cmp #$01
-	beq .itemDone
+	jsr stageByte
+	bcc .workFull
+	jmp .itemDone
+.fixedWord:
+	lda valueResult
+	jsr stageByte
+	bcc .workFull
 	lda valueResult+1
-	jsr emitDataByte
+	jsr stageByte
+	bcc .workFull
 	jmp .itemDone
 
-.unresolved:
-	lda assemblyPass
-	cmp #PASS_LAYOUT
-	bne .undefined
-
-.count:
+.hole:
+	lda stagingPtr
+	sta holeStage
+	lda stagingPtr+1
+	sta holeStage+1
+	lda assemblyPtr
+	sta holeAddress
+	lda assemblyPtr+1
+	sta holeAddress+1
+	lda #$00
+	sta holeExtra
 	lda dataWidth
-	jsr advanceAssemblyPtr
+	cmp #$01
+	beq .byteHole
+	lda #HOLE_VALUE_WORD
+	sta holeKind
+	lda #$00
+	jsr stageByte
+	bcc .workFull
+	lda #$00
+	jsr stageByte
+	bcc .workFull
+	jsr appendHole
+	bcc .workFull
+	jmp .itemDone
+.byteHole:
+	lda #HOLE_DATA_BYTE
+	sta holeKind
+	lda #$00
+	jsr stageByte
+	bcc .workFull
+	jsr appendHole
+	bcc .workFull
 
 .itemDone:
 	lda dataOffset
 	cmp statementArgumentLength
-	bne .next
+	beq .done
+	jmp .next
+.done:
 	lda #ASSEMBLE_OK
 	rts
-
 .bad:
 	lda #ASSEMBLE_BAD_DATA
 	rts
-.undefined:
-	lda #ASSEMBLE_UNDEFINED
+.symbolFull:
+	lda #ASSEMBLE_SYMBOL_FULL
+	rts
+.scope:
+	lda #ASSEMBLE_SCOPE_ERROR
+	rts
+.workFull:
+	lda #ASSEMBLE_WORK_FULL
 	rts
 
 ;;; nextDataItem
-;;; Input: ZP_PTR1 = argument base; dataOffset = current scan offset.
-;;; Output: carry set with ZP_PTR0/X = trimmed item pointer/length.
-;;;         carry clear for an empty item or trailing comma.
-;;; ZP_PTR1 is preserved. A, Y and flags are clobbered.
+;;; Return one trimmed comma-separated item as ZP_PTR0/X.
 nextDataItem:
 	ldy dataOffset
 	jsr skipDataSpaces
 	cpy statementArgumentLength
 	beq .bad
-	sty dataOffset			; current item start
-	ldx #$00			; trimmed item length
-
+	sty dataOffset
+	ldx #$00
 .scan:
 	cpy statementArgumentLength
 	beq .last
@@ -239,44 +258,36 @@ nextDataItem:
 	beq .advance
 	cmp #$09
 	beq .advance
-
-	;; Length extends through the most recent non-whitespace byte.
 	tya
 	sec
 	sbc dataOffset
 	tax
 	inx
-
 .advance:
 	iny
 	jmp .scan
-
 .comma:
 	cpx #$00
 	beq .bad
 	jsr setDataItemPointer
-	iny				; consume comma
+	iny
 	jsr skipDataSpaces
 	cpy statementArgumentLength
-	beq .bad			; trailing comma
-	sty dataOffset			; next item start
+	beq .bad
+	sty dataOffset
 	sec
 	rts
-
 .last:
 	cpx #$00
 	beq .bad
 	jsr setDataItemPointer
-	sty dataOffset			; end of argument
+	sty dataOffset
 	sec
 	rts
 .bad:
 	clc
 	rts
 
-;;; skipDataSpaces
-;;; Y is an offset into the argument at ZP_PTR1. Skip spaces/tabs in place.
-;;; ZP_PTR1 and X are preserved. A, Y and flags are clobbered.
 skipDataSpaces:
 .loop:
 	cpy statementArgumentLength
@@ -292,9 +303,6 @@ skipDataSpaces:
 .done:
 	rts
 
-;;; setDataItemPointer
-;;; dataOffset is the item's start and X is its length. Point ZP_PTR0 at it.
-;;; X and Y are preserved. A, ZP_PTR0 and flags are clobbered.
 setDataItemPointer:
 	clc
 	lda ZP_PTR1
@@ -306,87 +314,44 @@ setDataItemPointer:
 	rts
 
 ;;; assembleString
-;;; Input: ZP_PTR1 = complete string argument.
-;;; Output: A = ASSEMBLE_* status.
-;;; ZP_PTR1 is preserved. A, X, Y, ZP_PTR0 and flags are clobbered.
-;;;
-;;; Like vasm oldstyle, string emits the literal bytes followed by one NUL byte;
-;;; nanoc already relies on this for source lines. There is deliberately no
-;;; escape language yet.
+;;; Emit literal bytes plus one NUL into staging.  stageByte clobbers Y, so the
+;;; source offset lives explicitly in dataOffset rather than in a register.
 assembleString:
 	lda statementArgumentLength
 	cmp #$02
-	bcs .hasArgument
-	jmp .bad
-.hasArgument:
+	bcc .bad
 	ldy #$00
 	lda (ZP_PTR1),y
 	cmp #'"'
-	beq .scan
-	jmp .bad
-
-.scan:
-	iny
+	bne .bad
+	lda #$01
+	sta dataOffset
+.loop:
+	ldy dataOffset
 	cpy statementArgumentLength
 	beq .bad
 	lda (ZP_PTR1),y
 	cmp #'"'
-	bne .scan
-
-	;; The first closing quote must also be the final argument byte. Its offset
-	;; is exactly the output size: literal bytes plus the NUL terminator.
-	sty dataOffset
+	beq .close
+	inc dataOffset
+	jsr stageByte
+	bcc .workFull
+	jmp .loop
+.close:
 	iny
 	cpy statementArgumentLength
 	bne .bad
-
-	lda assemblyPass
-	cmp #PASS_LAYOUT
-	bne .emit
-	lda dataOffset
-	jsr advanceAssemblyPtr
-	lda #ASSEMBLE_OK
-	rts
-
-.emit:
-	lda #$01			; first literal byte, after the opening quote
-	sta dataOffset
-.emitLoop:
-	ldy dataOffset
-	lda (ZP_PTR1),y
-	cmp #'"'
-	beq .terminator
-	inc dataOffset
-	jsr emitDataByte
-	jmp .emitLoop
-
-.terminator:
 	lda #$00
-	jsr emitDataByte
+	jsr stageByte
+	bcc .workFull
 	lda #ASSEMBLE_OK
 	rts
 .bad:
 	lda #ASSEMBLE_BAD_DATA
 	rts
-
-;;; emitDataByte
-;;; A is written at assemblyPtr, then assemblyPtr advances by one.
-;;; ZP_PTR0, A, X and Y are clobbered.
-emitDataByte:
-	tax
-	lda assemblyPtr
-	sta ZP_PTR0
-	lda assemblyPtr+1
-	sta ZP_PTR0+1
-	txa
-	ldy #$00
-	sta (ZP_PTR0),y
-	inc assemblyPtr
-	bne .done
-	inc assemblyPtr+1
-.done:
+.workFull:
+	lda #ASSEMBLE_WORK_FULL
 	rts
 
-;;; Two bytes of explicit state are enough for one data declaration.
 dataWidth:	byte 0
 dataOffset:	byte 0

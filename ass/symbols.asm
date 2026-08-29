@@ -1,17 +1,24 @@
 ;;; symbols.asm
 ;;;
-;;; A deliberately small linear symbol table.
+;;; A deliberately small linear symbol table whose names survive source input.
 ;;;
-;;; Symbol names are not copied. Each entry points back into the resident source
-;;; buffer and stores only name length, 16-bit value, and local-label scope.
+;;; Entries grow upward from symbolTableStart while owned name bytes grow
+;;; downward from symbolTableLimit. The two regions simply meet when full.
 
-SYMBOL_NAME_LO  = 0
-SYMBOL_NAME_HI  = 1
-SYMBOL_LENGTH   = 2
-SYMBOL_VALUE_LO = 3
-SYMBOL_VALUE_HI = 4
-SYMBOL_SCOPE    = 5
-SYMBOL_SIZE     = 6
+SYMBOL_NAME_LO   = 0
+SYMBOL_NAME_HI   = 1
+SYMBOL_LENGTH    = 2
+SYMBOL_BASE_LO   = 3
+SYMBOL_BASE_HI   = 4
+SYMBOL_VALUE_LO  = 5
+SYMBOL_VALUE_HI  = 6
+SYMBOL_SCOPE     = 7
+SYMBOL_FLAGS     = 8
+SYMBOL_SIZE      = 9
+
+SYMBOL_FLAG_LABEL   = $01
+SYMBOL_FLAG_DEFINED = $02
+SYMBOL_DEFINED_LABEL = $03
 
 SYMBOL_OK        = $00
 SYMBOL_DUPLICATE = $01
@@ -19,95 +26,164 @@ SYMBOL_FULL      = $02
 SYMBOL_NO_SCOPE  = $03
 
 ;;; resetSymbols
-;;; Empty the caller-owned table.
+;;; Empty the caller-owned table and return the name cursor to its upper end.
 resetSymbols:
 	lda symbolTableStart
 	sta symbolTableEnd
 	lda symbolTableStart+1
 	sta symbolTableEnd+1
+	lda symbolTableLimit
+	sta symbolNameEnd
+	lda symbolTableLimit+1
+	sta symbolNameEnd+1
 	rts
 
 ;;; defineSymbol
-;;;
-;;; Input:
-;;;   symbolName / symbolNameLength
-;;;   symbolValue
-;;;
-;;; Returns SYMBOL_* in A. ZP_PTR1 is preserved.
+;;; Define a fixed constant. Input is symbolName/symbolNameLength/symbolValue.
 defineSymbol:
-	jsr findSymbol
-	bcc .new
+	jsr symbolScope
+	bcc .noScope
+	jsr findSymbolEntry
+	bcs .duplicate
+	lda symbolValue
+	sta symbolBase
+	lda symbolValue+1
+	sta symbolBase+1
+	lda #SYMBOL_FLAG_DEFINED
+	sta symbolFlags
+	jsr allocateSymbol
+	rts
+.duplicate:
 	lda #SYMBOL_DUPLICATE
 	rts
-
-.new:
-	jsr symbolScope
-	bcs .scopeReady
+.noScope:
 	lda #SYMBOL_NO_SCOPE
 	rts
-.scopeReady:
-	sta symbolWantedScope
 
-	;; The next entry must still fit inside [symbolTableStart, symbolTableLimit).
+;;; internLabel
+;;; Return an existing label entry or create one undefined entry with an owned
+;;; name. Carry set means success and symbolEntry identifies the entry.
+internLabel:
+	jsr symbolScope
+	bcc .noScope
+	jsr findSymbolEntry
+	bcc .new
+	lda symbolFlags
+	and #SYMBOL_FLAG_LABEL
+	beq .duplicate
+	lda #SYMBOL_OK
+	sec
+	rts
+.new:
+	lda #$00
+	sta symbolBase
+	sta symbolBase+1
+	sta symbolValue
+	sta symbolValue+1
+	lda #SYMBOL_FLAG_LABEL
+	sta symbolFlags
+	jsr allocateSymbol
+	cmp #SYMBOL_OK
+	bne .failed
+	sec
+	rts
+.failed:
 	clc
-	lda symbolTableEnd
-	adc #SYMBOL_SIZE
-	sta symbolNext
-	lda symbolTableEnd+1
-	adc #$00
-	sta symbolNext+1
-	lda symbolNext+1
-	cmp symbolTableLimit+1
-	bcc .room
-	bne .full
-	lda symbolNext
-	cmp symbolTableLimit
-	bcc .room
-	beq .room
-.full:
-	lda #SYMBOL_FULL
+	rts
+.duplicate:
+	lda #SYMBOL_DUPLICATE
+	clc
+	rts
+.noScope:
+	lda #SYMBOL_NO_SCOPE
+	clc
 	rts
 
-.room:
-	lda symbolTableEnd
-	sta ZP_PTR0
-	lda symbolTableEnd+1
-	sta ZP_PTR0+1
-	ldy #SYMBOL_NAME_LO
-	lda symbolName
-	sta (ZP_PTR0),y
-	iny
-	lda symbolName+1
-	sta (ZP_PTR0),y
-	iny
-	lda symbolNameLength
-	sta (ZP_PTR0),y
-	iny
-	lda symbolValue
-	sta (ZP_PTR0),y
-	iny
-	lda symbolValue+1
-	sta (ZP_PTR0),y
-	iny
-	lda symbolWantedScope
-	sta (ZP_PTR0),y
+;;; defineLabel
+;;; Define a label at the current conservative assemblyPtr. A previous forward
+;;; reference may already have created its undefined entry.
+defineLabel:
+	jsr symbolScope
+	bcc .noScope
+	jsr findSymbolEntry
+	bcc .new
+	lda symbolFlags
+	and #SYMBOL_FLAG_LABEL
+	beq .duplicate
+	lda symbolFlags
+	and #SYMBOL_FLAG_DEFINED
+	bne .duplicate
 
-	lda symbolNext
-	sta symbolTableEnd
-	lda symbolNext+1
-	sta symbolTableEnd+1
+	lda symbolEntry
+	sta ZP_PTR0
+	lda symbolEntry+1
+	sta ZP_PTR0+1
+	ldy #SYMBOL_BASE_LO
+	lda assemblyPtr
+	sta (ZP_PTR0),y
+	iny
+	lda assemblyPtr+1
+	sta (ZP_PTR0),y
+	iny
+	lda assemblyPtr
+	sta (ZP_PTR0),y
+	iny
+	lda assemblyPtr+1
+	sta (ZP_PTR0),y
+	ldy #SYMBOL_FLAGS
+	lda #SYMBOL_DEFINED_LABEL
+	sta (ZP_PTR0),y
+	sta symbolFlags
+	lda assemblyPtr
+	sta symbolBase
+	sta symbolValue
+	lda assemblyPtr+1
+	sta symbolBase+1
+	sta symbolValue+1
 	lda #SYMBOL_OK
 	rts
 
+.new:
+	lda assemblyPtr
+	sta symbolBase
+	sta symbolValue
+	lda assemblyPtr+1
+	sta symbolBase+1
+	sta symbolValue+1
+	lda #SYMBOL_DEFINED_LABEL
+	sta symbolFlags
+	jsr allocateSymbol
+	rts
+.duplicate:
+	lda #SYMBOL_DUPLICATE
+	rts
+.noScope:
+	lda #SYMBOL_NO_SCOPE
+	rts
+
 ;;; findSymbol
-;;;
-;;; Look up symbolName/symbolNameLength. Ordinary names have scope zero;
-;;; `.local` names use currentScope.
-;;;
-;;; Returns symbolValue and carry set when found, carry clear otherwise.
-;;; ZP_PTR1 is preserved because it is the assembler's source pointer.
-;;; ZP_PTR0, A, X and Y are clobbered.
+;;; Fixed-value lookup used by parseValue. Labels deliberately do not resolve
+;;; here: even a backward label can move when an earlier instruction relaxes.
 findSymbol:
+	jsr findSymbolEntry
+	bcc .notFound
+	lda symbolFlags
+	and #SYMBOL_FLAG_DEFINED
+	beq .notFound
+	lda symbolFlags
+	and #SYMBOL_FLAG_LABEL
+	bne .notFound
+	sec
+	rts
+.notFound:
+	clc
+	rts
+
+;;; findSymbolEntry
+;;; Look up symbolName/symbolNameLength in the current local-label scope.
+;;; Carry set returns symbolEntry, symbolBase, symbolValue, and symbolFlags.
+;;; ZP_PTR1 is preserved because it is normally the source cursor.
+findSymbolEntry:
 	jsr symbolScope
 	bcs .scopeReady
 	clc
@@ -115,13 +191,6 @@ findSymbol:
 .scopeReady:
 	sta symbolWantedScope
 
-	;; The requested name is one zero-copy source view.
-	lda symbolName
-	sta ZP_PTR0
-	lda symbolName+1
-	sta ZP_PTR0+1
-
-	;; Borrow ZP_PTR1 while walking the table, but give the source pointer back.
 	lda ZP_PTR1
 	pha
 	lda ZP_PTR1+1
@@ -131,31 +200,36 @@ findSymbol:
 	sta symbolScan
 	lda symbolTableStart+1
 	sta symbolScan+1
-
 .next:
 	lda symbolScan
 	cmp symbolTableEnd
 	bne .entry
 	lda symbolScan+1
 	cmp symbolTableEnd+1
-	beq .notFound
+	bne .entry
+	jmp .notFound
 
 .entry:
 	lda symbolScan
 	sta ZP_PTR1
 	lda symbolScan+1
 	sta ZP_PTR1+1
-
 	ldy #SYMBOL_LENGTH
 	lda (ZP_PTR1),y
 	cmp symbolNameLength
-	bne .advance
+	beq .lengthMatches
+	jmp .advance
+.lengthMatches:
 	ldy #SYMBOL_SCOPE
 	lda (ZP_PTR1),y
 	cmp symbolWantedScope
-	bne .advance
-
-	;; Point ZP_PTR1 at the stored source text and compare the names in place.
+	beq .scopeMatches
+	jmp .advance
+.scopeMatches:
+	lda symbolName
+	sta ZP_PTR0
+	lda symbolName+1
+	sta ZP_PTR0+1
 	ldy #SYMBOL_NAME_LO
 	lda (ZP_PTR1),y
 	tax
@@ -172,41 +246,292 @@ findSymbol:
 	cpy symbolNameLength
 	bne .compare
 
-	;; Reload the table entry and return its 16-bit value.
 	lda symbolScan
+	sta symbolEntry
 	sta ZP_PTR1
 	lda symbolScan+1
+	sta symbolEntry+1
 	sta ZP_PTR1+1
-	ldy #SYMBOL_VALUE_LO
+	ldy #SYMBOL_BASE_LO
+	lda (ZP_PTR1),y
+	sta symbolBase
+	iny
+	lda (ZP_PTR1),y
+	sta symbolBase+1
+	iny
 	lda (ZP_PTR1),y
 	sta symbolValue
 	iny
 	lda (ZP_PTR1),y
 	sta symbolValue+1
-	sec
-	jmp .restoreSource
+	ldy #SYMBOL_FLAGS
+	lda (ZP_PTR1),y
+	sta symbolFlags
+	lda #$01
+	sta symbolFound
+	jmp .restore
 
 .advance:
 	clc
 	lda symbolScan
 	adc #SYMBOL_SIZE
 	sta symbolScan
-	bcc .next
+	bcc .samePage
 	inc symbolScan+1
+.samePage:
 	jmp .next
 
 .notFound:
-	clc
-.restoreSource:
+	lda #$00
+	sta symbolFound
+.restore:
 	pla
 	sta ZP_PTR1+1
 	pla
 	sta ZP_PTR1
+	lda symbolFound
+	beq .clear
+	sec
+	rts
+.clear:
+	clc
+	rts
+
+;;; allocateSymbol
+;;; Append one entry and copy its name into the downward-growing name area.
+;;; Inputs: symbolName/Length, symbolBase, symbolValue, symbolFlags.
+allocateSymbol:
+	lda symbolNameLength
+	bne .hasName
+	jmp .noScope
+.hasName:
+	jsr symbolScope
+	bcs .hasScope
+	jmp .noScope
+.hasScope:
+	sta symbolWantedScope
+
+	clc
+	lda symbolTableEnd
+	adc #SYMBOL_SIZE
+	sta symbolNext
+	lda symbolTableEnd+1
+	adc #$00
+	sta symbolNext+1
+
+	sec
+	lda symbolNameEnd
+	sbc symbolNameLength
+	sta symbolNewName
+	lda symbolNameEnd+1
+	sbc #$00
+	sta symbolNewName+1
+
+	lda symbolNewName+1
+	cmp symbolNext+1
+	bcs .highRoom
+	jmp .full
+.highRoom:
+	bne .room
+	lda symbolNewName
+	cmp symbolNext
+	bcs .room
+	jmp .full
+.room:
+	lda ZP_PTR1
+	pha
+	lda ZP_PTR1+1
+	pha
+
+	lda symbolName
+	sta ZP_PTR0
+	lda symbolName+1
+	sta ZP_PTR0+1
+	lda symbolNewName
+	sta ZP_PTR1
+	lda symbolNewName+1
+	sta ZP_PTR1+1
+	ldy #$00
+.copyName:
+	lda (ZP_PTR0),y
+	sta (ZP_PTR1),y
+	iny
+	cpy symbolNameLength
+	bne .copyName
+
+	lda symbolTableEnd
+	sta symbolEntry
+	sta ZP_PTR1
+	lda symbolTableEnd+1
+	sta symbolEntry+1
+	sta ZP_PTR1+1
+	ldy #SYMBOL_NAME_LO
+	lda symbolNewName
+	sta (ZP_PTR1),y
+	iny
+	lda symbolNewName+1
+	sta (ZP_PTR1),y
+	iny
+	lda symbolNameLength
+	sta (ZP_PTR1),y
+	iny
+	lda symbolBase
+	sta (ZP_PTR1),y
+	iny
+	lda symbolBase+1
+	sta (ZP_PTR1),y
+	iny
+	lda symbolValue
+	sta (ZP_PTR1),y
+	iny
+	lda symbolValue+1
+	sta (ZP_PTR1),y
+	iny
+	lda symbolWantedScope
+	sta (ZP_PTR1),y
+	iny
+	lda symbolFlags
+	sta (ZP_PTR1),y
+
+	lda symbolNext
+	sta symbolTableEnd
+	lda symbolNext+1
+	sta symbolTableEnd+1
+	lda symbolNewName
+	sta symbolNameEnd
+	lda symbolNewName+1
+	sta symbolNameEnd+1
+
+	pla
+	sta ZP_PTR1+1
+	pla
+	sta ZP_PTR1
+	lda #SYMBOL_OK
+	rts
+.full:
+	lda #SYMBOL_FULL
+	rts
+.noScope:
+	lda #SYMBOL_NO_SCOPE
+	rts
+
+;;; updateLabelValues
+;;; Recompute defined labels by subtracting each earlier direct instruction that
+;;; has relaxed from three bytes to two.
+updateLabelValues:
+	lda symbolTableStart
+	sta symbolScan
+	lda symbolTableStart+1
+	sta symbolScan+1
+.next:
+	lda symbolScan
+	cmp symbolTableEnd
+	bne .entry
+	lda symbolScan+1
+	cmp symbolTableEnd+1
+	beq .done
+.entry:
+	lda symbolScan
+	sta ZP_PTR0
+	lda symbolScan+1
+	sta ZP_PTR0+1
+	ldy #SYMBOL_FLAGS
+	lda (ZP_PTR0),y
+	and #SYMBOL_DEFINED_LABEL
+	cmp #SYMBOL_DEFINED_LABEL
+	bne .advance
+	ldy #SYMBOL_BASE_LO
+	lda (ZP_PTR0),y
+	sta adjustInput
+	iny
+	lda (ZP_PTR0),y
+	sta adjustInput+1
+	jsr adjustAddress
+	lda symbolScan
+	sta ZP_PTR0
+	lda symbolScan+1
+	sta ZP_PTR0+1
+	ldy #SYMBOL_VALUE_LO
+	lda adjustResult
+	sta (ZP_PTR0),y
+	iny
+	lda adjustResult+1
+	sta (ZP_PTR0),y
+.advance:
+	clc
+	lda symbolScan
+	adc #SYMBOL_SIZE
+	sta symbolScan
+	bcc .samePage
+	inc symbolScan+1
+.samePage:
+	jmp .next
+.done:
+	rts
+
+;;; allLabelsDefined
+;;; Carry set when every interned label reference was eventually defined.
+allLabelsDefined:
+	lda symbolTableStart
+	sta symbolScan
+	lda symbolTableStart+1
+	sta symbolScan+1
+.next:
+	lda symbolScan
+	cmp symbolTableEnd
+	bne .entry
+	lda symbolScan+1
+	cmp symbolTableEnd+1
+	beq .ok
+.entry:
+	lda symbolScan
+	sta ZP_PTR0
+	lda symbolScan+1
+	sta ZP_PTR0+1
+	ldy #SYMBOL_FLAGS
+	lda (ZP_PTR0),y
+	and #SYMBOL_FLAG_LABEL
+	beq .advance
+	ldy #SYMBOL_FLAGS
+	lda (ZP_PTR0),y
+	and #SYMBOL_FLAG_DEFINED
+	beq .bad
+.advance:
+	clc
+	lda symbolScan
+	adc #SYMBOL_SIZE
+	sta symbolScan
+	bcc .samePage
+	inc symbolScan+1
+.samePage:
+	jmp .next
+.ok:
+	sec
+	rts
+.bad:
+	clc
+	rts
+
+;;; loadSymbolEntry
+;;; symbolEntry -> symbolValue/symbolFlags.
+loadSymbolEntry:
+	lda symbolEntry
+	sta ZP_PTR0
+	lda symbolEntry+1
+	sta ZP_PTR0+1
+	ldy #SYMBOL_VALUE_LO
+	lda (ZP_PTR0),y
+	sta symbolValue
+	iny
+	lda (ZP_PTR0),y
+	sta symbolValue+1
+	ldy #SYMBOL_FLAGS
+	lda (ZP_PTR0),y
+	sta symbolFlags
 	rts
 
 ;;; symbolScope
-;;; Return this name's scope in A/carry set. A local name before any global
-;;; label has no scope and returns carry clear.
+;;; Ordinary names have scope zero. `.name` uses currentScope.
 symbolScope:
 	lda symbolNameLength
 	beq .bad
@@ -230,18 +555,21 @@ symbolScope:
 	clc
 	rts
 
-;;; Caller-owned table region and current local-label scope.
 symbolTableStart:	word 0
 symbolTableEnd:		word 0
 symbolTableLimit:	word 0
+symbolNameEnd:		word 0
 currentScope:		byte 0
 
-;;; Symbol query/result state.
 symbolName:		word 0
 symbolNameLength:	byte 0
+symbolEntry:		word 0
+symbolBase:		word 0
 symbolValue:		word 0
+symbolFlags:		byte 0
 
-;;; Scratch used only while walking/appending the table.
 symbolWantedScope:	byte 0
 symbolNext:		word 0
+symbolNewName:		word 0
 symbolScan:		word 0
+symbolFound:		byte 0

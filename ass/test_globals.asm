@@ -7,12 +7,14 @@ FAIL_BACKWARD_GLOBAL = $02
 OUTPUT      = $2000
 SYMBOLS     = $3000
 SYMBOLS_END = $3600
+STAGING     = $3600
+STAGING_END = $4000
 
 	* = ASSEMBLER_TEST_ENTRY
 
 main:
 	sei
-	jsr setupSymbols
+	jsr setupWorkspace
 	jsr testForwardGlobal
 	bcc finish
 	jsr testBackwardGlobal
@@ -23,7 +25,7 @@ finish:
 .halt:
 	jmp .halt
 
-setupSymbols:
+setupWorkspace:
 	lda #<SYMBOLS
 	sta symbolTableStart
 	lda #>SYMBOLS
@@ -32,10 +34,18 @@ setupSymbols:
 	sta symbolTableLimit
 	lda #>SYMBOLS_END
 	sta symbolTableLimit+1
+	lda #<STAGING
+	sta stagingStart
+	lda #>STAGING
+	sta stagingStart+1
+	lda #<STAGING_END
+	sta stagingLimit
+	lda #>STAGING_END
+	sta stagingLimit+1
 	rts
 
-;;; A forward global reference is unresolved during pass 1, then found during
-;;; pass 2. JSR has only an absolute form, so its size never changes.
+;;; A forward global reference becomes a fixed-width word hole. JSR has only an
+;;; absolute form, so layout never depends on the eventual value.
 testForwardGlobal:
 	lda #<forwardSource
 	sta ZP_PTR1
@@ -71,7 +81,8 @@ testForwardGlobal:
 	clc
 	rts
 
-;;; A backward global reference is already known during pass 1.
+;;; Backward label-dependent values are also retained as holes because an
+;;; earlier relaxation could still move the label after its line was consumed.
 testBackwardGlobal:
 	lda #<backwardSource
 	sta ZP_PTR1

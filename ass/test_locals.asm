@@ -7,12 +7,14 @@ FAIL_LOCAL_SCOPE      = $02
 OUTPUT      = $2000
 SYMBOLS     = $3000
 SYMBOLS_END = $3600
+STAGING     = $3600
+STAGING_END = $4000
 
 	* = ASSEMBLER_TEST_ENTRY
 
 main:
 	sei
-	jsr setupSymbols
+	jsr setupWorkspace
 	jsr testLocalReferences
 	bcc finish
 	jsr testLocalScopeError
@@ -23,7 +25,7 @@ finish:
 .halt:
 	jmp .halt
 
-setupSymbols:
+setupWorkspace:
 	lda #<SYMBOLS
 	sta symbolTableStart
 	lda #>SYMBOLS
@@ -32,6 +34,14 @@ setupSymbols:
 	sta symbolTableLimit
 	lda #>SYMBOLS_END
 	sta symbolTableLimit+1
+	lda #<STAGING
+	sta stagingStart
+	lda #>STAGING
+	sta stagingStart+1
+	lda #<STAGING_END
+	sta stagingLimit
+	lda #>STAGING_END
+	sta stagingLimit+1
 	rts
 
 ;;; Local names use the most recent global label as their one-byte scope. The
