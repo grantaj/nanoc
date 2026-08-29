@@ -113,7 +113,7 @@ The caller stops at the first failure and writes the returned code to `TEST_RESU
 
 Use distinct failure codes where practical so a failing CI run identifies the assertion that failed. Reserving small ranges for related checks is fine when it makes a larger test easier to read, but the ranges have no machinery attached to them.
 
-Native test programs start at `$c000`. Keep each one below `$d000`, where the C64 I/O window begins. If a test grows toward that boundary, split it by behaviour rather than relocating it or hiding code or data under I/O.
+Ordinary native tests start at `TEST_ENTRY` (`$c000`). Tests that include the complete assembler use `ASSEMBLER_TEST_ENTRY` (`$4000`) because the production assembler itself no longer fits below the `$d000` C64 I/O window. Keep code, output, and scratch regions visibly separate and avoid ROM/I/O windows rather than banking around them merely for a test. The host runner reads the PRG's own load address and starts it there.
 
 Keep the test stack simple:
 
