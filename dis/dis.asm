@@ -102,8 +102,11 @@ main:
 
 	;; output formatted operand -------------------------------------------
 
+	lda modeOperandWidths,y	; save width before Y indexes the formatter table
+	sta temp
+	
 	clc
-	lda #$1			;increment pointer
+	lda #$1			; increment pointer past opcode
 	adc p
 	sta p
 	lda #$0
@@ -127,8 +130,7 @@ main:
 	jmp (jumpVector)
 
 .continue:
-	
-	;; on return, A contains operand width
+	lda temp			; operand width from shared mode metadata
 	clc			; increment pointer	
 	adc p
 	sta p
@@ -179,7 +181,7 @@ printCR:
 	jsr CHROUT
 	rts
 
-	include "modes.asm"		
+	include "modes.asm"
+	include "mode_widths.asm"
 	include "opcode_table.asm"
 	include "mnemonic_table.asm"
-
