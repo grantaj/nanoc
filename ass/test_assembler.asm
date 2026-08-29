@@ -68,7 +68,9 @@ testResolvedProgram:
 	jsr assemble
 	cmp #ASSEMBLE_OK
 	beq .checkBytes
-	lda #FAIL_RESOLVED_ASSEMBLE
+	;; Temporary diagnostic: $80 | ASSEMBLE_* exposes the exact failing status
+	;; through the same native result byte used by every other test.
+	ora #$80
 	clc
 	rts
 
