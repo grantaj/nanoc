@@ -42,9 +42,9 @@ main:
 	sta ZP_PTR1
 	lda #>source
 	sta ZP_PTR1+1
-	lda #<sourceEnd
+	lda #<sourceInputEnd
 	sta sourceEnd
-	lda #>sourceEnd
+	lda #>sourceInputEnd
 	sta sourceEnd+1
 
 .sourceLoop:
@@ -377,7 +377,7 @@ source:
 	string "LDX $20"
 	string "JMP ($2000)"
 	string "RTS"
-sourceEnd:
+sourceInputEnd:
 
 expectedBytes:
 	byte $a9, $20
