@@ -8,7 +8,7 @@ OUTPUT      = $2000
 SYMBOLS     = $3000
 SYMBOLS_END = $3600
 
-	* = TEST_ENTRY
+	* = ASSEMBLER_TEST_ENTRY
 
 main:
 	sei
