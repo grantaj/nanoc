@@ -134,20 +134,7 @@ processStatement:
 	bcc .codeOrData
 	lda sourceFileMode
 	beq .badInclude
-
-	;; Include path construction borrows ZP_PTR1. Preserve the parser cursor so
-	;; the caller can continue the current line after includeSource returns.
-	lda ZP_PTR1
-	pha
-	lda ZP_PTR1+1
-	pha
 	jsr includeSource
-	tax
-	pla
-	sta ZP_PTR1+1
-	pla
-	sta ZP_PTR1
-	txa
 	rts
 .badInclude:
 	lda #ASSEMBLE_BAD_STATEMENT
@@ -208,8 +195,8 @@ isIncludeStatement:
 	rts
 
 ;;; assembleLabel
-;;; A label's address is final when it appears. Define it, immediately patch the
-;;; plain word-reference chain, then resolve any exceptional fixups for it.
+;;; defineLabel owns the undefined -> defined transition and patches ordinary
+;;; word references. Exceptional fixups are then resolved for the same symbol.
 assembleLabel:
 	jsr enterLabelScope
 	bcc .scopeError
@@ -224,7 +211,6 @@ assembleLabel:
 	beq .defined
 	jmp mapSymbolStatus
 .defined:
-	jsr resolveWordReferencesForSymbol
 	jsr resolveSymbolFixups
 	rts
 .scopeError:
@@ -516,9 +502,13 @@ stageResolvedInstruction:
 	rts
 
 ;;; stageResolvedRelative
-;;; The target and current PC are both final, so a backward/fixed branch can be
-;;; range-checked and encoded immediately.
+;;; The target and current PC are both final. Put them into the same tiny branch
+;;; encoder used by forward fixups, then stage the opcode and signed byte.
 stageResolvedRelative:
+	lda instructionOperandValue
+	sta resolvedValue
+	lda instructionOperandValue+1
+	sta resolvedValue+1
 	clc
 	lda assemblyPtr
 	adc #$02
@@ -526,25 +516,8 @@ stageResolvedRelative:
 	lda assemblyPtr+1
 	adc #$00
 	sta relativeBase+1
-	sec
-	lda instructionOperandValue
-	sbc relativeBase
-	tax
-	lda instructionOperandValue+1
-	sbc relativeBase+1
-	cpx #$80
-	bcc .positive
-	cmp #$ff
-	bne .range
-	txa
-	sta relativeByte
-	jmp .stage
-.positive:
-	cmp #$00
-	bne .range
-	txa
-	sta relativeByte
-.stage:
+	jsr encodeRelativeByte
+	bcc .range
 	lda instructionOpcode
 	jsr stageByte
 	bcc .full
@@ -689,7 +662,6 @@ sourceFileMode:	byte 0
 originAllowed:	byte 0
 assemblyStart:	word 0
 instructionWidth:	byte 0
-relativeByte:	byte 0
 
 	include "source.asm"
 	include "data.asm"
