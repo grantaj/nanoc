@@ -21,10 +21,12 @@ ASS_TARGETS = \
 	$(BUILD_DIR)/test_values.prg \
 	$(BUILD_DIR)/test_globals.prg \
 	$(BUILD_DIR)/test_locals.prg \
-	$(BUILD_DIR)/test_assembler.prg
+	$(BUILD_DIR)/test_assembler.prg \
+	$(BUILD_DIR)/test_data.prg \
+	$(BUILD_DIR)/test_strings.prg
 
 ASSEMBLER_DEPS = \
-	ass/assembler.asm ass/symbols.asm ass/value.asm ass/emitter.asm \
+	ass/assembler.asm ass/data.asm ass/symbols.asm ass/value.asm ass/emitter.asm \
 	ass/instruction.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc \
 	dis/mode_ids.inc dis/mode_widths.asm dis/opcode_table.asm dis/mnemonic_table.asm \
 	test.inc
@@ -33,7 +35,7 @@ EXAMPLE_TARGETS = \
 	$(BUILD_DIR)/border-demo.prg \
 	$(BUILD_DIR)/border-c.prg
 
-.PHONY: all dis ass examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-emitter test-values test-globals test-locals test-assembler clean
+.PHONY: all dis ass examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-emitter test-values test-globals test-locals test-assembler test-data test-strings clean
 
 all: dis ass examples
 
@@ -43,7 +45,7 @@ ass: $(ASS_TARGETS)
 
 examples: $(EXAMPLE_TARGETS)
 
-test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-emitter test-values test-globals test-locals test-assembler
+test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-emitter test-values test-globals test-locals test-assembler test-data test-strings
 
 test-skipws: $(BUILD_DIR)/test_skipws.prg
 	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< skipws
@@ -74,6 +76,12 @@ test-locals: $(BUILD_DIR)/test_locals.prg
 
 test-assembler: $(BUILD_DIR)/test_assembler.prg
 	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< assembler
+
+test-data: $(BUILD_DIR)/test_data.prg
+	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< data
+
+test-strings: $(BUILD_DIR)/test_strings.prg
+	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< strings
 
 $(BUILD_DIR):
 	mkdir -p $@
@@ -119,6 +127,12 @@ $(BUILD_DIR)/test_locals.prg: ass/test_locals.asm $(ASSEMBLER_DEPS) | $(BUILD_DI
 
 $(BUILD_DIR)/test_assembler.prg: ass/test_assembler.asm $(ASSEMBLER_DEPS) | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_assembler.asm
+
+$(BUILD_DIR)/test_data.prg: ass/test_data.asm $(ASSEMBLER_DEPS) | $(BUILD_DIR)
+	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_data.asm
+
+$(BUILD_DIR)/test_strings.prg: ass/test_strings.asm $(ASSEMBLER_DEPS) | $(BUILD_DIR)
+	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_strings.asm
 
 $(BUILD_DIR)/border-demo.prg: examples/border/demo.asm | $(BUILD_DIR)
 	cd examples/border && $(VASM) $(VASMFLAGS) -o ../../$@ demo.asm
