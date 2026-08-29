@@ -204,38 +204,6 @@ resolveFixupValue:
 .done:
 	rts
 
-;;; encodeRelativeByte
-;;; resolvedValue is the branch target and relativeBase is the address following
-;;; the branch instruction. Return the signed 8-bit displacement in relativeByte.
-;;; Carry set means it fits the 6502 -128..127 branch range; carry clear means it
-;;; does not. This is the one branch-offset calculation used by both immediate
-;;; assembly and forward-reference fixups.
-encodeRelativeByte:
-	sec
-	lda resolvedValue
-	sbc relativeBase
-	tax
-	lda resolvedValue+1
-	sbc relativeBase+1
-	cpx #$80
-	bcc .positive
-	cmp #$ff
-	bne .range
-	txa
-	sta relativeByte
-	sec
-	rts
-.positive:
-	cmp #$00
-	bne .range
-	txa
-	sta relativeByte
-	sec
-	rts
-.range:
-	clc
-	rts
-
 ;;; resolveSymbolFixups
 ;;; A label has just been defined. Walk the small exceptional-fixup table and
 ;;; patch every record waiting for this symbol immediately. Successful records
@@ -350,9 +318,25 @@ patchCurrentFixup:
 	bne .haveBase
 	inc relativeBase+1
 .haveBase:
-	jsr encodeRelativeByte
-	bcc .branchRange
-	lda relativeByte
+	sec
+	lda resolvedValue
+	sbc relativeBase
+	tax
+	lda resolvedValue+1
+	sbc relativeBase+1
+	cpx #$80
+	bcc .positive
+	cmp #$ff
+	bne .branchRange
+	txa
+	sta resolvedValue
+	jsr patchFixupByte
+	lda #ASSEMBLE_OK
+	rts
+.positive:
+	cmp #$00
+	bne .branchRange
+	txa
 	sta resolvedValue
 	jsr patchFixupByte
 	lda #ASSEMBLE_OK
@@ -472,6 +456,5 @@ fixupScan:	word 0
 
 resolvedValue:	word 0
 relativeBase:	word 0
-relativeByte:	byte 0
 patchPtr:	word 0
 copyStage:	word 0
