@@ -82,6 +82,8 @@ assemble:
 ;;; A = PASS_LAYOUT or PASS_EMIT.
 runAssemblyPass:
 	sta assemblyPass
+	lda #$01
+	sta originAllowed
 	lda #$00
 	sta currentScope
 .loop:
@@ -97,6 +99,8 @@ runAssemblyPass:
 	lda #ASSEMBLE_BAD_STATEMENT
 	rts
 .label:
+	lda #$00
+	sta originAllowed
 	jsr assembleLabel
 	jmp .status
 .symbol:
@@ -105,6 +109,8 @@ runAssemblyPass:
 .codeOrData:
 	;; Bare byte/word/string names are the only data declarations. Everything
 	;; else on this parser path is a normal 6502 instruction.
+	lda #$00
+	sta originAllowed
 	jsr dataStatementKind
 	beq .instruction
 	jsr assembleData
@@ -165,7 +171,7 @@ assembleLabel:
 	rts
 
 ;;; assembleSymbol
-;;; `* = value` changes the program address on both passes. Every other symbol
+;;; `* = value` is allowed once, before labels/code/data. Every other symbol
 ;;; definition is a pass-1 constant and is simply skipped on pass 2.
 assembleSymbol:
 	lda statementNameLength
@@ -208,6 +214,10 @@ assembleSymbol:
 	jmp mapSymbolStatus
 
 .origin:
+	lda originAllowed
+	beq .badOrigin
+	lda #$00
+	sta originAllowed
 	lda statementArgument
 	sta ZP_PTR0
 	lda statementArgument+1
@@ -392,6 +402,7 @@ advanceAssemblyPtr:
 	rts
 
 assemblyPass:		byte 0
+originAllowed:		byte 0
 assemblySource:		word 0
 assemblyStart:		word 0
 assemblyPassEnd:	word 0
