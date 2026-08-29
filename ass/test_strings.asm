@@ -1,11 +1,12 @@
 	include "zp.inc"
 	include "../test.inc"
 
-FAIL_STRING_BYTES   = $01
-FAIL_STRING_POINTER = $02
-FAIL_EMPTY_STRING   = $03
-FAIL_BAD_STRING     = $04
-FAIL_STRING_PAGE    = $05
+FAIL_STRING_ASSEMBLE = $01
+FAIL_STRING_BYTES    = $02
+FAIL_STRING_POINTER  = $03
+FAIL_EMPTY_STRING    = $04
+FAIL_BAD_STRING      = $05
+FAIL_STRING_PAGE     = $06
 
 OUTPUT      = $2200
 PAGE_OUTPUT = $20ff
@@ -57,7 +58,7 @@ testStringBytes:
 	sta assemblyPtr+1
 	jsr assemble
 	cmp #ASSEMBLE_OK
-	bne .failBytes
+	bne .failAssemble
 	lda OUTPUT
 	cmp #'A'
 	bne .failBytes
@@ -74,6 +75,10 @@ testStringBytes:
 	cmp #>(OUTPUT+3)
 	bne .failPointer
 	sec
+	rts
+.failAssemble:
+	lda #FAIL_STRING_ASSEMBLE
+	clc
 	rts
 .failBytes:
 	lda #FAIL_STRING_BYTES
