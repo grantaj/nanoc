@@ -2,7 +2,8 @@
 
 	* = $c000
 
-;;; Minimal parser demo. Walk the sample source in place until EOF.
+;;; Minimal parser demo. Walk sample source in place and reduce instructions to
+;;; semantic instruction state until EOF.
 main:
 	lda #<INPUT
 	sta ZP_PTR1
@@ -16,10 +17,16 @@ main:
 .loop:
 	jsr nextStatement
 	cmp #STATEMENT_EOF
+	beq .done
+	cmp #STATEMENT_INSTRUCTION
 	bne .loop
+	jsr parseInstruction
+	jmp .loop
+.done:
 	rts
 
 	include "parser.asm"
+	include "instruction.asm"
 
 INPUT:
 	string "     \t\t; COMMENT"
