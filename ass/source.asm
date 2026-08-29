@@ -104,10 +104,10 @@ includeSourceBody:
 ;;;     "parser.asm"        -> sourceDirectory + "PARSER.ASM"
 ;;;     "../dis/table.asm"  -> "DIS/TABLE.ASM"
 ;;;
-;;; ZP_PTR0 walks the input bytes and ZP_PTR1 walks the output buffer. Source
+;;; ZP_PTR0 walks input and copyPathBytes appends it to the output buffer. Source
 ;;; files are ASCII text while the C64 filename bytes expected by VICE's
-;;; filesystem device use the upper-case PETSCII/ASCII range, so a-z is folded to
-;;; A-Z while copying. Carry set means openName/openNameLength are ready.
+;;; filesystem device use the upper-case PETSCII/ASCII range, so copying folds
+;;; a-z to A-Z. Carry set means openName/openNameLength are ready.
 prepareIncludeName:
 	lda sourceDirectoryLength
 	bne .build
@@ -139,8 +139,8 @@ prepareIncludeName:
 	lda #$00
 	sta sourcePathLength
 
-	;; Start at the first byte inside the quotes. The only parent syntax the real
-	;; source tree needs is a leading ../, which simply omits sourceDirectory.
+	;; Point at the first byte inside the quotes and recognize the only parent
+	;; form needed by the production tree.
 	clc
 	lda statementArgument
 	adc #$01
@@ -151,7 +151,6 @@ prepareIncludeName:
 	lda statementArgumentLength
 	sec
 	sbc #$02
-	sta sourceCopyLeft
 	cmp #$03
 	bcc .local
 	ldy #$00
@@ -166,6 +165,7 @@ prepareIncludeName:
 	lda (ZP_PTR0),y
 	cmp #'/'
 	bne .local
+
 	clc
 	lda ZP_PTR0
 	adc #$03
@@ -173,34 +173,22 @@ prepareIncludeName:
 	bcc .parentReady
 	inc ZP_PTR0+1
 .parentReady:
-	lda sourceCopyLeft
+	lda statementArgumentLength
 	sec
-	sbc #$03
-	sta sourceCopyLeft
-	jmp .filename
+	sbc #$05			; quotes plus leading ../
+	jsr copyPathBytes
+	bcc .bad
+	jmp .done
 
 .local:
-	;; Copy the configured directory, then point back at the filename itself.
 	lda sourceDirectory
 	sta ZP_PTR0
 	lda sourceDirectory+1
 	sta ZP_PTR0+1
 	lda sourceDirectoryLength
-	sta sourceCopyLeft
-.copyDirectory:
-	lda sourceCopyLeft
-	beq .directoryDone
-	ldy #$00
-	lda (ZP_PTR0),y
-	jsr appendPathByte
+	jsr copyPathBytes
 	bcc .bad
-	inc ZP_PTR0
-	bne .directoryNext
-	inc ZP_PTR0+1
-.directoryNext:
-	dec sourceCopyLeft
-	jmp .copyDirectory
-.directoryDone:
+
 	clc
 	lda statementArgument
 	adc #$01
@@ -211,9 +199,25 @@ prepareIncludeName:
 	lda statementArgumentLength
 	sec
 	sbc #$02
-	sta sourceCopyLeft
+	jsr copyPathBytes
+	bcc .bad
 
-.filename:
+.done:
+	lda sourcePathLength
+	beq .bad
+	sta openNameLength
+	sec
+	rts
+.bad:
+	clc
+	rts
+
+;;; copyPathBytes
+;;; Append A bytes from ZP_PTR0 to sourcePathBuffer, advancing the input pointer.
+;;; Lower-case ASCII is folded while copying. Carry clear means the output filled.
+copyPathBytes:
+	sta sourceCopyLeft
+.loop:
 	lda sourceCopyLeft
 	beq .done
 	ldy #$00
@@ -222,23 +226,20 @@ prepareIncludeName:
 	bcc .copy
 	cmp #'z'+1
 	bcs .copy
-	and #$df			; ASCII lower-case source -> C64 filename byte
+	and #$df
 .copy:
 	jsr appendPathByte
-	bcc .bad
+	bcc .full
 	inc ZP_PTR0
-	bne .filenameNext
+	bne .next
 	inc ZP_PTR0+1
-.filenameNext:
+.next:
 	dec sourceCopyLeft
-	jmp .filename
+	jmp .loop
 .done:
-	lda sourcePathLength
-	beq .bad
-	sta openNameLength
 	sec
 	rts
-.bad:
+.full:
 	clc
 	rts
 
