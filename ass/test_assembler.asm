@@ -18,6 +18,10 @@ SYMBOLS_END  = $3600
 	* = TEST_ENTRY
 
 main:
+	;; The phase-error case deliberately emits into zero page. Own the machine
+	;; while doing that rather than letting a KERNAL IRQ use overwritten state.
+	sei
+
 	lda #<SYMBOLS
 	sta symbolTableStart
 	lda #>SYMBOLS
