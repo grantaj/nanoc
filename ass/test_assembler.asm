@@ -3,9 +3,8 @@
 
 FAIL_CONSTANTS       = $01
 FAIL_LOCAL_SCOPES    = $02
-FAIL_GLOBAL_ASSEMBLE = $03
-FAIL_GLOBAL_BYTES    = $04
-FAIL_GLOBAL_POINTER  = $05
+FAIL_FORWARD_GLOBAL  = $03
+FAIL_BACKWARD_GLOBAL = $04
 FAIL_PHASE_ERROR     = $10
 FAIL_LOCAL_SCOPE     = $11
 FAIL_BAD_CONSTANT    = $12
@@ -37,7 +36,9 @@ main:
 	bcc finish
 	jsr testLocalScopes
 	bcc finish
-	jsr testGlobalReferences
+	jsr testForwardGlobal
+	bcc finish
+	jsr testBackwardGlobal
 	bcc finish
 	jsr testPhaseError
 	bcc finish
@@ -113,16 +114,16 @@ testLocalScopes:
 	sec
 	rts
 
-;;; Global labels need no special fixup representation: the first pass records
-;;; them and the second pass resolves both forward and backward references.
-testGlobalReferences:
-	lda #<globalSource
+;;; A forward global reference is simply unresolved during pass 1, then found
+;;; in the symbol table during pass 2.
+testForwardGlobal:
+	lda #<forwardGlobalSource
 	sta ZP_PTR1
-	lda #>globalSource
+	lda #>forwardGlobalSource
 	sta ZP_PTR1+1
-	lda #<globalSourceEnd
+	lda #<forwardGlobalSourceEnd
 	sta sourceEnd
-	lda #>globalSourceEnd
+	lda #>forwardGlobalSourceEnd
 	sta sourceEnd+1
 	lda #<OUTPUT
 	sta assemblyPtr
@@ -130,34 +131,69 @@ testGlobalReferences:
 	sta assemblyPtr+1
 	jsr assemble
 	cmp #ASSEMBLE_OK
-	beq .checkBytes
-	lda #FAIL_GLOBAL_ASSEMBLE
+	bne .fail
+	lda OUTPUT
+	cmp #$20			; JSR absolute
+	bne .fail
+	lda OUTPUT+1
+	cmp #$03
+	bne .fail
+	lda OUTPUT+2
+	cmp #$20
+	bne .fail
+	lda OUTPUT+3
+	cmp #$60			; RTS
+	bne .fail
+	lda assemblyPtr
+	cmp #<(OUTPUT+4)
+	bne .fail
+	lda assemblyPtr+1
+	cmp #>(OUTPUT+4)
+	bne .fail
+	sec
+	rts
+.fail:
+	lda #FAIL_FORWARD_GLOBAL
 	clc
 	rts
 
-.checkBytes:
-	ldx #$00
-.checkByte:
-	lda OUTPUT,x
-	cmp globalBytes,x
-	bne .badBytes
-	inx
-	cpx #globalBytesEnd-globalBytes
-	bne .checkByte
+;;; A backward global reference is already known during pass 1 and remains a
+;;; normal absolute instruction in pass 2.
+testBackwardGlobal:
+	lda #<backwardGlobalSource
+	sta ZP_PTR1
+	lda #>backwardGlobalSource
+	sta ZP_PTR1+1
+	lda #<backwardGlobalSourceEnd
+	sta sourceEnd
+	lda #>backwardGlobalSourceEnd
+	sta sourceEnd+1
+	lda #<OUTPUT
+	sta assemblyPtr
+	lda #>OUTPUT
+	sta assemblyPtr+1
+	jsr assemble
+	cmp #ASSEMBLE_OK
+	bne .fail
+	lda OUTPUT
+	cmp #$4c			; JMP absolute
+	bne .fail
+	lda OUTPUT+1
+	cmp #$00
+	bne .fail
+	lda OUTPUT+2
+	cmp #$20
+	bne .fail
 	lda assemblyPtr
-	cmp #<(OUTPUT+globalBytesEnd-globalBytes)
-	bne .badPointer
+	cmp #<(OUTPUT+3)
+	bne .fail
 	lda assemblyPtr+1
-	cmp #>(OUTPUT+globalBytesEnd-globalBytes)
-	bne .badPointer
+	cmp #>(OUTPUT+3)
+	bne .fail
 	sec
 	rts
-.badBytes:
-	lda #FAIL_GLOBAL_BYTES
-	clc
-	rts
-.badPointer:
-	lda #FAIL_GLOBAL_POINTER
+.fail:
+	lda #FAIL_BACKWARD_GLOBAL
 	clc
 	rts
 
@@ -321,18 +357,17 @@ localScopesSource:
 	string "RTS"
 localScopesSourceEnd:
 
-globalSource:
+forwardGlobalSource:
 	string "first:"
 	string "JSR second"
-	string "JMP first"
 	string "second:"
 	string "RTS"
-globalSourceEnd:
-globalBytes:
-	byte $20,$06,$20	; JSR second
-	byte $4c,$00,$20	; JMP first
-	byte $60		; RTS
-globalBytesEnd:
+forwardGlobalSourceEnd:
+
+backwardGlobalSource:
+	string "first:"
+	string "JMP first"
+backwardGlobalSourceEnd:
 
 phaseSource:
 	string "entry:"
