@@ -35,7 +35,23 @@ openRootSource:
 ;;; includeSource
 ;;; statementArgument must be exactly one quoted filename. Open it as the next
 ;;; input channel; the parent remains open and positioned after the include line.
+;;; Include-name construction borrows ZP_PTR1 internally, so preserve the parser
+;;; cursor here rather than making every caller know about that implementation.
 includeSource:
+	lda ZP_PTR1
+	pha
+	lda ZP_PTR1+1
+	pha
+	jsr includeSourceBody
+	tax
+	pla
+	sta ZP_PTR1+1
+	pla
+	sta ZP_PTR1
+	txa
+	rts
+
+includeSourceBody:
 	lda statementArgumentLength
 	cmp #$03
 	bcc .bad
@@ -88,7 +104,8 @@ includeSource:
 ;;;     "parser.asm"        -> sourceDirectory + "PARSER.ASM"
 ;;;     "../dis/table.asm"  -> "DIS/TABLE.ASM"
 ;;;
-;;; Source files are ASCII text while the C64 filename bytes expected by VICE's
+;;; ZP_PTR0 walks the input bytes and ZP_PTR1 walks the output buffer. Source
+;;; files are ASCII text while the C64 filename bytes expected by VICE's
 ;;; filesystem device use the upper-case PETSCII/ASCII range, so a-z is folded to
 ;;; A-Z while copying. Carry set means openName/openNameLength are ready.
 prepareIncludeName:
@@ -112,9 +129,7 @@ prepareIncludeName:
 .build:
 	lda sourcePathBuffer
 	ora sourcePathBuffer+1
-	bne .bufferReady
-	jmp .bad
-.bufferReady:
+	beq .bad
 	lda sourcePathBuffer
 	sta ZP_PTR1
 	sta openName
@@ -124,8 +139,8 @@ prepareIncludeName:
 	lda #$00
 	sta sourcePathLength
 
-	;; Point ZP_PTR0 at the first byte inside the quotes and detect the only
-	;; parent form needed by the production tree: ../dis/...
+	;; Start at the first byte inside the quotes. The only parent syntax the real
+	;; source tree needs is a leading ../, which simply omits sourceDirectory.
 	clc
 	lda statementArgument
 	adc #$01
@@ -133,12 +148,10 @@ prepareIncludeName:
 	lda statementArgument+1
 	adc #$00
 	sta ZP_PTR0+1
-	lda #$00
-	sta sourceInputOffset
 	lda statementArgumentLength
 	sec
 	sbc #$02
-	sta sourceInputLength
+	sta sourceCopyLeft
 	cmp #$03
 	bcc .local
 	ldy #$00
@@ -153,32 +166,41 @@ prepareIncludeName:
 	lda (ZP_PTR0),y
 	cmp #'/'
 	bne .local
-	lda #$03
-	sta sourceInputOffset
+	clc
+	lda ZP_PTR0
+	adc #$03
+	sta ZP_PTR0
+	bcc .parentReady
+	inc ZP_PTR0+1
+.parentReady:
+	lda sourceCopyLeft
+	sec
+	sbc #$03
+	sta sourceCopyLeft
 	jmp .filename
 
 .local:
-	;; Every local production include lives in the configured one directory.
+	;; Copy the configured directory, then point back at the filename itself.
 	lda sourceDirectory
 	sta ZP_PTR0
 	lda sourceDirectory+1
 	sta ZP_PTR0+1
-	lda #$00
-	sta sourceInputOffset
+	lda sourceDirectoryLength
+	sta sourceCopyLeft
 .copyDirectory:
-	lda sourceInputOffset
-	cmp sourceDirectoryLength
+	lda sourceCopyLeft
 	beq .directoryDone
-	ldy sourceInputOffset
+	ldy #$00
 	lda (ZP_PTR0),y
 	jsr appendPathByte
 	bcc .bad
-	inc sourceInputOffset
+	inc ZP_PTR0
+	bne .directoryNext
+	inc ZP_PTR0+1
+.directoryNext:
+	dec sourceCopyLeft
 	jmp .copyDirectory
 .directoryDone:
-	lda #$00
-	sta sourceInputOffset
-
 	clc
 	lda statementArgument
 	adc #$01
@@ -186,12 +208,15 @@ prepareIncludeName:
 	lda statementArgument+1
 	adc #$00
 	sta ZP_PTR0+1
+	lda statementArgumentLength
+	sec
+	sbc #$02
+	sta sourceCopyLeft
 
 .filename:
-	lda sourceInputOffset
-	cmp sourceInputLength
+	lda sourceCopyLeft
 	beq .done
-	ldy sourceInputOffset
+	ldy #$00
 	lda (ZP_PTR0),y
 	cmp #'a'
 	bcc .copy
@@ -201,7 +226,11 @@ prepareIncludeName:
 .copy:
 	jsr appendPathByte
 	bcc .bad
-	inc sourceInputOffset
+	inc ZP_PTR0
+	bne .filenameNext
+	inc ZP_PTR0+1
+.filenameNext:
+	dec sourceCopyLeft
 	jmp .filename
 .done:
 	lda sourcePathLength
@@ -437,5 +466,4 @@ sourceDirectory:	word 0
 sourceDirectoryLength:	byte 0
 sourcePathBuffer:	word 0
 sourcePathLength:	byte 0
-sourceInputOffset:	byte 0
-sourceInputLength:	byte 0
+sourceCopyLeft:		byte 0
