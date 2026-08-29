@@ -138,7 +138,6 @@ assembleDataList:
 .next:
 	jsr nextDataItem
 	bcc .bad
-	sta dataMore
 
 	lda dataItem
 	sta ZP_PTR0
@@ -182,7 +181,7 @@ assembleDataList:
 	jsr advanceAssemblyPtr
 
 .itemDone:
-	lda dataMore
+	lda dataLeft
 	bne .next
 	lda #ASSEMBLE_OK
 	rts
@@ -195,9 +194,9 @@ assembleDataList:
 	rts
 
 ;;; nextDataItem
-;;; Return the next trimmed list item in dataItem/dataItemLength.
-;;; Carry set means an item was found. A=1 means another item follows; A=0 means
-;;; this was the last item. Empty items and trailing commas return carry clear.
+;;; Return the next trimmed list item in dataItem/dataItemLength. On return,
+;;; dataCursor/dataLeft already point at the next item, or dataLeft is zero.
+;;; Empty items and trailing commas return carry clear.
 nextDataItem:
 	jsr skipDataSpaces
 	lda dataLeft
@@ -246,14 +245,12 @@ nextDataItem:
 	jsr skipDataSpaces
 	lda dataLeft
 	beq .bad			; trailing comma
-	lda #$01
 	sec
 	rts
 
 .last:
 	lda dataItemLength
 	beq .bad
-	lda #$00
 	sec
 	rts
 .bad:
@@ -413,7 +410,6 @@ emitAssemblyByte:
 
 ;;; Small explicit state used only while walking one data declaration.
 dataWidth:		byte 0
-dataMore:		byte 0
 dataCursor:		word 0
 dataLeft:		byte 0
 dataItem:		word 0
