@@ -1,18 +1,18 @@
 ;;; instruction.asm
 ;;;
 ;;; Parse a STATEMENT_INSTRUCTION directly from the zero-copy views produced by
-;;; nextStatement. The existing disassembler tables remain the authoritative
-;;; description of mnemonics, addressing modes, and opcodes.
+;;; nextStatement. The disassembler tables remain the one description of the
+;;; 6502 instruction set.
 ;;;
 ;;; parseInstruction output:
 ;;;   A                       status (INSTRUCTION_*)
 ;;;   instructionMnemonic     mnemonic-table index
-;;;   instructionMode         MODE_* or MODE_DEFERRED for unresolved zp/abs
+;;;   instructionMode         MODE_* or MODE_DEFERRED
 ;;;   instructionOpcode       opcode, or $ff while mode is deferred
 ;;;   instructionOperandKind  OPERAND_NONE / NUMBER / SYMBOL
 ;;;   instructionOperandValue 16-bit numeric value
-;;;   instructionSymbol       zero-copy pointer/length for symbolic operands
-;;;   instructionIndex        INDEX_* only needed while mode is deferred
+;;;   instructionSymbol       zero-copy pointer/length for a symbol
+;;;   instructionIndex        INDEX_* only when MODE_DEFERRED needs it
 ;;;
 ;;; ZP_PTR1 and the source buffer are preserved. A, X, Y, ZP_PTR0 and flags
 ;;; are clobbered.
@@ -33,20 +33,16 @@ INDEX_X    = $01
 INDEX_Y    = $02
 
 MODE_DEFERRED = $ff
-MNEMONIC_COUNT = $38		; index $38 in the table is the ??? sentinel
+MNEMONIC_COUNT = $38		; $38 is the ??? sentinel, not a source mnemonic
 
+;;; parseInstruction
+;;;
+;;; statementName/statementArgument contain the views returned by nextStatement.
+;;; Returns INSTRUCTION_* in A and fills the instruction semantic state above.
+;;; ZP_PTR1 and the source buffer are preserved. A, X, Y, ZP_PTR0 and flags
+;;; are clobbered.
 parseInstruction:
-	lda #MODE_DEFERRED
-	sta instructionMode
-	sta instructionOpcode
-	lda #OPERAND_NONE
-	sta instructionOperandKind
-	lda #INDEX_NONE
-	sta instructionIndex
-	lda #$00
-	sta instructionOperandValue
-	sta instructionOperandValue+1
-	sta instructionSymbolLength
+	jsr clearInstruction
 
 	lda statementName
 	sta ZP_PTR0
@@ -61,24 +57,51 @@ parseInstruction:
 	sta instructionMnemonic
 
 	lda statementArgumentLength
-	bne .operand
+	bne .hasOperand
 	lda #MODE_IMPLIED
 	jmp finishKnownMode
 
-.operand:
+.hasOperand:
 	lda statementArgument
 	sta ZP_PTR0
 	lda statementArgument+1
 	sta ZP_PTR0+1
 	ldx statementArgumentLength
+	jmp parseOperand
 
-	;; A by itself is the accumulator form.
+;;; clearInstruction
+;;;
+;;; Reset all semantic outputs before parsing a new instruction.
+;;; A is clobbered. X and Y are preserved.
+clearInstruction:
+	lda #$00
+	sta instructionMnemonic
+	sta instructionOperandKind
+	sta instructionOperandValue
+	sta instructionOperandValue+1
+	sta instructionSymbol
+	sta instructionSymbol+1
+	sta instructionSymbolLength
+	sta instructionIndex
+	sta operandIndex
+	lda #MODE_DEFERRED
+	sta instructionMode
+	sta instructionOpcode
+	rts
+
+;;; parseOperand
+;;;
+;;; ZP_PTR0/X identify the complete operand text. Dispatch by the punctuation
+;;; that distinguishes the 6502 addressing forms.
+;;; Returns INSTRUCTION_* in A. A, X, Y and flags are clobbered; ZP_PTR0 may
+;;; advance when leading punctuation is removed.
+parseOperand:
 	cpx #$01
 	bne .notAccumulator
 	ldy #$00
 	lda (ZP_PTR0),y
 	cmp #'A'
-	bne .direct
+	bne parseDirectOperand
 	lda #MODE_ACCUMULATOR
 	jmp finishKnownMode
 
@@ -86,130 +109,169 @@ parseInstruction:
 	ldy #$00
 	lda (ZP_PTR0),y
 	cmp #'#'
-	beq .immediate
+	beq parseImmediateOperand
 	cmp #'('
-	beq .indirect
+	beq parseIndirectOperand
+	jmp parseDirectOperand
 
-.direct:
-	jsr stripIndexSuffix		; Y = INDEX_*, X/core adjusted
-	sty instructionIndex
-	jsr parseOperandCore
-	bcs .directCoreOk
-	jmp .badOperand
-.directCoreOk:
-	jsr selectDirectMode
-	bcs .directModeOk
-	jmp .badMode
-.directModeOk:
-	lda #INSTRUCTION_OK
-	rts
-
-.immediate:
+;;; parseImmediateOperand
+;;;
+;;; ZP_PTR0/X identify an operand beginning with '#'.
+parseImmediateOperand:
 	jsr advanceOperandStart
-	jsr parseOperandCore
-	bcc .badOperand
-	jsr requireByteIfNumeric
-	bcc .badOperand
+	jsr parseByteOperandCore
+	bcs .ok
+	jmp badOperand
+.ok:
 	lda #MODE_IMMEDIATE
 	jmp finishKnownMode
 
-.indirect:
+;;; parseDirectOperand
+;;;
+;;; ZP_PTR0/X identify a plain operand, optionally ending in ,X or ,Y.
+parseDirectOperand:
+	jsr stripIndexSuffix
+	jsr parseOperandCore
+	bcs .coreOk
+	jmp badOperand
+.coreOk:
+	jmp selectDirectMode
+
+;;; parseIndirectOperand
+;;;
+;;; ZP_PTR0/X identify an operand beginning with '('. Recognise (value),
+;;; (value,X), and (value),Y by removing punctuation from the outside inward.
+parseIndirectOperand:
 	jsr advanceOperandStart		; remove '('
 	cpx #$02
-	bcc .badOperand
+	bcs .hasText
+	jmp badOperand
+.hasText:
 
-	;; (...),Y
+	;; (value),Y has its index suffix outside the closing parenthesis.
 	txa
 	tay
 	dey
 	lda (ZP_PTR0),y
 	cmp #'Y'
-	bne .endsParen
+	bne .insideParen
 	dey
 	lda (ZP_PTR0),y
 	cmp #','
-	bne .badOperand
-	dey
-	lda (ZP_PTR0),y
-	cmp #')'
-	bne .badOperand
-	txa
-	sec
-	sbc #$03
-	tax
-	beq .badOperand
-	jsr parseOperandCore
-	bcc .badOperand
-	jsr requireByteIfNumeric
-	bcc .badOperand
+	bne .insideParen
+	dex
+	dex				; remove ",Y"
+	jsr stripClosingParen
+	bcc badOperand
+	jsr parseByteOperandCore
+	bcc badOperand
 	lda #MODE_INDIRECT_Y
 	jmp finishKnownMode
 
-.endsParen:
+.insideParen:
+	jsr stripClosingParen
+	bcc badOperand
+	jsr stripIndexSuffix		; now recognises the ,X inside (value,X)
+	lda operandIndex
+	cmp #INDEX_Y
+	beq badOperand			; (value,Y) is not a 6502 addressing form
+	cmp #INDEX_X
+	beq .indexedX
+
+	jsr parseOperandCore
+	bcc badOperand
+	lda #MODE_INDIRECT
+	jmp finishKnownMode
+
+.indexedX:
+	jsr parseByteOperandCore
+	bcc badOperand
+	lda #MODE_INDIRECT_X
+	jmp finishKnownMode
+
+badOperand:
+	lda #INSTRUCTION_BAD_OPERAND
+	rts
+
+;;; stripClosingParen
+;;;
+;;; ZP_PTR0/X identify text whose final byte must be ')'. Remove it from X.
+;;; Returns carry set on success. A and Y are clobbered; ZP_PTR0 is preserved.
+stripClosingParen:
 	txa
 	tay
 	dey
 	lda (ZP_PTR0),y
 	cmp #')'
-	bne .badOperand
-	dex				; remove trailing ')'
-	beq .badOperand
-
-	;; (...,X)
-	cpx #$03
-	bcc .plainIndirect
-	txa
-	tay
-	dey
-	lda (ZP_PTR0),y
-	cmp #'X'
-	bne .plainIndirect
-	dey
-	lda (ZP_PTR0),y
-	cmp #','
-	bne .plainIndirect
+	bne .bad
 	dex
-	dex				; remove ",X"
-	beq .badOperand
-	jsr parseOperandCore
-	bcc .badOperand
-	jsr requireByteIfNumeric
-	bcc .badOperand
-	lda #MODE_INDIRECT_X
-	jmp finishKnownMode
-
-.plainIndirect:
-	jsr parseOperandCore
-	bcc .badOperand
-	lda #MODE_INDIRECT
-	jmp finishKnownMode
-
-.badOperand:
-	lda #INSTRUCTION_BAD_OPERAND
+	beq .bad
+	sec
 	rts
-.badMode:
-	lda #INSTRUCTION_BAD_MODE
+.bad:
+	clc
+	rts
+
+;;; parseByteOperandCore
+;;;
+;;; Parse the operand core, additionally requiring resolved numeric values to
+;;; fit in one byte. Symbols are allowed because their value is not known yet.
+;;; Returns carry set on success. A, X, Y and flags may be clobbered.
+parseByteOperandCore:
+	jsr parseOperandCore
+	bcc .bad
+	lda instructionOperandKind
+	cmp #OPERAND_NUMBER
+	bne .ok
+	lda instructionOperandValue+1
+	bne .bad
+.ok:
+	sec
+	rts
+.bad:
+	clc
 	rts
 
 ;;; finishKnownMode
 ;;;
-;;; A = resolved MODE_*. Validate against the opcode table and record opcode.
+;;; A = resolved MODE_*. Validate the mnemonic/mode pair against opcode_table.
+;;; Returns INSTRUCTION_OK or INSTRUCTION_BAD_MODE in A.
+;;; X and flags are clobbered. Y is preserved.
 finishKnownMode:
-	sta instructionMode
-	tax
-	lda instructionMnemonic
-	jsr findOpcode
+	jsr tryMode
 	bcc .invalid
-	sta instructionOpcode
 	lda #INSTRUCTION_OK
 	rts
 .invalid:
 	lda #INSTRUCTION_BAD_MODE
 	rts
 
+;;; tryMode
+;;;
+;;; A = MODE_*. Look up this mode for instructionMnemonic. If it exists, record
+;;; instructionMode/instructionOpcode and return carry set. Otherwise carry is
+;;; clear and the previous semantic result is left alone.
+;;; A and X are clobbered. Y is preserved.
+tryMode:
+	pha				; keep the mode across findOpcode
+	tax
+	lda instructionMnemonic
+	jsr findOpcode
+	bcc .notFound
+	sta instructionOpcode
+	pla
+	sta instructionMode
+	sec
+	rts
+.notFound:
+	pla
+	clc
+	rts
+
 ;;; advanceOperandStart
 ;;;
-;;; Advance ZP_PTR0 and reduce X by one. Carry across a source page explicitly.
+;;; Advance ZP_PTR0 by one and reduce X by one. Page crossing is explicit.
+;;; ZP_PTR0/X are changed; A and Y are preserved.
 advanceOperandStart:
 	inc ZP_PTR0
 	bne .noCarry
@@ -220,55 +282,48 @@ advanceOperandStart:
 
 ;;; stripIndexSuffix
 ;;;
-;;; Input ZP_PTR0/X = direct operand view. If it ends in ,X or ,Y, remove the
-;;; suffix from X. Return Y = INDEX_NONE/X/Y.
+;;; ZP_PTR0/X identify a direct operand. Remove a trailing ,X or ,Y from the
+;;; view and record that syntax in operandIndex. A and Y are clobbered.
+;;; ZP_PTR0 is preserved; X changes only when a suffix is present.
 stripIndexSuffix:
-	ldy #INDEX_NONE
+	lda #INDEX_NONE
+	sta operandIndex
 	cpx #$03
 	bcc .done
+
 	txa
-	pha
 	tay
 	dey
 	lda (ZP_PTR0),y
 	cmp #'X'
 	beq .x
 	cmp #'Y'
-	beq .y
-	pla
-	tax
-	ldy #INDEX_NONE
-	rts
+	bne .done
+	lda #INDEX_Y
+	jmp .checkComma
 .x:
 	lda #INDEX_X
-	jmp .checkComma
-.y:
-	lda #INDEX_Y
 .checkComma:
-	pha
+	sta operandIndex
 	dey
 	lda (ZP_PTR0),y
 	cmp #','
-	bne .notSuffix
-	pla
-	tay
-	pla
-	tax
-	dex
-	dex
+	beq .suffix
+	lda #INDEX_NONE		; X or Y was part of the value, not an index suffix
+	sta operandIndex
 	rts
-.notSuffix:
-	pla
-	pla
-	tax
-	ldy #INDEX_NONE
+.suffix:
+	dex
+	dex
 .done:
 	rts
 
 ;;; parseOperandCore
 ;;;
-;;; ZP_PTR0/X identify the value inside any operand punctuation. $hhhh is
-;;; parsed immediately; other text is retained as a zero-copy symbol view.
+;;; ZP_PTR0/X identify the value after addressing punctuation has been removed.
+;;; '$' plus hex digits is reduced immediately to a number. Other text is kept
+;;; as its source pointer/length, because a later pass may need the symbol name.
+;;; Returns carry set on success. A, X, Y and flags may be clobbered.
 parseOperandCore:
 	cpx #$00
 	beq .bad
@@ -299,23 +354,25 @@ parseOperandCore:
 
 ;;; parseHex
 ;;;
-;;; ZP_PTR0/X = '$' plus 1..4 uppercase hexadecimal digits.
-;;; Returns instructionOperandValue and carry set on success.
+;;; ZP_PTR0/X = '$' followed by 1..4 uppercase hexadecimal digits.
+;;; Returns the 16-bit value in instructionOperandValue and carry set.
+;;; A, X, Y and flags are clobbered. ZP_PTR0 is preserved.
 parseHex:
 	cpx #$02
 	bcc .bad
 	cpx #$06
 	bcs .bad
-	stx operandLength
+
 	lda #$00
 	sta instructionOperandValue
 	sta instructionOperandValue+1
-	ldy #$01
+	dex				; X is now the number of digits
+	ldy #$01			; skip '$'
 .next:
 	lda (ZP_PTR0),y
 	jsr hexNibble
 	bcc .bad
-	sta operandNibble
+	pha				; keep nibble while shifting the 16-bit value
 
 	asl instructionOperandValue
 	rol instructionOperandValue+1
@@ -325,12 +382,12 @@ parseHex:
 	rol instructionOperandValue+1
 	asl instructionOperandValue
 	rol instructionOperandValue+1
-	lda instructionOperandValue
-	ora operandNibble
+	pla
+	ora instructionOperandValue
 	sta instructionOperandValue
 
 	iny
-	cpy operandLength
+	dex
 	bne .next
 	sec
 	rts
@@ -338,6 +395,10 @@ parseHex:
 	clc
 	rts
 
+;;; hexNibble
+;;;
+;;; A = uppercase hexadecimal character. Returns its value in A and carry set,
+;;; or carry clear for a non-hexadecimal character. X and Y are preserved.
 hexNibble:
 	cmp #'0'
 	bcc .bad
@@ -360,132 +421,75 @@ hexNibble:
 	clc
 	rts
 
-requireByteIfNumeric:
-	lda instructionOperandKind
-	cmp #OPERAND_NUMBER
-	bne .ok
-	lda instructionOperandValue+1
-	beq .ok
-	clc
-	rts
-.ok:
-	sec
-	rts
-
 ;;; selectDirectMode
 ;;;
-;;; Select relative, zero-page, or absolute forms by asking the opcode table
-;;; which encodings exist for this mnemonic. Symbolic operands with both short
-;;; and long encodings remain MODE_DEFERRED until symbol resolution.
+;;; A direct operand can mean relative, zero-page, or absolute addressing.
+;;; Ask opcode_table which forms exist for the mnemonic. A resolved numeric
+;;; value chooses its width; a symbol is deferred only when both widths exist.
+;;; Returns INSTRUCTION_OK or INSTRUCTION_BAD_MODE in A.
+;;; A, X and flags are clobbered. Y is preserved.
 selectDirectMode:
-	lda instructionIndex
-	bne .choosePair
-	lda instructionMnemonic
-	ldx #MODE_RELATIVE
-	jsr findOpcode
-	bcc .choosePair
-	sta instructionOpcode
+	;; Branch mnemonics are the only direct syntax with a relative encoding.
+	lda operandIndex
+	bne .notRelative
 	lda #MODE_RELATIVE
-	sta instructionMode
-	sec
-	rts
+	jsr tryMode
+	bcs .ok
 
-.choosePair:
-	lda instructionIndex
-	cmp #INDEX_X
-	beq .x
-	cmp #INDEX_Y
-	beq .y
-	lda #MODE_ZERO_PAGE
-	sta shortMode
-	lda #MODE_ABSOLUTE
-	sta longMode
-	jmp .ready
-.x:
-	lda #MODE_ZERO_PAGE_X
-	sta shortMode
-	lda #MODE_ABSOLUTE_X
-	sta longMode
-	jmp .ready
-.y:
-	lda #MODE_ZERO_PAGE_Y
-	sta shortMode
-	lda #MODE_ABSOLUTE_Y
-	sta longMode
-
-.ready:
+.notRelative:
 	lda instructionOperandKind
 	cmp #OPERAND_SYMBOL
 	beq .symbol
 
+	;; A one-byte value prefers zero page, but only if that encoding exists.
 	lda instructionOperandValue+1
-	bne .long
-	lda instructionMnemonic
-	ldx shortMode
-	jsr findOpcode
-	bcc .long
-	sta instructionOpcode
-	lda shortMode
-	sta instructionMode
-	sec
-	rts
-.long:
-	lda instructionMnemonic
-	ldx longMode
-	jsr findOpcode
-	bcc .invalid
-	sta instructionOpcode
-	lda longMode
-	sta instructionMode
-	sec
-	rts
+	bne .numericLong
+	ldx operandIndex
+	lda directShortModes,x
+	jsr tryMode
+	bcs .ok
+.numericLong:
+	ldx operandIndex
+	lda directLongModes,x
+	jsr tryMode
+	bcs .ok
+	jmp .invalid
 
 .symbol:
-	lda #$00
-	sta shortAvailable
-	lda instructionMnemonic
-	ldx shortMode
-	jsr findOpcode
-	bcc .symbolLong
-	sta shortOpcode
-	inc shortAvailable
-.symbolLong:
-	lda instructionMnemonic
-	ldx longMode
-	jsr findOpcode
-	bcc .onlyShort
-	sta longOpcode
-	lda shortAvailable
-	beq .onlyLong
+	;; Try both widths. If both exist, resolution must wait for the symbol value.
+	ldx operandIndex
+	lda directShortModes,x
+	jsr tryMode
+	bcc .longOnly
+	ldx operandIndex
+	lda directLongModes,x
+	jsr tryMode
+	bcc .ok			; short was valid and remains recorded
+
+	lda operandIndex
+	sta instructionIndex
 	lda #MODE_DEFERRED
 	sta instructionMode
 	sta instructionOpcode
-	sec
-	rts
-.onlyLong:
-	lda longOpcode
-	sta instructionOpcode
-	lda longMode
-	sta instructionMode
-	sec
-	rts
-.onlyShort:
-	lda shortAvailable
-	beq .invalid
-	lda shortOpcode
-	sta instructionOpcode
-	lda shortMode
-	sta instructionMode
-	sec
+	jmp .ok
+
+.longOnly:
+	ldx operandIndex
+	lda directLongModes,x
+	jsr tryMode
+	bcc .invalid
+.ok:
+	lda #INSTRUCTION_OK
 	rts
 .invalid:
-	clc
+	lda #INSTRUCTION_BAD_MODE
 	rts
 
 ;;; findMnemonic
 ;;;
-;;; ZP_PTR0 points to text and X is its length. Returns mnemonic index in A and
-;;; carry set, or carry clear when the three-byte mnemonic is unknown.
+;;; ZP_PTR0 points to mnemonic text and X is its length. Returns the shared
+;;; mnemonic-table index in A with carry set, or carry clear if it is unknown.
+;;; ZP_PTR0 is preserved. A, X, Y and flags are clobbered.
 findMnemonic:
 	cpx #$03
 	beq .lengthOk
@@ -498,7 +502,7 @@ findMnemonic:
 	lda mnemonicCandidate
 	asl
 	clc
-	adc mnemonicCandidate
+	adc mnemonicCandidate		; fixed-width table: offset = index * 3
 	tax
 	ldy #$00
 .compare:
@@ -522,13 +526,13 @@ findMnemonic:
 
 ;;; findOpcode
 ;;;
-;;; A = mnemonic index, X = MODE_*. Linear scan of the existing 512-byte table.
-;;; Returns opcode in A and carry set, or carry clear if the pair is invalid.
+;;; A = shared mnemonic index, X = MODE_*. Scan the existing 256-entry
+;;; opcode_table for that pair. Returns the opcode in A with carry set, or carry
+;;; clear if the mnemonic has no such addressing mode.
+;;; Y is preserved. A, X and flags are clobbered.
 findOpcode:
 	sta lookupMnemonic
 	stx lookupMode
-	lda #$00
-	sta opcodeCandidate
 	ldx #$00
 .firstPage:
 	lda opcode_table,x
@@ -536,30 +540,46 @@ findOpcode:
 	bne .nextFirst
 	lda opcode_table+1,x
 	cmp lookupMode
-	beq .found
+	beq .foundFirst
 .nextFirst:
-	inc opcodeCandidate
 	inx
 	inx
 	bne .firstPage
+
+	;; X wrapped to zero after 128 two-byte entries; scan the table's second page.
 .secondPage:
 	lda opcode_table+$100,x
 	cmp lookupMnemonic
 	bne .nextSecond
 	lda opcode_table+$101,x
 	cmp lookupMode
-	beq .found
+	beq .foundSecond
 .nextSecond:
-	inc opcodeCandidate
 	inx
 	inx
 	bne .secondPage
 	clc
 	rts
-.found:
-	lda opcodeCandidate
+
+.foundFirst:
+	txa
+	lsr				; table byte offset / 2 = opcode
 	sec
 	rts
+.foundSecond:
+	txa
+	lsr
+	ora #$80			; second half contains opcodes $80..$ff
+	sec
+	rts
+
+;;; Direct addressing has the same three index choices for short and long forms.
+;;; operandIndex is used only while parsing; instructionIndex is kept only if a
+;;; symbolic operand leaves the short/long choice unresolved.
+directShortModes:
+	byte MODE_ZERO_PAGE, MODE_ZERO_PAGE_X, MODE_ZERO_PAGE_Y
+directLongModes:
+	byte MODE_ABSOLUTE, MODE_ABSOLUTE_X, MODE_ABSOLUTE_Y
 
 instructionMnemonic:	byte 0
 instructionMode:	byte MODE_DEFERRED
@@ -570,17 +590,11 @@ instructionSymbol:	word 0
 instructionSymbolLength:	byte 0
 instructionIndex:	byte INDEX_NONE
 
-operandLength:	byte 0
-operandNibble:	byte 0
-shortMode:	byte 0
-longMode:	byte 0
-shortAvailable:	byte 0
-shortOpcode:	byte 0
-longOpcode:	byte 0
+;; Parser scratch that does not survive as semantic instruction state.
+operandIndex:	byte INDEX_NONE
 mnemonicCandidate:	byte 0
 lookupMnemonic:	byte 0
 lookupMode:	byte 0
-opcodeCandidate:	byte 0
 
 	include "../dis/opcode_table.asm"
 	include "../dis/mnemonic_table.asm"

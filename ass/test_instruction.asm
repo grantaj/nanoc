@@ -1,20 +1,46 @@
 	include "zp.inc"
 	include "../test.inc"
 
+FAIL_KNOWN_MNEMONIC   = $01
+FAIL_UNKNOWN_MNEMONIC = $02
+FAIL_PAGE_ADVANCE     = $03
+FAIL_RTS              = $10
+FAIL_ACCUMULATOR      = $11
+FAIL_IMMEDIATE        = $12
+FAIL_ZERO_PAGE        = $13
+FAIL_ABSOLUTE         = $14
+FAIL_ZERO_PAGE_X      = $15
+FAIL_ABSOLUTE_X       = $16
+FAIL_ZERO_PAGE_Y      = $17
+FAIL_ABSOLUTE_Y       = $18
+FAIL_INDIRECT         = $19
+FAIL_INDIRECT_X       = $1a
+FAIL_INDIRECT_Y       = $1b
+FAIL_RELATIVE         = $1c
+FAIL_SYMBOL_ABSOLUTE  = $1d
+FAIL_SYMBOL_DEFERRED  = $1e
+FAIL_BAD_MNEMONIC     = $1f
+FAIL_BAD_MODE         = $20
+FAIL_OPCODE_LOOKUP    = $21
+FAIL_INVALID_PAIR     = $22
+FAIL_EOF              = $23
+
+PARSE_NOT_INSTRUCTION = $fe
+
 	* = TEST_ENTRY
 
 main:
-	;; Exercise mnemonic lookup directly before parsing statements.
+	;; The shared mnemonic table supplies the assembler's mnemonic IDs.
 	lda #<mnemonicLda
 	sta ZP_PTR0
 	lda #>mnemonicLda
 	sta ZP_PTR0+1
 	ldx #$03
 	jsr findMnemonic
-	bcs .knownMnemonicOk
-	lda #$01
+	bcs .knownMnemonic
+	lda #FAIL_KNOWN_MNEMONIC
 	jmp finish
-.knownMnemonicOk:
+.knownMnemonic:
 	sta ldaMnemonic
 
 	lda #<mnemonicBad
@@ -23,11 +49,31 @@ main:
 	sta ZP_PTR0+1
 	ldx #$03
 	jsr findMnemonic
-	bcc .unknownMnemonicOk
-	lda #$02
+	bcc .pageAdvance
+	lda #FAIL_UNKNOWN_MNEMONIC
 	jmp finish
-.unknownMnemonicOk:
 
+	;; advanceOperandStart is the one new parser helper that changes a pointer.
+	;; Check its 16-bit page crossing directly.
+.pageAdvance:
+	lda #$ff
+	sta ZP_PTR0
+	lda #$12
+	sta ZP_PTR0+1
+	ldx #$02
+	jsr advanceOperandStart
+	lda ZP_PTR0
+	bne .failPageAdvance
+	lda ZP_PTR0+1
+	cmp #$13
+	bne .failPageAdvance
+	cpx #$01
+	beq .startSource
+.failPageAdvance:
+	lda #FAIL_PAGE_ADVANCE
+	jmp finish
+
+.startSource:
 	lda #<input
 	sta ZP_PTR1
 	lda #>input
@@ -38,300 +84,303 @@ main:
 	sta sourceEnd+1
 
 	;; RTS: implied.
+.rts:
 	jsr parseNext
-	bne .fail10
+	bne .failRts
 	lda instructionMode
 	cmp #MODE_IMPLIED
-	bne .fail10
+	bne .failRts
 	lda instructionOpcode
 	cmp #$60
-	bne .fail10
+	bne .failRts
 	lda instructionOperandKind
 	cmp #OPERAND_NONE
-	beq .case11
-.fail10:
-	lda #$10
+	beq .accumulator
+.failRts:
+	lda #FAIL_RTS
 	jmp finish
 
 	;; ASL A: accumulator.
-.case11:
+.accumulator:
 	jsr parseNext
-	bne .fail11
+	bne .failAccumulator
 	lda instructionMode
 	cmp #MODE_ACCUMULATOR
-	bne .fail11
+	bne .failAccumulator
 	lda instructionOpcode
 	cmp #$0a
-	beq .case12
-.fail11:
-	lda #$11
+	beq .immediate
+.failAccumulator:
+	lda #FAIL_ACCUMULATOR
 	jmp finish
 
 	;; LDA #$20: immediate numeric value.
-.case12:
+.immediate:
 	jsr parseNext
-	bne .fail12
+	bne .failImmediate
 	lda instructionMnemonic
 	cmp ldaMnemonic
-	bne .fail12
+	bne .failImmediate
 	lda instructionMode
 	cmp #MODE_IMMEDIATE
-	bne .fail12
+	bne .failImmediate
 	lda instructionOpcode
 	cmp #$a9
-	bne .fail12
+	bne .failImmediate
 	lda instructionOperandKind
 	cmp #OPERAND_NUMBER
-	bne .fail12
+	bne .failImmediate
 	lda instructionOperandValue
 	cmp #$20
-	bne .fail12
+	bne .failImmediate
 	lda instructionOperandValue+1
-	beq .case13
-.fail12:
-	lda #$12
+	beq .zeroPage
+.failImmediate:
+	lda #FAIL_IMMEDIATE
 	jmp finish
 
-	;; LDA $20: choose zero page by parsed value and legal opcode.
-.case13:
+	;; LDA $20: the parsed value permits zero-page encoding.
+.zeroPage:
 	jsr parseNext
-	bne .fail13
+	bne .failZeroPage
 	lda instructionMode
 	cmp #MODE_ZERO_PAGE
-	bne .fail13
+	bne .failZeroPage
 	lda instructionOpcode
 	cmp #$a5
-	beq .case14
-.fail13:
-	lda #$13
+	beq .absolute
+.failZeroPage:
+	lda #FAIL_ZERO_PAGE
 	jmp finish
 
-	;; LDA $2000: absolute.
-.case14:
+	;; LDA $2000: the value requires absolute encoding.
+.absolute:
 	jsr parseNext
-	bne .fail14
+	bne .failAbsolute
 	lda instructionMode
 	cmp #MODE_ABSOLUTE
-	bne .fail14
+	bne .failAbsolute
 	lda instructionOpcode
 	cmp #$ad
-	bne .fail14
+	bne .failAbsolute
 	lda instructionOperandValue
-	bne .fail14
+	bne .failAbsolute
 	lda instructionOperandValue+1
 	cmp #$20
-	beq .case15
-.fail14:
-	lda #$14
+	beq .zeroPageX
+.failAbsolute:
+	lda #FAIL_ABSOLUTE
 	jmp finish
 
-	;; LDA $20,X: indexed zero page.
-.case15:
+	;; LDA $20,X: resolved mode carries the X indexing fact by itself.
+.zeroPageX:
 	jsr parseNext
-	bne .fail15
+	bne .failZeroPageX
 	lda instructionMode
 	cmp #MODE_ZERO_PAGE_X
-	bne .fail15
+	bne .failZeroPageX
 	lda instructionOpcode
 	cmp #$b5
-	beq .case16
-.fail15:
-	lda #$15
+	bne .failZeroPageX
+	lda instructionIndex
+	cmp #INDEX_NONE
+	beq .absoluteX
+.failZeroPageX:
+	lda #FAIL_ZERO_PAGE_X
 	jmp finish
 
 	;; LDA $2000,X: indexed absolute.
-.case16:
+.absoluteX:
 	jsr parseNext
-	bne .fail16
+	bne .failAbsoluteX
 	lda instructionMode
 	cmp #MODE_ABSOLUTE_X
-	bne .fail16
+	bne .failAbsoluteX
 	lda instructionOpcode
 	cmp #$bd
-	beq .case17
-.fail16:
-	lda #$16
+	beq .zeroPageY
+.failAbsoluteX:
+	lda #FAIL_ABSOLUTE_X
 	jmp finish
 
 	;; LDX $20,Y: indexed zero page Y.
-.case17:
+.zeroPageY:
 	jsr parseNext
-	bne .fail17
+	bne .failZeroPageY
 	lda instructionMode
 	cmp #MODE_ZERO_PAGE_Y
-	bne .fail17
+	bne .failZeroPageY
 	lda instructionOpcode
 	cmp #$b6
-	beq .case18
-.fail17:
-	lda #$17
+	beq .absoluteY
+.failZeroPageY:
+	lda #FAIL_ZERO_PAGE_Y
 	jmp finish
 
 	;; LDX $2000,Y: indexed absolute Y.
-.case18:
+.absoluteY:
 	jsr parseNext
-	bne .fail18
+	bne .failAbsoluteY
 	lda instructionMode
 	cmp #MODE_ABSOLUTE_Y
-	bne .fail18
+	bne .failAbsoluteY
 	lda instructionOpcode
 	cmp #$be
-	beq .case19
-.fail18:
-	lda #$18
+	beq .indirect
+.failAbsoluteY:
+	lda #FAIL_ABSOLUTE_Y
 	jmp finish
 
 	;; JMP ($2000): absolute indirect.
-.case19:
+.indirect:
 	jsr parseNext
-	bne .fail19
+	bne .failIndirect
 	lda instructionMode
 	cmp #MODE_INDIRECT
-	bne .fail19
+	bne .failIndirect
 	lda instructionOpcode
 	cmp #$6c
-	beq .case1a
-.fail19:
-	lda #$19
+	beq .indirectX
+.failIndirect:
+	lda #FAIL_INDIRECT
 	jmp finish
 
 	;; LDA ($20,X): indexed indirect X.
-.case1a:
+.indirectX:
 	jsr parseNext
-	bne .fail1a
+	bne .failIndirectX
 	lda instructionMode
 	cmp #MODE_INDIRECT_X
-	bne .fail1a
+	bne .failIndirectX
 	lda instructionOpcode
 	cmp #$a1
-	beq .case1b
-.fail1a:
-	lda #$1a
+	beq .indirectY
+.failIndirectX:
+	lda #FAIL_INDIRECT_X
 	jmp finish
 
 	;; LDA ($20),Y: indirect indexed Y.
-.case1b:
+.indirectY:
 	jsr parseNext
-	bne .fail1b
+	bne .failIndirectY
 	lda instructionMode
 	cmp #MODE_INDIRECT_Y
-	bne .fail1b
+	bne .failIndirectY
 	lda instructionOpcode
 	cmp #$b1
-	beq .case1c
-.fail1b:
-	lda #$1b
+	beq .relative
+.failIndirectY:
+	lda #FAIL_INDIRECT_Y
 	jmp finish
 
-	;; BNE target address: the opcode table tells us this mnemonic is relative.
-.case1c:
+	;; BNE $C000: opcode metadata identifies branch mnemonics as relative.
+.relative:
 	jsr parseNext
-	bne .fail1c
+	bne .failRelative
 	lda instructionMode
 	cmp #MODE_RELATIVE
-	bne .fail1c
+	bne .failRelative
 	lda instructionOpcode
 	cmp #$d0
-	bne .fail1c
+	bne .failRelative
 	lda instructionOperandValue+1
 	cmp #$c0
-	beq .case1d
-.fail1c:
-	lda #$1c
+	beq .symbolAbsolute
+.failRelative:
+	lda #FAIL_RELATIVE
 	jmp finish
 
-	;; JMP target: symbol is retained in place; JMP has only the absolute form.
-.case1d:
+	;; JMP target: only absolute exists, so the symbol does not make mode unclear.
+.symbolAbsolute:
 	jsr parseNext
-	bne .fail1d
+	bne .failSymbolAbsolute
 	lda instructionMode
 	cmp #MODE_ABSOLUTE
-	bne .fail1d
+	bne .failSymbolAbsolute
 	lda instructionOpcode
 	cmp #$4c
-	bne .fail1d
+	bne .failSymbolAbsolute
 	lda instructionOperandKind
 	cmp #OPERAND_SYMBOL
-	bne .fail1d
+	bne .failSymbolAbsolute
 	lda instructionSymbol
 	cmp #<jmpSymbol
-	bne .fail1d
+	bne .failSymbolAbsolute
 	lda instructionSymbol+1
 	cmp #>jmpSymbol
-	bne .fail1d
+	bne .failSymbolAbsolute
 	lda instructionSymbolLength
 	cmp #$06
-	beq .case1e
-.fail1d:
-	lda #$1d
+	beq .symbolDeferred
+.failSymbolAbsolute:
+	lda #FAIL_SYMBOL_ABSOLUTE
 	jmp finish
 
-	;; LDA target: both zp and absolute exist, so mode resolution is deferred.
-.case1e:
+	;; LDA target: both zero-page and absolute exist, so width is deferred.
+.symbolDeferred:
 	jsr parseNext
-	bne .fail1e
+	bne .failSymbolDeferred
 	lda instructionMode
 	cmp #MODE_DEFERRED
-	bne .fail1e
+	bne .failSymbolDeferred
 	lda instructionOpcode
 	cmp #$ff
-	bne .fail1e
+	bne .failSymbolDeferred
 	lda instructionIndex
 	cmp #INDEX_NONE
-	bne .fail1e
+	bne .failSymbolDeferred
 	lda instructionSymbol
 	cmp #<ldaSymbol
-	bne .fail1e
+	bne .failSymbolDeferred
 	lda instructionSymbol+1
 	cmp #>ldaSymbol
-	beq .case1f
-.fail1e:
-	lda #$1e
+	beq .badMnemonic
+.failSymbolDeferred:
+	lda #FAIL_SYMBOL_DEFERRED
 	jmp finish
 
-	;; Unknown mnemonic is distinct from a bad mnemonic/mode pair.
-.case1f:
+	;; Unknown mnemonic is distinct from a known mnemonic with an illegal mode.
+.badMnemonic:
 	jsr parseNext
 	cmp #INSTRUCTION_BAD_MNEMONIC
-	beq .case20
-	lda #$1f
+	beq .badMode
+	lda #FAIL_BAD_MNEMONIC
 	jmp finish
 
 	;; STA immediate has a known mnemonic but no such opcode.
-.case20:
+.badMode:
 	jsr parseNext
 	cmp #INSTRUCTION_BAD_MODE
-	beq .reverseLookup
-	lda #$20
+	beq .opcodeLookup
+	lda #FAIL_BAD_MODE
 	jmp finish
 
 	;; Reverse lookup reuses opcode_table: LDA/immediate -> $A9.
-.reverseLookup:
+.opcodeLookup:
 	lda ldaMnemonic
 	ldx #MODE_IMMEDIATE
 	jsr findOpcode
-	bcc .fail21
+	bcc .failOpcodeLookup
 	cmp #$a9
 	beq .invalidPair
-.fail21:
-	lda #$21
+.failOpcodeLookup:
+	lda #FAIL_OPCODE_LOOKUP
 	jmp finish
 
-	;; The STA mnemonic from the failed parse remains available; STA/immediate
-	;; must not be found in the opcode table.
+	;; The failed STA parse left its known mnemonic ID in instructionMnemonic.
 .invalidPair:
 	lda instructionMnemonic
 	ldx #MODE_IMMEDIATE
 	jsr findOpcode
 	bcc .eof
-	lda #$22
+	lda #FAIL_INVALID_PAIR
 	jmp finish
 
 .eof:
 	jsr nextStatement
 	cmp #STATEMENT_EOF
 	beq .pass
-	lda #$23
+	lda #FAIL_EOF
 	jmp finish
 
 .pass:
@@ -342,17 +391,18 @@ finish:
 	jmp .halt
 
 ;;; parseNext
-;;; Parse the next statement and require it to be an instruction.
-;;; Returns parseInstruction status in A, or $fe if statement recognition fails.
+;;;
+;;; Parse the next statement and require an instruction.
+;;; Returns parseInstruction status in A, or PARSE_NOT_INSTRUCTION.
+;;; A, X, Y, ZP_PTR0 and flags are clobbered. ZP_PTR1 advances to the next line.
 parseNext:
 	jsr nextStatement
 	cmp #STATEMENT_INSTRUCTION
 	beq .instruction
-	lda #$fe
+	lda #PARSE_NOT_INSTRUCTION
 	rts
 .instruction:
-	jsr parseInstruction
-	rts
+	jmp parseInstruction
 
 ldaMnemonic:
 	byte 0
