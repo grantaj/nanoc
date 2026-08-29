@@ -198,8 +198,9 @@ testBadOrigin:
 	sec
 	rts
 
-;;; A later origin could erase a pass-1/pass-2 size difference. Reject it
-;;; instead of adding per-origin layout records or relaxation machinery.
+;;; Pass 1 reserves three bytes for LDA target; pass 2 would prefer two because
+;;; target is in zero page. A later origin would erase that size difference, so
+;;; reject the origin instead of adding per-origin phase records.
 testLateOrigin:
 	lda #<lateOriginSource
 	sta ZP_PTR1
