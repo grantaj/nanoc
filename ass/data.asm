@@ -15,8 +15,8 @@ DATA_WORD   = $02
 DATA_STRING = $03
 
 ;;; dataStatementKind
-;;; Return DATA_* for the bare statement names byte, word, and string.
-;;; ZP_PTR0, A and Y are clobbered.
+;;; Return DATA_* in A for the bare statement names byte, word, and string.
+;;; ZP_PTR0 and Y are clobbered. X is preserved.
 dataStatementKind:
 	lda statementNameLength
 	cmp #$04
@@ -109,9 +109,12 @@ dataStatementKind:
 	rts
 
 ;;; assembleData
-;;; A contains DATA_BYTE, DATA_WORD, or DATA_STRING.
-;;; ZP_PTR1 is the assembler source cursor. Borrow it as the argument base while
-;;; handling this one statement, then restore it before returning.
+;;; Input: A = DATA_BYTE, DATA_WORD, or DATA_STRING.
+;;; Output: A = ASSEMBLE_* status.
+;;; ZP_PTR1 is preserved. A, X, Y, ZP_PTR0 and flags are clobbered.
+;;;
+;;; ZP_PTR1 is normally the assembler source cursor. Borrow it as the argument
+;;; base while handling this one statement, then restore it before returning.
 assembleData:
 	tax
 	lda ZP_PTR1
@@ -148,7 +151,10 @@ assembleData:
 	rts
 
 ;;; assembleDataList
-;;; A = bytes per item (1 for byte, 2 for word).
+;;; Input: A = bytes per item (1 for byte, 2 for word); ZP_PTR1 = argument base.
+;;; Output: A = ASSEMBLE_* status.
+;;; ZP_PTR1 is preserved. A, X, Y, ZP_PTR0 and flags are clobbered.
+;;;
 ;;; Walk the argument directly with a one-byte offset. nextDataItem returns the
 ;;; current item as ZP_PTR0/X for parseValue and leaves dataOffset at the next
 ;;; item (or at the end of the argument).
@@ -179,12 +185,12 @@ assembleDataList:
 	beq .count
 
 	lda valueResult
-	jsr emitAssemblyByte
+	jsr emitDataByte
 	lda dataWidth
 	cmp #$01
 	beq .itemDone
 	lda valueResult+1
-	jsr emitAssemblyByte
+	jsr emitDataByte
 	jmp .itemDone
 
 .unresolved:
@@ -211,8 +217,10 @@ assembleDataList:
 	rts
 
 ;;; nextDataItem
-;;; Return the next trimmed item as ZP_PTR0/X. The argument base is ZP_PTR1.
-;;; Empty items and trailing commas return carry clear.
+;;; Input: ZP_PTR1 = argument base; dataOffset = current scan offset.
+;;; Output: carry set with ZP_PTR0/X = trimmed item pointer/length.
+;;;         carry clear for an empty item or trailing comma.
+;;; ZP_PTR1 is preserved. A, Y and flags are clobbered.
 nextDataItem:
 	ldy dataOffset
 	jsr skipDataSpaces
@@ -268,6 +276,7 @@ nextDataItem:
 
 ;;; skipDataSpaces
 ;;; Y is an offset into the argument at ZP_PTR1. Skip spaces/tabs in place.
+;;; ZP_PTR1 and X are preserved. A, Y and flags are clobbered.
 skipDataSpaces:
 .loop:
 	cpy statementArgumentLength
@@ -285,7 +294,7 @@ skipDataSpaces:
 
 ;;; setDataItemPointer
 ;;; dataOffset is the item's start and X is its length. Point ZP_PTR0 at it.
-;;; X and Y are preserved.
+;;; X and Y are preserved. A, ZP_PTR0 and flags are clobbered.
 setDataItemPointer:
 	clc
 	lda ZP_PTR1
@@ -297,9 +306,13 @@ setDataItemPointer:
 	rts
 
 ;;; assembleString
-;;; ZP_PTR1 points at the string argument. Like vasm oldstyle, string emits the
-;;; literal bytes followed by one NUL byte; nanoc already relies on this for
-;;; source lines. There is deliberately no escape language yet.
+;;; Input: ZP_PTR1 = complete string argument.
+;;; Output: A = ASSEMBLE_* status.
+;;; ZP_PTR1 is preserved. A, X, Y, ZP_PTR0 and flags are clobbered.
+;;;
+;;; Like vasm oldstyle, string emits the literal bytes followed by one NUL byte;
+;;; nanoc already relies on this for source lines. There is deliberately no
+;;; escape language yet.
 assembleString:
 	lda statementArgumentLength
 	cmp #$02
@@ -344,22 +357,22 @@ assembleString:
 	cmp #'"'
 	beq .terminator
 	inc dataOffset
-	jsr emitAssemblyByte
+	jsr emitDataByte
 	jmp .emitLoop
 
 .terminator:
 	lda #$00
-	jsr emitAssemblyByte
+	jsr emitDataByte
 	lda #ASSEMBLE_OK
 	rts
 .bad:
 	lda #ASSEMBLE_BAD_DATA
 	rts
 
-;;; emitAssemblyByte
+;;; emitDataByte
 ;;; A is written at assemblyPtr, then assemblyPtr advances by one.
 ;;; ZP_PTR0, A, X and Y are clobbered.
-emitAssemblyByte:
+emitDataByte:
 	tax
 	lda assemblyPtr
 	sta ZP_PTR0
