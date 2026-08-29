@@ -189,7 +189,9 @@ testLocalScopeError:
 	lda #<localScopeSource
 	sta ZP_PTR1
 	lda #>localScopeSource
-	sta ZP_PTR1+1
+	sta sourceEnd
+	lda #>localScopeSourceEnd
+	sta sourceEnd+1
 	lda #<localScopeSourceEnd
 	sta sourceEnd
 	lda #>localScopeSourceEnd
@@ -286,6 +288,7 @@ testBranchRange:
 	include "instruction.asm"
 	include "emitter.asm"
 	include "symbols.asm"
+	include "value.asm"
 	include "assembler.asm"
 
 constantSource:
