@@ -13,12 +13,12 @@ SYMBOL_BASE_HI   = 4
 SYMBOL_VALUE_LO  = 5
 SYMBOL_VALUE_HI  = 6
 SYMBOL_SCOPE     = 7
-SYMBOL_FLAGS     = 8
+SYMBOL_KIND      = 8
 SYMBOL_SIZE      = 9
 
-SYMBOL_FLAG_LABEL   = $01
-SYMBOL_FLAG_DEFINED = $02
-SYMBOL_DEFINED_LABEL = $03
+SYMBOL_CONSTANT        = $00
+SYMBOL_LABEL_UNDEFINED = $01
+SYMBOL_LABEL_DEFINED   = $02
 
 SYMBOL_OK        = $00
 SYMBOL_DUPLICATE = $01
@@ -38,19 +38,18 @@ resetSymbols:
 	sta symbolNameEnd+1
 	rts
 
-;;; defineSymbol
+;;; defineConstant
 ;;; Define a fixed constant. Input is symbolName/symbolNameLength/symbolValue.
-defineSymbol:
+defineConstant:
 	jsr symbolScope
 	bcc .noScope
 	jsr findSymbolEntry
 	bcs .duplicate
-	lda symbolValue
+	lda #$00
 	sta symbolBase
-	lda symbolValue+1
 	sta symbolBase+1
-	lda #SYMBOL_FLAG_DEFINED
-	sta symbolFlags
+	lda #SYMBOL_CONSTANT
+	sta symbolKind
 	jsr allocateSymbol
 	rts
 .duplicate:
@@ -68,8 +67,8 @@ internLabel:
 	bcc .noScope
 	jsr findSymbolEntry
 	bcc .new
-	lda symbolFlags
-	and #SYMBOL_FLAG_LABEL
+	lda symbolKind
+	cmp #SYMBOL_CONSTANT
 	beq .duplicate
 	lda #SYMBOL_OK
 	sec
@@ -80,8 +79,8 @@ internLabel:
 	sta symbolBase+1
 	sta symbolValue
 	sta symbolValue+1
-	lda #SYMBOL_FLAG_LABEL
-	sta symbolFlags
+	lda #SYMBOL_LABEL_UNDEFINED
+	sta symbolKind
 	jsr allocateSymbol
 	cmp #SYMBOL_OK
 	bne .failed
@@ -107,11 +106,8 @@ defineLabel:
 	bcc .noScope
 	jsr findSymbolEntry
 	bcc .new
-	lda symbolFlags
-	and #SYMBOL_FLAG_LABEL
-	beq .duplicate
-	lda symbolFlags
-	and #SYMBOL_FLAG_DEFINED
+	lda symbolKind
+	cmp #SYMBOL_LABEL_UNDEFINED
 	bne .duplicate
 
 	lda symbolEntry
@@ -130,10 +126,10 @@ defineLabel:
 	iny
 	lda assemblyPtr+1
 	sta (ZP_PTR0),y
-	ldy #SYMBOL_FLAGS
-	lda #SYMBOL_DEFINED_LABEL
+	ldy #SYMBOL_KIND
+	lda #SYMBOL_LABEL_DEFINED
 	sta (ZP_PTR0),y
-	sta symbolFlags
+	sta symbolKind
 	lda assemblyPtr
 	sta symbolBase
 	sta symbolValue
@@ -150,8 +146,8 @@ defineLabel:
 	lda assemblyPtr+1
 	sta symbolBase+1
 	sta symbolValue+1
-	lda #SYMBOL_DEFINED_LABEL
-	sta symbolFlags
+	lda #SYMBOL_LABEL_DEFINED
+	sta symbolKind
 	jsr allocateSymbol
 	rts
 .duplicate:
@@ -161,17 +157,14 @@ defineLabel:
 	lda #SYMBOL_NO_SCOPE
 	rts
 
-;;; findSymbol
+;;; findConstant
 ;;; Fixed-value lookup used by parseValue. Labels deliberately do not resolve
-;;; here: even a backward label can move when an earlier instruction relaxes.
-findSymbol:
+;;; here: even a backward label can move when an earlier instruction shortens.
+findConstant:
 	jsr findSymbolEntry
 	bcc .notFound
-	lda symbolFlags
-	and #SYMBOL_FLAG_DEFINED
-	beq .notFound
-	lda symbolFlags
-	and #SYMBOL_FLAG_LABEL
+	lda symbolKind
+	cmp #SYMBOL_CONSTANT
 	bne .notFound
 	sec
 	rts
@@ -181,7 +174,7 @@ findSymbol:
 
 ;;; findSymbolEntry
 ;;; Look up symbolName/symbolNameLength in the current local-label scope.
-;;; Carry set returns symbolEntry, symbolBase, symbolValue, and symbolFlags.
+;;; Carry set returns symbolEntry, symbolBase, symbolValue, and symbolKind.
 ;;; ZP_PTR1 is preserved because it is normally the source cursor.
 findSymbolEntry:
 	jsr symbolScope
@@ -264,12 +257,15 @@ findSymbolEntry:
 	iny
 	lda (ZP_PTR1),y
 	sta symbolValue+1
-	ldy #SYMBOL_FLAGS
+	ldy #SYMBOL_KIND
 	lda (ZP_PTR1),y
-	sta symbolFlags
-	lda #$01
-	sta symbolFound
-	jmp .restore
+	sta symbolKind
+	pla
+	sta ZP_PTR1+1
+	pla
+	sta ZP_PTR1
+	sec
+	rts
 
 .advance:
 	clc
@@ -282,24 +278,16 @@ findSymbolEntry:
 	jmp .next
 
 .notFound:
-	lda #$00
-	sta symbolFound
-.restore:
 	pla
 	sta ZP_PTR1+1
 	pla
 	sta ZP_PTR1
-	lda symbolFound
-	beq .clear
-	sec
-	rts
-.clear:
 	clc
 	rts
 
 ;;; allocateSymbol
 ;;; Append one entry and copy its name into the downward-growing name area.
-;;; Inputs: symbolName/Length, symbolBase, symbolValue, symbolFlags.
+;;; Inputs: symbolName/Length, symbolBase, symbolValue, symbolKind.
 allocateSymbol:
 	lda symbolNameLength
 	bne .hasName
@@ -390,7 +378,7 @@ allocateSymbol:
 	lda symbolWantedScope
 	sta (ZP_PTR1),y
 	iny
-	lda symbolFlags
+	lda symbolKind
 	sta (ZP_PTR1),y
 
 	lda symbolNext
@@ -417,7 +405,7 @@ allocateSymbol:
 
 ;;; updateLabelValues
 ;;; Recompute defined labels by subtracting each earlier direct instruction that
-;;; has relaxed from three bytes to two.
+;;; has shortened from three bytes to two.
 updateLabelValues:
 	lda symbolTableStart
 	sta symbolScan
@@ -435,10 +423,9 @@ updateLabelValues:
 	sta ZP_PTR0
 	lda symbolScan+1
 	sta ZP_PTR0+1
-	ldy #SYMBOL_FLAGS
+	ldy #SYMBOL_KIND
 	lda (ZP_PTR0),y
-	and #SYMBOL_DEFINED_LABEL
-	cmp #SYMBOL_DEFINED_LABEL
+	cmp #SYMBOL_LABEL_DEFINED
 	bne .advance
 	ldy #SYMBOL_BASE_LO
 	lda (ZP_PTR0),y
@@ -470,7 +457,7 @@ updateLabelValues:
 	rts
 
 ;;; allLabelsDefined
-;;; Carry set when every interned label reference was eventually defined.
+;;; Carry set unless an interned label was never defined.
 allLabelsDefined:
 	lda symbolTableStart
 	sta symbolScan
@@ -488,13 +475,9 @@ allLabelsDefined:
 	sta ZP_PTR0
 	lda symbolScan+1
 	sta ZP_PTR0+1
-	ldy #SYMBOL_FLAGS
+	ldy #SYMBOL_KIND
 	lda (ZP_PTR0),y
-	and #SYMBOL_FLAG_LABEL
-	beq .advance
-	ldy #SYMBOL_FLAGS
-	lda (ZP_PTR0),y
-	and #SYMBOL_FLAG_DEFINED
+	cmp #SYMBOL_LABEL_UNDEFINED
 	beq .bad
 .advance:
 	clc
@@ -513,7 +496,7 @@ allLabelsDefined:
 	rts
 
 ;;; loadSymbolEntry
-;;; symbolEntry -> symbolValue/symbolFlags.
+;;; symbolEntry -> symbolValue/symbolKind.
 loadSymbolEntry:
 	lda symbolEntry
 	sta ZP_PTR0
@@ -525,9 +508,9 @@ loadSymbolEntry:
 	iny
 	lda (ZP_PTR0),y
 	sta symbolValue+1
-	ldy #SYMBOL_FLAGS
+	ldy #SYMBOL_KIND
 	lda (ZP_PTR0),y
-	sta symbolFlags
+	sta symbolKind
 	rts
 
 ;;; symbolScope
@@ -566,10 +549,9 @@ symbolNameLength:	byte 0
 symbolEntry:		word 0
 symbolBase:		word 0
 symbolValue:		word 0
-symbolFlags:		byte 0
+symbolKind:		byte 0
 
 symbolWantedScope:	byte 0
 symbolNext:		word 0
 symbolNewName:		word 0
 symbolScan:		word 0
-symbolFound:		byte 0

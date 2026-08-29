@@ -1,16 +1,13 @@
 ;;; assembler.asm
 ;;;
-;;; Source is parsed exactly once.  Pass 1 consumes each statement into an
+;;; Source is parsed exactly once. Pass 1 consumes each statement into an
 ;;; almost-final staged machine image, an owned symbol table, and only the tiny
-;;; holes whose values/layout are not yet known.  Later work is memory-only:
-;;; relax zero-page choices until stable, resolve holes, then commit the image.
+;;; holes whose values/layout are not yet known. Later work is memory-only:
+;;; shorten zero-page choices until stable, resolve holes, then commit the image.
 ;;;
-;;; `assemble` keeps the old in-memory source entry point for native unit tests;
-;;; it no longer rewinds that source.  `assembleFile` is the production path and
-;;; reads one line at a time through source.asm.
-
-PASS_LAYOUT = $01			; retained names for older callers/tests
-PASS_EMIT   = $02
+;;; `assemble` keeps the in-memory source entry point for native unit tests.
+;;; `assembleFile` is the production path and reads one line at a time through
+;;; source.asm.
 
 ASSEMBLE_OK              = $00
 ASSEMBLE_BAD_STATEMENT   = $01
@@ -20,7 +17,6 @@ ASSEMBLE_SCOPE_ERROR     = $04
 ASSEMBLE_BAD_INSTRUCTION = $05
 ASSEMBLE_UNDEFINED       = $06
 ASSEMBLE_EMIT_ERROR      = $07
-ASSEMBLE_PHASE_ERROR     = $08		; now only an internal-consistency status
 ASSEMBLE_BAD_DATA        = $09
 ASSEMBLE_BAD_ORIGIN      = $0a
 ASSEMBLE_WORK_FULL       = $0b
@@ -29,7 +25,7 @@ ASSEMBLE_LINE_TOO_LONG   = $0d
 ASSEMBLE_INCLUDE_DEPTH   = $0e
 
 ;;; assemble
-;;; Consume the existing caller-owned [ZP_PTR1,sourceEnd) fixture once.  This is
+;;; Consume the existing caller-owned [ZP_PTR1,sourceEnd) fixture once. This is
 ;;; useful for native tests; production source should use assembleFile.
 assemble:
 	lda #$00
@@ -77,7 +73,7 @@ assembleFile:
 	rts
 
 ;;; beginAssembly
-;;; Reset only persistent assembly state.  assemblyPtr on entry is the default
+;;; Reset only persistent assembly state. assemblyPtr on entry is the default
 ;;; target origin; a leading `* = value` may replace it before any output.
 beginAssembly:
 	lda assemblyPtr
@@ -93,8 +89,9 @@ beginAssembly:
 	rts
 
 ;;; finishAssembly
-;;; No source is touched beyond this point.  Validate definitions, relax layout,
-;;; resolve every hole in staging, then and only then copy to target memory.
+;;; No source is touched beyond this point. Validate definitions, shorten direct
+;;; operands until layout is stable, resolve every hole in staging, then and only
+;;; then copy to target memory.
 finishAssembly:
 	jsr sealRepresentation
 	jsr allLabelsDefined
@@ -194,8 +191,8 @@ isIncludeStatement:
 	rts
 
 ;;; assembleLabel
-;;; The symbol stores its conservative target address.  Layout passes derive the
-;;; current/final value by subtracting earlier one-byte relaxations.
+;;; The symbol stores its conservative target address. Layout passes derive the
+;;; current/final value by subtracting earlier one-byte shortenings.
 assembleLabel:
 	jsr enterLabelScope
 	bcc .scopeError
@@ -212,9 +209,8 @@ assembleLabel:
 	rts
 
 ;;; assembleSymbol
-;;; `* = value` fixes the one target origin before code/data.  Other definitions
-;;; are fixed constants and must resolve immediately; they never participate in
-;;; layout relaxation.
+;;; `* = value` fixes the one target origin before code/data. Other definitions
+;;; are fixed constants and must resolve immediately; they never affect layout.
 assembleSymbol:
 	lda statementNameLength
 	cmp #$01
@@ -246,7 +242,7 @@ assembleSymbol:
 	sta symbolValue
 	lda valueResult+1
 	sta symbolValue+1
-	jsr defineSymbol
+	jsr defineConstant
 	jmp mapSymbolStatus
 .origin:
 	lda originAllowed
@@ -277,9 +273,10 @@ assembleSymbol:
 	rts
 
 ;;; assembleInstruction
-;;; Parse once.  Fixed operands become bytes now; label-dependent operands keep
-;;; only their compact captured recipe.  Relative instructions are holes even
-;;; with numeric targets because their own final PC can move during relaxation.
+;;; Parse the instruction once. The same value parser used by constants and data
+;;; returns either a fixed value or the compact label recipe a hole needs.
+;;; Relative instructions are holes even with numeric targets because their own
+;;; final PC can move during shortening.
 assembleInstruction:
 	jsr parseInstruction
 	cmp #INSTRUCTION_OK
@@ -296,7 +293,7 @@ assembleInstruction:
 	rts
 
 .knownRelative:
-	jsr captureFixedInstructionValue
+	jsr setFixedInstructionValue
 	jsr stageRelativeHole
 	rts
 
@@ -306,7 +303,7 @@ assembleInstruction:
 	lda instructionSymbol+1
 	sta ZP_PTR0+1
 	ldx instructionSymbolLength
-	jsr captureValue
+	jsr parseValue
 	cmp #VALUE_OK
 	beq .fixedSymbol
 	cmp #VALUE_UNRESOLVED
@@ -340,7 +337,7 @@ assembleInstruction:
 	jsr stageResolvedInstruction
 	rts
 .fixedRelative:
-	jsr captureFixedInstructionValue
+	jsr setFixedInstructionValue
 	jsr stageRelativeHole
 	rts
 
@@ -366,14 +363,14 @@ assembleInstruction:
 	lda #ASSEMBLE_SCOPE_ERROR
 	rts
 
-;;; captureFixedInstructionValue
-;;; Turn instructionOperandValue into the same tiny recipe shape used by holes.
-captureFixedInstructionValue:
+;;; setFixedInstructionValue
+;;; Put a fixed numeric target into the same small fields used by hole records.
+setFixedInstructionValue:
 	lda #$00
 	sta capturedHasSymbol
 	sta capturedSymbol
 	sta capturedSymbol+1
-	sta capturedRelaxSafe
+	sta capturedCanShorten
 	lda instructionOperandValue
 	sta capturedAddend
 	lda instructionOperandValue+1
@@ -474,7 +471,7 @@ stageValueHoleInstruction:
 	rts
 
 ;;; stageRelativeHole
-;;; Relative width is fixed but its encoded byte uses the final relaxed PC.
+;;; Relative width is fixed but its encoded byte uses the final shortened PC.
 stageRelativeHole:
 	lda assemblyPtr
 	sta holeAddress
@@ -502,7 +499,7 @@ stageRelativeHole:
 	rts
 
 ;;; stageDirectHole
-;;; The only layout-changing record.  Stage the legal long form and remember the
+;;; The only layout-changing record. Stage the legal long form and remember the
 ;;; corresponding short opcode; later passes may mark this record one byte short.
 stageDirectHole:
 	lda assemblyPtr
@@ -603,7 +600,6 @@ assemblyStart:	word 0
 instructionWidth:	byte 0
 longOpcode:	byte 0
 
-	include "capture.asm"
 	include "representation.asm"
 	include "source.asm"
 	include "data.asm"

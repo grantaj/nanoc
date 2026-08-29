@@ -2,7 +2,11 @@
 ;;;
 ;;; Pass 1 is the assembler representation: almost-final machine bytes grow
 ;;; upward from stagingStart while the few unresolved hole records grow downward
-;;; from stagingLimit.  No source text survives here.
+;;; from stagingLimit. No source text survives here.
+;;;
+;;; Hole records are fixed-size and contiguous. The first source hole is at
+;;; stagingLimit-HOLE_SIZE; each later one is one HOLE_SIZE lower in memory.
+;;; holeFree is therefore both the allocation boundary and the end of a scan.
 
 HOLE_VALUE_BYTE = $01
 HOLE_VALUE_WORD = $02
@@ -10,28 +14,26 @@ HOLE_RELATIVE   = $03
 HOLE_DIRECT     = $04
 HOLE_DATA_BYTE  = $05
 
-HOLE_FLAG_SHORT      = $01
-HOLE_FLAG_RELAX_SAFE = $02
-HOLE_FLAG_SYMBOL     = $04
+HOLE_FLAG_SHORT       = $01
+HOLE_FLAG_CAN_SHORTEN = $02
+HOLE_FLAG_HAS_SYMBOL  = $04
 
-HOLE_NEXT_LO    = 0
-HOLE_NEXT_HI    = 1
-HOLE_KIND       = 2
-HOLE_FLAGS      = 3
-HOLE_STAGE_LO   = 4
-HOLE_STAGE_HI   = 5
-HOLE_ADDRESS_LO = 6
-HOLE_ADDRESS_HI = 7
-HOLE_SYMBOL_LO  = 8
-HOLE_SYMBOL_HI  = 9
-HOLE_ADDEND_LO  = 10
-HOLE_ADDEND_HI  = 11
-HOLE_PREFIX     = 12
-HOLE_EXTRA      = 13
-HOLE_SIZE       = 14
+HOLE_KIND       = 0
+HOLE_FLAGS      = 1
+HOLE_STAGE_LO   = 2
+HOLE_STAGE_HI   = 3
+HOLE_ADDRESS_LO = 4
+HOLE_ADDRESS_HI = 5
+HOLE_SYMBOL_LO  = 6
+HOLE_SYMBOL_HI  = 7
+HOLE_ADDEND_LO  = 8
+HOLE_ADDEND_HI  = 9
+HOLE_PREFIX     = 10
+HOLE_EXTRA      = 11
+HOLE_SIZE       = 12
 
 ;;; resetRepresentation
-;;; Reset the caller-owned staging workspace.  Bytes and holes grow toward one
+;;; Reset the caller-owned staging workspace. Bytes and holes grow toward one
 ;;; another and ASSEMBLE_WORK_FULL is returned before they overlap.
 resetRepresentation:
 	lda stagingStart
@@ -42,17 +44,12 @@ resetRepresentation:
 	sta holeFree
 	lda stagingLimit+1
 	sta holeFree+1
-	lda #$00
-	sta holeFirst
-	sta holeFirst+1
-	sta holeLast
-	sta holeLast+1
 	rts
 
 ;;; stageByte
-;;; A is one final/conservative output byte.  Write it to staging and advance
+;;; A is one final/conservative output byte. Write it to staging and advance
 ;;; both the staged cursor and the conservative target PC assemblyPtr.
-;;; Carry set on success, clear when staging has met the hole table.
+;;; Carry set on success, clear when staging has met the hole records.
 stageByte:
 	tax
 	lda stagingPtr+1
@@ -85,54 +82,41 @@ stageByte:
 	rts
 
 ;;; appendHole
-;;; Append one source-ordered fixed-size hole record.  Inputs are holeKind,
-;;; holeStage, holeAddress, holeExtra, and captured* from captureValue.
+;;; Allocate the next fixed-size record immediately below the previous one.
+;;; Inputs are holeKind, holeStage, holeAddress, holeExtra, and captured*.
 ;;; Carry set on success, clear with A=ASSEMBLE_WORK_FULL on collision.
 appendHole:
 	sec
 	lda holeFree
 	sbc #HOLE_SIZE
-	sta holeNew
+	sta ZP_PTR0
 	lda holeFree+1
 	sbc #$00
-	sta holeNew+1
+	sta ZP_PTR0+1
 
-	lda holeNew+1
+	lda ZP_PTR0+1
 	cmp stagingPtr+1
-	bcs .highEnough
-	jmp .full
-.highEnough:
+	bcc .full
 	bne .room
-	lda holeNew
+	lda ZP_PTR0
 	cmp stagingPtr
-	bcs .room
-	jmp .full
+	bcc .full
 .room:
 	lda #$00
 	sta holeFlags
-	lda capturedRelaxSafe
+	lda capturedCanShorten
 	beq .symbolFlag
-	lda holeFlags
-	ora #HOLE_FLAG_RELAX_SAFE
+	lda #HOLE_FLAG_CAN_SHORTEN
 	sta holeFlags
 .symbolFlag:
 	lda capturedHasSymbol
-	beq .flagsReady
+	beq .write
 	lda holeFlags
-	ora #HOLE_FLAG_SYMBOL
+	ora #HOLE_FLAG_HAS_SYMBOL
 	sta holeFlags
-.flagsReady:
 
-	lda holeNew
-	sta ZP_PTR0
-	lda holeNew+1
-	sta ZP_PTR0+1
-	ldy #HOLE_NEXT_LO
-	lda #$00
-	sta (ZP_PTR0),y
-	iny
-	sta (ZP_PTR0),y
-	iny
+.write:
+	ldy #HOLE_KIND
 	lda holeKind
 	sta (ZP_PTR0),y
 	iny
@@ -169,31 +153,9 @@ appendHole:
 	lda holeExtra
 	sta (ZP_PTR0),y
 
-	lda holeLast
-	ora holeLast+1
-	beq .first
-	lda holeLast
-	sta ZP_PTR0
-	lda holeLast+1
-	sta ZP_PTR0+1
-	ldy #HOLE_NEXT_LO
-	lda holeNew
-	sta (ZP_PTR0),y
-	iny
-	lda holeNew+1
-	sta (ZP_PTR0),y
-	jmp .linked
-.first:
-	lda holeNew
-	sta holeFirst
-	lda holeNew+1
-	sta holeFirst+1
-.linked:
-	lda holeNew
-	sta holeLast
+	lda ZP_PTR0
 	sta holeFree
-	lda holeNew+1
-	sta holeLast+1
+	lda ZP_PTR0+1
 	sta holeFree+1
 	sec
 	rts
@@ -209,13 +171,47 @@ sealRepresentation:
 	sta stagingEnd+1
 	rts
 
+;;; firstHole / nextHole
+;;; Records were allocated downward, so source order is a simple downward walk.
+;;; A zero holeScan means there are no more records.
+firstHole:
+	lda stagingLimit
+	sta holeScan
+	lda stagingLimit+1
+	sta holeScan+1
+	jmp nextHole
+
+nextHole:
+	sec
+	lda holeScan
+	sbc #HOLE_SIZE
+	sta holeScan
+	lda holeScan+1
+	sbc #$00
+	sta holeScan+1
+
+	lda holeScan+1
+	cmp holeFree+1
+	bcc .done
+	bne .haveHole
+	lda holeScan
+	cmp holeFree
+	bcc .done
+.haveHole:
+	rts
+.done:
+	lda #$00
+	sta holeScan
+	sta holeScan+1
+	rts
+
 ;;; adjustAddress
-;;; adjustInput is a conservative target address.  Subtract one for every
-;;; earlier direct hole already marked short.  A label at the same address as an
+;;; adjustInput is a conservative target address. Subtract one for every earlier
+;;; direct hole already marked short. A label at the same address as an
 ;;; instruction is not moved by that instruction, hence the strict '<'.
 ;;;
-;;; The routine uses holeScan for its internal walk but preserves the caller's
-;;; hole cursor so it can safely be called while resolving a hole.
+;;; This routine preserves the caller's holeScan because it is also used while
+;;; resolving a particular hole.
 adjustAddress:
 	lda holeScan
 	pha
@@ -225,10 +221,7 @@ adjustAddress:
 	sta adjustResult
 	lda adjustInput+1
 	sta adjustResult+1
-	lda holeFirst
-	sta holeScan
-	lda holeFirst+1
-	sta holeScan+1
+	jsr firstHole
 .next:
 	lda holeScan
 	ora holeScan+1
@@ -271,7 +264,7 @@ adjustAddress:
 	rts
 
 ;;; resolveHoleValue
-;;; Resolve the tiny stored recipe of holeScan against current symbol values.
+;;; Resolve the tiny stored recipe at holeScan against current symbol values.
 ;;; Carry clear means the referenced symbol is still undefined.
 resolveHoleValue:
 	lda holeScan
@@ -280,7 +273,7 @@ resolveHoleValue:
 	sta ZP_PTR0+1
 	ldy #HOLE_FLAGS
 	lda (ZP_PTR0),y
-	and #HOLE_FLAG_SYMBOL
+	and #HOLE_FLAG_HAS_SYMBOL
 	beq .literal
 	ldy #HOLE_SYMBOL_LO
 	lda (ZP_PTR0),y
@@ -289,9 +282,9 @@ resolveHoleValue:
 	lda (ZP_PTR0),y
 	sta symbolEntry+1
 	jsr loadSymbolEntry
-	lda symbolFlags
-	and #SYMBOL_FLAG_DEFINED
-	beq .undefined
+	lda symbolKind
+	cmp #SYMBOL_LABEL_DEFINED
+	bne .undefined
 	lda symbolValue
 	sta resolvedValue
 	lda symbolValue+1
@@ -340,10 +333,7 @@ relaxLayout:
 	jsr updateLabelValues
 	lda #$00
 	sta layoutChanged
-	lda holeFirst
-	sta holeScan
-	lda holeFirst+1
-	sta holeScan+1
+	jsr firstHole
 .next:
 	lda holeScan
 	ora holeScan+1
@@ -361,7 +351,7 @@ relaxLayout:
 	and #HOLE_FLAG_SHORT
 	bne .advance
 	lda (ZP_PTR0),y
-	and #HOLE_FLAG_RELAX_SAFE
+	and #HOLE_FLAG_CAN_SHORTEN
 	beq .advance
 	jsr resolveHoleValue
 	bcc .undefined
@@ -391,13 +381,10 @@ relaxLayout:
 	rts
 
 ;;; resolveAllHoles
-;;; Layout is now stable.  Patch only staging memory and validate every machine
+;;; Layout is now stable. Patch only staging memory and validate every machine
 ;;; constraint before the final target region is touched.
 resolveAllHoles:
-	lda holeFirst
-	sta holeScan
-	lda holeFirst+1
-	sta holeScan+1
+	jsr firstHole
 .next:
 	lda holeScan
 	ora holeScan+1
@@ -594,17 +581,14 @@ patchHoleWord:
 	rts
 
 ;;; copyRepresentation
-;;; Commit the validated staged image to assemblyStart.  Short direct holes skip
+;;; Commit the validated staged image to assemblyStart. Short direct holes skip
 ;;; the one conservative excess byte; everything else copies literally.
 copyRepresentation:
 	lda stagingStart
 	sta copyStage
 	lda stagingStart+1
 	sta copyStage+1
-	lda holeFirst
-	sta copyHole
-	lda holeFirst+1
-	sta copyHole+1
+	jsr firstHole
 	lda assemblyStart
 	sta assemblyPtr
 	lda assemblyStart+1
@@ -618,12 +602,12 @@ copyRepresentation:
 	bne .haveByte
 	jmp .done
 .haveByte:
-	lda copyHole
-	ora copyHole+1
+	lda holeScan
+	ora holeScan+1
 	beq .normal
-	lda copyHole
+	lda holeScan
 	sta ZP_PTR0
-	lda copyHole+1
+	lda holeScan+1
 	sta ZP_PTR0+1
 	ldy #HOLE_STAGE_LO
 	lda (ZP_PTR0),y
@@ -661,11 +645,11 @@ copyRepresentation:
 	jsr advanceCopyStage
 	lda #$02
 	jsr advanceFinalPtr
-	jsr consumeCopyHole
+	jsr nextHole
 	jmp .loop
 
 .consumeHole:
-	jsr consumeCopyHole
+	jsr nextHole
 .normal:
 	lda copyStage
 	sta ZP_PTR0
@@ -685,35 +669,6 @@ copyRepresentation:
 	jmp .loop
 .done:
 	lda #ASSEMBLE_OK
-	rts
-
-consumeCopyHole:
-	lda copyHole
-	sta ZP_PTR0
-	lda copyHole+1
-	sta ZP_PTR0+1
-	ldy #HOLE_NEXT_LO
-	lda (ZP_PTR0),y
-	sta copyHole
-	iny
-	lda (ZP_PTR0),y
-	sta copyHole+1
-	rts
-
-;;; nextHole
-;;; Advance holeScan through the source-ordered linked list.
-nextHole:
-	lda holeScan
-	sta ZP_PTR0
-	lda holeScan+1
-	sta ZP_PTR0+1
-	ldy #HOLE_NEXT_LO
-	lda (ZP_PTR0),y
-	tax
-	iny
-	lda (ZP_PTR0),y
-	sta holeScan+1
-	stx holeScan
 	rts
 
 advanceCopyStage:
@@ -739,15 +694,12 @@ stagingLimit:	word 0
 stagingPtr:	word 0
 stagingEnd:	word 0
 holeFree:	word 0
-holeFirst:	word 0
-holeLast:	word 0
 
 holeKind:	byte 0
 holeFlags:	byte 0
 holeStage:	word 0
 holeAddress:	word 0
 holeExtra:	byte 0
-holeNew:	word 0
 holeScan:	word 0
 
 adjustInput:	word 0
@@ -756,6 +708,4 @@ resolvedValue:	word 0
 relativeBase:	word 0
 patchPtr:	word 0
 layoutChanged:	byte 0
-
 copyStage:	word 0
-copyHole:	word 0

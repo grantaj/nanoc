@@ -1,38 +1,58 @@
 ;;; value.asm
 ;;;
-;;; The assembler's intentionally tiny value grammar:
+;;; The assembler has one deliberately tiny value grammar:
 ;;;
 ;;;     [< | >] atom [ + atom | - atom ]
 ;;;
-;;; atom is $hex, decimal, 'c', or a symbol. There is no precedence, tree,
-;;; recursion, or general expression language.
+;;; atom is $hex, decimal, 'c', a constant, or a label. There is no precedence,
+;;; tree, recursion, or general expression language.
+;;;
+;;; Parsing produces either a fixed 16-bit value or the one persistent recipe
+;;; needed after a source line disappears:
+;;;
+;;;     label entry + 16-bit addend + optional < / > prefix
+;;;
+;;; Labels remain deferred even when already defined because shortening an
+;;; earlier instruction can still move their final addresses.
 
-VALUE_OK         = $00
-VALUE_UNRESOLVED = $01
-VALUE_BAD        = $02
+VALUE_OK          = $00
+VALUE_UNRESOLVED  = $01
+VALUE_BAD         = $02
+VALUE_SYMBOL_FULL = $03
+VALUE_SCOPE_ERROR = $04
 
 VALUE_PREFIX_NONE = $00
 VALUE_PREFIX_LOW  = $01
 VALUE_PREFIX_HIGH = $02
 
+VALUE_ATOM_FIXED = $00
+VALUE_ATOM_LABEL = $01
+
 ;;; parseValue
 ;;;
-;;; Input: ZP_PTR0/X point to the complete value text.
-;;; Output: VALUE_* in A, valueResult when resolved.
+;;; Input: ZP_PTR0/X = complete value text.
+;;; Output:
+;;;   VALUE_OK         -> valueResult is fixed and layout-independent
+;;;   VALUE_UNRESOLVED -> captured* describes one label-dependent value
+;;;   VALUE_BAD / VALUE_SYMBOL_FULL / VALUE_SCOPE_ERROR
 ;;;
-;;; X is deliberately not parser state after entry: symbol lookup uses X. The
-;;; remaining byte count lives in valueLeft, making that ownership explicit.
-;;; ZP_PTR1 is preserved by findSymbol.
+;;; X is deliberately not parser state after entry; the remaining byte count
+;;; lives in valueLeft because symbol lookup uses X.
 parseValue:
 	stx valueLeft
 	bne .hasValue
 	lda #VALUE_BAD
 	rts
 .hasValue:
-	lda #VALUE_PREFIX_NONE
-	sta valuePrefix
 	lda #$00
-	sta valueUnresolved
+	sta capturedHasSymbol
+	sta capturedSymbol
+	sta capturedSymbol+1
+	sta capturedAddend
+	sta capturedAddend+1
+	sta capturedCanShorten
+	lda #VALUE_PREFIX_NONE
+	sta capturedPrefix
 
 	ldy #$00
 	lda (ZP_PTR0),y
@@ -43,89 +63,139 @@ parseValue:
 	jmp .first
 .low:
 	lda #VALUE_PREFIX_LOW
-	sta valuePrefix
+	sta capturedPrefix
 	jsr advanceValue
 	jmp .first
 .high:
 	lda #VALUE_PREFIX_HIGH
-	sta valuePrefix
+	sta capturedPrefix
 	jsr advanceValue
 
 .first:
 	jsr parseValueAtom
-	bcs .firstOk
-	jmp .bad
-.firstOk:
+	bcs .firstAtomOk
+	jmp .atomError
+.firstAtomOk:
+	lda valueAtomKind
+	cmp #VALUE_ATOM_LABEL
+	beq .firstLabel
 	lda valueAtom
-	sta valueResult
+	sta capturedAddend
 	lda valueAtom+1
-	sta valueResult+1
+	sta capturedAddend+1
+	jmp .operator
+.firstLabel:
+	lda #$01
+	sta capturedHasSymbol
+	sta capturedCanShorten		; bare label only moves downward
+	lda valueAtomSymbol
+	sta capturedSymbol
+	lda valueAtomSymbol+1
+	sta capturedSymbol+1
 
+.operator:
 	lda valueLeft
-	beq .finish
+	bne .hasOperator
+	jmp .finish
+.hasOperator:
 	ldy #$00
 	lda (ZP_PTR0),y
 	cmp #'+'
-	beq .plus
+	beq .haveOperator
 	cmp #'-'
-	beq .minus
+	beq .haveOperator
 	jmp .bad
-
-.plus:
+.haveOperator:
+	sta valueOperator
 	jsr advanceValue
 	jsr parseValueAtom
-	bcc .bad
+	bcs .secondAtomOk
+	jmp .atomError
+.secondAtomOk:
 	lda valueLeft
-	bne .bad			; exactly zero or one binary operation
+	beq .operatorDone
+	jmp .bad			; exactly zero or one binary operation
+.operatorDone:
+	lda valueAtomKind
+	cmp #VALUE_ATOM_LABEL
+	beq .secondLabel
+
+	;; A fixed second atom is either ordinary 16-bit arithmetic or the addend
+	;; attached to a deferred label.
+	lda valueOperator
+	cmp #'+'
+	beq .addFixed
+	sec
+	lda capturedAddend
+	sbc valueAtom
+	sta capturedAddend
+	lda capturedAddend+1
+	sbc valueAtom+1
+	sta capturedAddend+1
+	lda capturedHasSymbol
+	beq .finish
+	lda #$00			; arithmetic may wrap, so do not shorten direct mode
+	sta capturedCanShorten
+	jmp .finish
+.addFixed:
 	clc
-	lda valueResult
+	lda capturedAddend
 	adc valueAtom
-	sta valueResult
-	lda valueResult+1
+	sta capturedAddend
+	lda capturedAddend+1
 	adc valueAtom+1
-	sta valueResult+1
+	sta capturedAddend+1
+	lda capturedHasSymbol
+	beq .finish
+	lda #$00			; label+literal stays conservatively long
+	sta capturedCanShorten
 	jmp .finish
 
-.minus:
-	jsr advanceValue
-	jsr parseValueAtom
-	bcc .bad
-	lda valueLeft
-	bne .bad
-	sec
-	lda valueResult
-	sbc valueAtom
-	sta valueResult
-	lda valueResult+1
-	sbc valueAtom+1
-	sta valueResult+1
+.secondLabel:
+	lda capturedHasSymbol
+	bne .bad			; no label +/- label machinery
+	lda valueOperator
+	cmp #'+'
+	bne .bad			; literal - label is deliberately unsupported
+	lda #$01
+	sta capturedHasSymbol
+	lda #$00			; binary arithmetic stays conservatively long
+	sta capturedCanShorten
+	lda valueAtomSymbol
+	sta capturedSymbol
+	lda valueAtomSymbol+1
+	sta capturedSymbol+1
 
 .finish:
-	lda valuePrefix
-	beq .status
-	cmp #VALUE_PREFIX_LOW
-	beq .lowByte
-	lda valueResult+1		; >value
+	lda capturedHasSymbol
+	bne .deferred
+	lda capturedAddend
 	sta valueResult
-.lowByte:
-	lda #$00			; <value, or clear high byte after >value
+	lda capturedAddend+1
 	sta valueResult+1
+	jsr applyValuePrefix
+	lda #VALUE_OK
+	rts
 
-.status:
-	lda valueUnresolved
-	beq .ok
+.deferred:
+	lda capturedPrefix
+	beq .unresolved
+	lda #$01			; <label and >label are one-byte results
+	sta capturedCanShorten
+.unresolved:
 	lda #VALUE_UNRESOLVED
 	rts
-.ok:
-	lda #VALUE_OK
+
+.atomError:
+	lda valueStatus
 	rts
 .bad:
 	lda #VALUE_BAD
 	rts
 
 ;;; parseValueAtom
-;;; Consume one atom into valueAtom. An unknown symbol is valid syntax; it marks
-;;; the complete value unresolved and contributes zero until the next pass.
+;;; Consume one atom. Fixed atoms use valueAtom; labels use valueAtomSymbol.
+;;; Carry clear returns valueStatus.
 parseValueAtom:
 	lda valueLeft
 	beq .bad
@@ -133,21 +203,33 @@ parseValueAtom:
 	lda (ZP_PTR0),y
 	cmp #'$'
 	bne .notHex
-	jmp parseHexAtom
+	jsr parseHexAtom
+	bcc .bad
+	jmp .fixed
 .notHex:
 	cmp #39				; apostrophe
 	bne .notChar
-	jmp parseCharAtom
+	jsr parseCharAtom
+	bcc .bad
+	jmp .fixed
 .notChar:
 	cmp #'0'
 	bcc .symbol
 	cmp #'9'+1
 	bcc .decimal
 .symbol:
-	jmp parseSymbolAtom
+	jmp parseValueSymbolAtom
 .decimal:
-	jmp parseDecimalAtom
+	jsr parseDecimalAtom
+	bcc .bad
+.fixed:
+	lda #VALUE_ATOM_FIXED
+	sta valueAtomKind
+	sec
+	rts
 .bad:
+	lda #VALUE_BAD
+	sta valueStatus
 	clc
 	rts
 
@@ -304,16 +386,17 @@ parseCharAtom:
 	clc
 	rts
 
-;;; parseSymbolAtom
-;;; Keep the name as a view into the value text, then ask the linear table.
-parseSymbolAtom:
+;;; parseValueSymbolAtom
+;;; Existing constants collapse to fixed values. Labels, defined or not, remain
+;;; layout-dependent and are represented only by their symbol-table entry.
+parseValueSymbolAtom:
 	lda ZP_PTR0
 	sta symbolName
 	lda ZP_PTR0+1
 	sta symbolName+1
 	lda #$00
 	sta symbolNameLength
-.loop:
+.scan:
 	lda valueLeft
 	beq .lookup
 	ldy #$00
@@ -324,41 +407,90 @@ parseSymbolAtom:
 	beq .lookup
 	inc symbolNameLength
 	jsr advanceValue
-	jmp .loop
-
+	jmp .scan
 .lookup:
 	lda symbolNameLength
 	beq .bad
 
-	;; findSymbol borrows ZP_PTR0, so preserve our value cursor explicitly.
+	;; Symbol routines borrow ZP_PTR0; preserve the value cursor explicitly.
 	lda ZP_PTR0
 	pha
 	lda ZP_PTR0+1
 	pha
-	jsr findSymbol
-	pla
-	sta ZP_PTR0+1
-	pla
-	sta ZP_PTR0
-	bcc .unresolved
-
+	jsr findSymbolEntry
+	bcc .intern
+	lda symbolKind
+	cmp #SYMBOL_CONSTANT
+	bne .label
 	lda symbolValue
 	sta valueAtom
 	lda symbolValue+1
 	sta valueAtom+1
+	lda #VALUE_ATOM_FIXED
+	sta valueAtomKind
+	jmp .okRestore
+
+.intern:
+	jsr internLabel
+	bcc .internError
+.label:
+	lda symbolEntry
+	sta valueAtomSymbol
+	lda symbolEntry+1
+	sta valueAtomSymbol+1
+	lda #VALUE_ATOM_LABEL
+	sta valueAtomKind
+.okRestore:
+	pla
+	sta ZP_PTR0+1
+	pla
+	sta ZP_PTR0
 	sec
 	rts
 
-.unresolved:
-	lda #$01
-	sta valueUnresolved
-	lda #$00
-	sta valueAtom
-	sta valueAtom+1
-	sec
+.internError:
+	cmp #SYMBOL_FULL
+	beq .fullRestore
+	cmp #SYMBOL_NO_SCOPE
+	beq .scopeRestore
+	jmp .badRestore
+.fullRestore:
+	lda #VALUE_SYMBOL_FULL
+	sta valueStatus
+	jmp .failRestore
+.scopeRestore:
+	lda #VALUE_SCOPE_ERROR
+	sta valueStatus
+	jmp .failRestore
+.badRestore:
+	lda #VALUE_BAD
+	sta valueStatus
+.failRestore:
+	pla
+	sta ZP_PTR0+1
+	pla
+	sta ZP_PTR0
+	clc
 	rts
 .bad:
+	lda #VALUE_BAD
+	sta valueStatus
 	clc
+	rts
+
+;;; applyValuePrefix
+;;; Apply < or > to a fixed result. Deferred values apply it after layout.
+applyValuePrefix:
+	lda capturedPrefix
+	beq .done
+	cmp #VALUE_PREFIX_LOW
+	beq .low
+	lda valueResult+1
+	sta valueResult
+.low:
+	lda #$00
+	sta valueResult+1
+.done:
 	rts
 
 ;;; advanceValue
@@ -373,9 +505,18 @@ advanceValue:
 
 valueResult:		word 0
 
+;;; Persistent parse result when VALUE_UNRESOLVED is returned.
+capturedHasSymbol:	byte 0
+capturedSymbol:		word 0
+capturedAddend:		word 0
+capturedPrefix:		byte 0
+capturedCanShorten:	byte 0
+
 ;;; Small explicit parser state.
 valueLeft:		byte 0
-valuePrefix:		byte 0
-valueUnresolved:	byte 0
 valueAtom:		word 0
 valueTemp:		word 0
+valueOperator:		byte 0
+valueAtomKind:		byte 0
+valueAtomSymbol:	word 0
+valueStatus:		byte 0

@@ -6,7 +6,7 @@
 ;;;     word value [, value ...]
 ;;;     string "literal"
 ;;;
-;;; Fixed values become staged bytes immediately.  A label-dependent value gets
+;;; Fixed values become staged bytes immediately. A label-dependent value gets
 ;;; one compact hole and placeholder byte(s); the source text is then disposable.
 
 DATA_NONE   = $00
@@ -103,7 +103,7 @@ dataStatementKind:
 	rts
 
 ;;; assembleData
-;;; A = DATA_*.  ZP_PTR1 is preserved because it is normally the source cursor.
+;;; A = DATA_*. ZP_PTR1 is preserved because it is normally the source cursor.
 assembleData:
 	tax
 	lda ZP_PTR1
@@ -148,7 +148,7 @@ assembleDataList:
 	bcs .itemReady
 	jmp .bad
 .itemReady:
-	jsr captureValue
+	jsr parseValue
 	cmp #VALUE_OK
 	beq .fixed
 	cmp #VALUE_UNRESOLVED
@@ -158,9 +158,9 @@ assembleDataList:
 	jmp .symbolFull
 .notSymbolFull:
 	cmp #VALUE_SCOPE_ERROR
-	bne .captureBad
+	bne .valueBad
 	jmp .scope
-.captureBad:
+.valueBad:
 	jmp .bad
 
 .fixed:
@@ -314,7 +314,7 @@ setDataItemPointer:
 	rts
 
 ;;; assembleString
-;;; Emit literal bytes plus one NUL into staging.  stageByte clobbers Y, so the
+;;; Emit literal bytes plus one NUL into staging. stageByte clobbers Y, so the
 ;;; source offset lives explicitly in dataOffset rather than in a register.
 assembleString:
 	lda statementArgumentLength
