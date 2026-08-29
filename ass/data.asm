@@ -293,9 +293,10 @@ advanceDataCursor:
 	rts
 
 ;;; assembleString
-;;; Accept one quoted literal and emit exactly the bytes between its quotes.
-;;; Quotes inside the literal are not supported because there is no escape
-;;; language yet.
+;;; Accept one quoted literal. Like vasm oldstyle, string emits the literal
+;;; bytes followed by one NUL byte; nanoc already relies on this for source
+;;; lines. Quotes inside the literal are not supported because there is no
+;;; escape language yet.
 assembleString:
 	lda statementArgumentLength
 	cmp #$02
@@ -353,6 +354,8 @@ assembleString:
 	cmp #PASS_LAYOUT
 	bne .emit
 	lda dataItemLength
+	clc
+	adc #$01			; vasm string includes its NUL terminator
 	jsr advanceAssemblyPtr
 	lda #ASSEMBLE_OK
 	rts
@@ -370,7 +373,7 @@ assembleString:
 
 .emitLoop:
 	lda dataLeft
-	beq .ok
+	beq .terminator
 	lda dataCursor
 	sta ZP_PTR0
 	lda dataCursor+1
@@ -381,7 +384,9 @@ assembleString:
 	jsr advanceDataCursor
 	jmp .emitLoop
 
-.ok:
+.terminator:
+	lda #$00
+	jsr emitAssemblyByte
 	lda #ASSEMBLE_OK
 	rts
 .bad:
