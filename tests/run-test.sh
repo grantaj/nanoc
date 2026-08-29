@@ -5,13 +5,17 @@ VICE=${VICE:-x64sc}
 BUILD_DIR=${BUILD_DIR:-build}
 PRG=$1
 NAME=${2:-$(basename "$PRG" .prg)}
-ENTRY=${3:-c000}
 
 MONITOR_FILE="$BUILD_DIR/$NAME.mon"
 RESULT_FILE="$BUILD_DIR/$NAME.result"
 LOG_FILE="$BUILD_DIR/$NAME.vice.log"
 
 rm -f "$MONITOR_FILE" "$RESULT_FILE" "$LOG_FILE"
+
+# A CBM PRG carries its little-endian load address in its first two bytes.
+# Start the test there rather than imposing a host-side entry address.
+set -- $(od -An -tu1 -N2 "$PRG")
+ENTRY=$(printf '%02x%02x' "$2" "$1")
 
 cat > "$MONITOR_FILE" <<EOF
 load "$PRG" 0
