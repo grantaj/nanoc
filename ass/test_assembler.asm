@@ -68,9 +68,25 @@ testResolvedProgram:
 	jsr assemble
 	cmp #ASSEMBLE_OK
 	beq .checkBytes
-	;; Temporary diagnostic: $80 | ASSEMBLE_* exposes the exact failing status
-	;; through the same native result byte used by every other test.
-	ora #$80
+	;; Temporary diagnostic: return the byte offset of the next source line.
+	;; Pass 2 sets bit 6, so no permanent line/status state is needed.
+	sec
+	lda ZP_PTR1
+	sbc #<resolvedSource
+	sta valueTemp
+	lda ZP_PTR1+1
+	sbc #>resolvedSource
+	bne .diagnosticHigh
+	lda valueTemp
+	ldx assemblyPass
+	cpx #$02
+	bne .diagnosticDone
+	ora #$40
+.diagnosticDone:
+	clc
+	rts
+.diagnosticHigh:
+	lda #$7f
 	clc
 	rts
 
