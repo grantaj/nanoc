@@ -1,7 +1,10 @@
 ;;; assembler.asm
 ;;;
-;;; Two passes over one source buffer. Pass 1 records symbols and layout;
-;;; pass 2 resolves the same source and emits directly through emitInstruction.
+;;; Two direct walks over one source buffer.
+;;;
+;;; Pass 1 records labels/constants and advances the program counter without
+;;; writing bytes. Pass 2 walks the same text again, verifies the layout, and
+;;; streams bytes through emitInstruction.
 ;;;
 ;;; Input to assemble:
 ;;;   ZP_PTR1            source start
@@ -9,6 +12,9 @@
 ;;;   assemblyPtr        first output/program address
 ;;;   symbolTableStart   caller-owned symbol-table memory
 ;;;   symbolTableLimit   first byte beyond that memory
+
+PASS_LAYOUT = $01
+PASS_EMIT   = $02
 
 ASSEMBLE_OK              = $00
 ASSEMBLE_BAD_STATEMENT   = $01
@@ -21,9 +27,7 @@ ASSEMBLE_EMIT_ERROR      = $07
 ASSEMBLE_PHASE_ERROR     = $08
 
 ;;; assemble
-;;;
-;;; Pass 1 emits nothing. Pass 2 streams final bytes at assemblyPtr. A failure
-;;; during pass 2 can therefore leave earlier instructions already emitted.
+;;; Pass-2 failure may leave earlier instructions already emitted.
 assemble:
 	lda ZP_PTR1
 	sta assemblySource
@@ -35,7 +39,7 @@ assemble:
 	sta assemblyStart+1
 
 	jsr resetSymbols
-	lda #$01
+	lda #PASS_LAYOUT
 	jsr runAssemblyPass
 	cmp #ASSEMBLE_OK
 	bne .done
@@ -44,6 +48,7 @@ assemble:
 	lda assemblyPtr+1
 	sta assemblyPassEnd+1
 
+	;; Rewind source and program counter for the real emitting pass.
 	lda assemblySource
 	sta ZP_PTR1
 	lda assemblySource+1
@@ -52,10 +57,12 @@ assemble:
 	sta assemblyPtr
 	lda assemblyStart+1
 	sta assemblyPtr+1
-	lda #$02
+	lda #PASS_EMIT
 	jsr runAssemblyPass
 	cmp #ASSEMBLE_OK
 	bne .done
+
+	;; A source with no later label still needs this final phase check.
 	lda assemblyPtr
 	cmp assemblyPassEnd
 	bne .phase
@@ -70,7 +77,7 @@ assemble:
 	rts
 
 ;;; runAssemblyPass
-;;; A = 1 for layout/symbol collection, 2 for verify/emit.
+;;; A = PASS_LAYOUT or PASS_EMIT.
 runAssemblyPass:
 	sta assemblyPass
 	lda #$00
@@ -104,19 +111,21 @@ runAssemblyPass:
 	rts
 
 ;;; assembleLabel
-;;; Global labels advance currentScope; `.local` labels stay in that scope.
-;;; Pass 1 defines the label. Pass 2 verifies its recorded address.
+;;; A global label starts a new local-label scope. Pass 1 records its address;
+;;; pass 2 requires the same label to occur at the same address.
 assembleLabel:
 	jsr enterLabelScope
 	bcc .scopeError
+
 	lda statementName
 	sta symbolName
 	lda statementName+1
 	sta symbolName+1
 	lda statementNameLength
 	sta symbolNameLength
+
 	lda assemblyPass
-	cmp #$01
+	cmp #PASS_LAYOUT
 	bne .verify
 	lda assemblyPtr
 	sta symbolValue
@@ -124,6 +133,7 @@ assembleLabel:
 	sta symbolValue+1
 	jsr defineSymbol
 	jmp mapSymbolStatus
+
 .verify:
 	jsr findSymbol
 	bcc .undefined
@@ -146,8 +156,8 @@ assembleLabel:
 	rts
 
 ;;; assembleSymbol
-;;; `name = value` must resolve on pass 1. Pass 2 re-evaluates it and checks
-;;; that the value has not changed.
+;;; `name = value` must already be resolvable when encountered on pass 1.
+;;; Pass 2 simply confirms that it still has the same value.
 assembleSymbol:
 	lda statementArgument
 	sta ZP_PTR0
@@ -157,14 +167,16 @@ assembleSymbol:
 	jsr parseValue
 	cmp #VALUE_OK
 	bne .bad
+
 	lda statementName
 	sta symbolName
 	lda statementName+1
 	sta symbolName+1
 	lda statementNameLength
 	sta symbolNameLength
+
 	lda assemblyPass
-	cmp #$01
+	cmp #PASS_LAYOUT
 	bne .verify
 	lda valueResult
 	sta symbolValue
@@ -172,6 +184,7 @@ assembleSymbol:
 	sta symbolValue+1
 	jsr defineSymbol
 	jmp mapSymbolStatus
+
 .verify:
 	jsr findSymbol
 	bcc .bad
@@ -191,27 +204,37 @@ assembleSymbol:
 	rts
 
 ;;; assembleInstruction
-;;; Pass 1 counts bytes only. A still-unresolved zero-page/absolute choice is
-;;; conservatively three bytes. Pass 2 requires resolution and emits directly.
+;;; Pass 1 only advances assemblyPtr. An unresolved short/long direct operand
+;;; reserves the three-byte long form. Pass 2 requires resolution and emits.
 assembleInstruction:
 	jsr parseInstruction
 	cmp #INSTRUCTION_OK
 	bne .bad
 	jsr resolveInstructionValue
-	sta instructionValueStatus
 	cmp #VALUE_BAD
 	beq .bad
-	lda assemblyPass
-	cmp #$01
-	bne .emit
 
+	;; CPX leaves the value status in A for the pass-2 unresolved check.
+	ldx assemblyPass
+	cpx #PASS_LAYOUT
+	beq .layout
+	cmp #VALUE_UNRESOLVED
+	beq .undefined
+
+	jsr emitInstruction
+	cmp #EMIT_OK
+	bne .emitError
+	lda #ASSEMBLE_OK
+	rts
+
+.layout:
 	lda instructionMode
 	cmp #MODE_DEFERRED
 	beq .long
 	tay
 	lda modeOperandWidths,y
 	clc
-	adc #$01
+	adc #$01			; operand bytes + opcode
 	jsr advanceAssemblyPtr
 	lda #ASSEMBLE_OK
 	rts
@@ -221,15 +244,6 @@ assembleInstruction:
 	lda #ASSEMBLE_OK
 	rts
 
-.emit:
-	lda instructionValueStatus
-	cmp #VALUE_UNRESOLVED
-	beq .undefined
-	jsr emitInstruction
-	cmp #EMIT_OK
-	bne .emitError
-	lda #ASSEMBLE_OK
-	rts
 .bad:
 	lda #ASSEMBLE_BAD_INSTRUCTION
 	rts
@@ -241,14 +255,15 @@ assembleInstruction:
 	rts
 
 ;;; resolveInstructionValue
-;;; Resolve the parser's zero-copy symbolic value. Fixed addressing modes keep
-;;; their opcode; MODE_DEFERRED makes the final short/long choice here.
+;;; The instruction parser keeps symbolic operand text in place. Resolve that
+;;; text here; only a deferred direct operand needs a new short/long mode choice.
 resolveInstructionValue:
 	lda instructionOperandKind
 	cmp #OPERAND_SYMBOL
 	beq .symbol
 	lda #VALUE_OK
 	rts
+
 .symbol:
 	lda instructionSymbol
 	sta ZP_PTR0
@@ -259,6 +274,7 @@ resolveInstructionValue:
 	cmp #VALUE_OK
 	beq .resolved
 	rts
+
 .resolved:
 	lda valueResult
 	sta instructionOperandValue
@@ -271,25 +287,17 @@ resolveInstructionValue:
 	cmp #MODE_DEFERRED
 	beq .direct
 	cmp #MODE_RELATIVE
-	beq .ok			; branch value is a 16-bit target address
-	cmp #MODE_IMMEDIATE
-	beq .byte
-	cmp #MODE_ZERO_PAGE
-	beq .byte
-	cmp #MODE_ZERO_PAGE_X
-	beq .byte
-	cmp #MODE_ZERO_PAGE_Y
-	beq .byte
-	cmp #MODE_INDIRECT_X
-	beq .byte
-	cmp #MODE_INDIRECT_Y
-	beq .byte
-	jmp .ok
-.byte:
+	beq .ok			; relative syntax names a 16-bit target address
+
+	;; Every other one-byte operand must actually fit in one byte.
+	tay
+	lda modeOperandWidths,y
+	cmp #$01
+	bne .ok
 	lda instructionOperandValue+1
 	beq .ok
-	lda #VALUE_BAD
-	rts
+	jmp .bad
+
 .direct:
 	lda instructionOperandValue+1
 	bne .long
@@ -310,7 +318,8 @@ resolveInstructionValue:
 	rts
 
 ;;; enterLabelScope
-;;; One byte is enough: each global label starts a new local-label scope.
+;;; One byte is enough: each global label starts the scope used by following
+;;; `.local` labels and references.
 enterLabelScope:
 	lda statementNameLength
 	beq .bad
@@ -323,7 +332,7 @@ enterLabelScope:
 	cmp #'.'
 	beq .local
 	inc currentScope
-	beq .bad			; scope counter wrapped
+	beq .bad			; more than 255 global-label scopes
 	sec
 	rts
 .local:
@@ -342,7 +351,7 @@ mapSymbolStatus:
 	beq .full
 	cmp #SYMBOL_NO_SCOPE
 	beq .scope
-	lda #ASSEMBLE_BAD_SYMBOL		; duplicate
+	lda #ASSEMBLE_BAD_SYMBOL		; duplicate definition
 	rts
 .ok:
 	lda #ASSEMBLE_OK
@@ -354,7 +363,7 @@ mapSymbolStatus:
 	lda #ASSEMBLE_SCOPE_ERROR
 	rts
 
-;;; A = byte count; advance the 16-bit location counter.
+;;; A = byte count. Advance the 16-bit program counter.
 advanceAssemblyPtr:
 	clc
 	adc assemblyPtr
@@ -365,7 +374,6 @@ advanceAssemblyPtr:
 	rts
 
 assemblyPass:		byte 0
-instructionValueStatus:	byte 0
 assemblySource:		word 0
 assemblyStart:		word 0
 assemblyPassEnd:	word 0
