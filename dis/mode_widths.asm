@@ -1,5 +1,7 @@
 ;;; Operand bytes for each shared 6502 addressing-mode index.
 ;;; Keep this table in MODE_* order from mode_ids.inc.
+;;; MODE_UNDOCUMENTED is an unknown-opcode fallback, not a real instruction
+;;; width: undocumented 6502 opcodes have varying operand sizes.
 
 modeOperandWidths:
 	byte 0		; MODE_IMPLIED
@@ -15,4 +17,4 @@ modeOperandWidths:
 	byte 1		; MODE_INDIRECT_X
 	byte 1		; MODE_INDIRECT_Y
 	byte 1		; MODE_RELATIVE
-	byte 0		; MODE_UNDOCUMENTED
+	byte 0		; MODE_UNDOCUMENTED fallback

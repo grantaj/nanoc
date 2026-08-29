@@ -6,7 +6,7 @@
 ;;; have been output already
 ;;; Second byte of the instruction is pointed to by
 ;;; zero page pointer p (low) / p+1 (high)
-;;; All routines preserve X, Y
+;;; All routines preserve X, Y. A and flags are clobbered.
 ;;;
 ;;; Mode indexes refer to the shared definitions in mode_ids.inc.
 ;;; Operand widths are shared separately in mode_widths.asm.

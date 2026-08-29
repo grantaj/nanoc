@@ -18,7 +18,6 @@ FAIL_UNRESOLVED_JMP     = $31
 PARSE_NOT_INSTRUCTION = $fe
 
 OUTPUT                   = $2000
-OUTPUT_LENGTH            = $0b
 PAGE_OUTPUT              = $20ff
 BRANCH_PLUS              = $2200
 BRANCH_PLUS_TARGET       = $2281
@@ -33,7 +32,25 @@ UNRESOLVED_OUT           = $2600
 	* = TEST_ENTRY
 
 main:
-	;; Full current path: source -> statement -> instruction -> machine bytes.
+	jsr testSourceEmission
+	bcc finish
+	jsr testPageCrossing
+	bcc finish
+	jsr testBranchLimits
+	bcc finish
+	jsr testUnresolvedEmission
+	bcc finish
+	lda #TEST_PASS
+finish:
+	sta TEST_RESULT
+.halt:
+	jmp .halt
+
+;;; testSourceEmission
+;;;
+;;; Exercise the full current path: source -> statement -> instruction -> bytes.
+;;; Carry set means success. Carry clear returns a FAIL_* code in A.
+testSourceEmission:
 	lda #<OUTPUT
 	sta assemblyPtr
 	lda #>OUTPUT
@@ -47,51 +64,62 @@ main:
 	lda #>sourceInputEnd
 	sta sourceEnd+1
 
-.sourceLoop:
+.loop:
 	jsr nextStatement
 	cmp #STATEMENT_EOF
-	beq .checkSourceBytes
+	beq .checkBytes
 	cmp #STATEMENT_INSTRUCTION
-	beq .parseSource
+	beq .parse
 	lda #FAIL_SOURCE_STATEMENT
-	jmp finish
-.parseSource:
+	clc
+	rts
+.parse:
 	jsr parseInstruction
 	cmp #INSTRUCTION_OK
-	beq .emitSource
+	beq .emit
 	lda #FAIL_SOURCE_PARSE
-	jmp finish
-.emitSource:
+	clc
+	rts
+.emit:
 	jsr emitInstruction
 	cmp #EMIT_OK
-	beq .sourceLoop
+	beq .loop
 	lda #FAIL_SOURCE_EMIT
-	jmp finish
+	clc
+	rts
 
-.checkSourceBytes:
+.checkBytes:
 	ldx #$00
-.checkSourceByte:
+.checkByte:
 	lda OUTPUT,x
 	cmp expectedBytes,x
-	beq .nextSourceByte
-	lda #FAIL_SOURCE_BYTES
-	jmp finish
-.nextSourceByte:
+	bne .failBytes
 	inx
-	cpx #OUTPUT_LENGTH
-	bne .checkSourceByte
-	lda assemblyPtr
-	cmp #<(OUTPUT+OUTPUT_LENGTH)
-	bne .failSourcePointer
-	lda assemblyPtr+1
-	cmp #>(OUTPUT+OUTPUT_LENGTH)
-	beq .pageCrossing
-.failSourcePointer:
-	lda #FAIL_SOURCE_POINTER
-	jmp finish
+	cpx #EXPECTED_LENGTH
+	bne .checkByte
 
-	;; A three-byte instruction starting at $20ff must naturally cross the page.
-.pageCrossing:
+	lda assemblyPtr
+	cmp #<(OUTPUT+EXPECTED_LENGTH)
+	bne .failPointer
+	lda assemblyPtr+1
+	cmp #>(OUTPUT+EXPECTED_LENGTH)
+	bne .failPointer
+	sec
+	rts
+.failBytes:
+	lda #FAIL_SOURCE_BYTES
+	clc
+	rts
+.failPointer:
+	lda #FAIL_SOURCE_POINTER
+	clc
+	rts
+
+;;; testPageCrossing
+;;;
+;;; Emit one three-byte instruction starting at $20ff.
+;;; Carry set means success. Carry clear returns a FAIL_* code in A.
+testPageCrossing:
 	lda #<PAGE_OUTPUT
 	sta assemblyPtr
 	lda #>PAGE_OUTPUT
@@ -108,38 +136,43 @@ main:
 	sta instructionOperandValue+1
 	jsr emitInstruction
 	cmp #EMIT_OK
-	beq .checkPageBytes
-	lda #FAIL_PAGE_BYTES
-	jmp finish
-.checkPageBytes:
+	bne .failBytes
+
 	lda $20ff
 	cmp #$ad
-	bne .failPageBytes
+	bne .failBytes
 	lda $2100
 	cmp #$34
-	bne .failPageBytes
+	bne .failBytes
 	lda $2101
 	cmp #$12
-	beq .checkPagePointer
-.failPageBytes:
-	lda #FAIL_PAGE_BYTES
-	jmp finish
-.checkPagePointer:
+	bne .failBytes
+
 	lda assemblyPtr
 	cmp #$02
-	bne .failPagePointer
+	bne .failPointer
 	lda assemblyPtr+1
 	cmp #$21
-	beq .branchSetup
-.failPagePointer:
+	bne .failPointer
+	sec
+	rts
+.failBytes:
+	lda #FAIL_PAGE_BYTES
+	clc
+	rts
+.failPointer:
 	lda #FAIL_PAGE_POINTER
-	jmp finish
+	clc
+	rts
 
-	;; Branch tests reuse one resolved BNE semantic state.
-.branchSetup:
+;;; testBranchLimits
+;;;
+;;; Check exact signed-byte limits and atomic rejection just outside them.
+;;; Carry set means success. Carry clear returns a FAIL_* code in A.
+testBranchLimits:
 	lda #MODE_RELATIVE
 	sta instructionMode
-	lda #$d0
+	lda #$d0			; BNE relative
 	sta instructionOpcode
 	lda #OPERAND_NUMBER
 	sta instructionOperandKind
@@ -170,7 +203,8 @@ main:
 	beq .minus128
 .failPlus127:
 	lda #FAIL_BRANCH_PLUS_127
-	jmp finish
+	clc
+	rts
 
 	;; $2282 - ($2300 + 2) = -128.
 .minus128:
@@ -199,7 +233,8 @@ main:
 	beq .plus128
 .failMinus128:
 	lda #FAIL_BRANCH_MINUS_128
-	jmp finish
+	clc
+	rts
 
 	;; $2482 - ($2400 + 2) = +128: fail before writing anything.
 .plus128:
@@ -232,7 +267,8 @@ main:
 	beq .minus129
 .failPlus128:
 	lda #FAIL_BRANCH_PLUS_128
-	jmp finish
+	clc
+	rts
 
 	;; $2481 - ($2500 + 2) = -129: likewise atomic failure.
 .minus129:
@@ -262,17 +298,26 @@ main:
 	bne .failMinus129
 	lda BRANCH_TOO_BACK+1
 	cmp #$c3
-	beq .unresolvedSetup
+	bne .failMinus129
+	sec
+	rts
 .failMinus129:
 	lda #FAIL_BRANCH_MINUS_129
-	jmp finish
+	clc
+	rts
 
-	;; Check both unresolved forms produced by the parser.
-.unresolvedSetup:
+;;; testUnresolvedEmission
+;;;
+;;; Check both unresolved forms produced by the parser. The three bytes that a
+;;; JMP could have occupied must remain untouched, as must assemblyPtr.
+;;; Carry set means success. Carry clear returns a FAIL_* code in A.
+testUnresolvedEmission:
 	lda #$69
 	sta UNRESOLVED_OUT
 	lda #$96
 	sta UNRESOLVED_OUT+1
+	lda #$3c
+	sta UNRESOLVED_OUT+2
 	lda #<UNRESOLVED_OUT
 	sta assemblyPtr
 	lda #>UNRESOLVED_OUT
@@ -289,45 +334,41 @@ main:
 	;; LDA target has both unresolved value and deferred zp/absolute mode.
 	jsr parseNext
 	cmp #INSTRUCTION_OK
-	bne .failUnresolvedLda
+	bne .failLda
 	lda instructionMode
 	cmp #MODE_DEFERRED
-	bne .failUnresolvedLda
+	bne .failLda
 	jsr emitInstruction
 	cmp #EMIT_UNRESOLVED
-	bne .failUnresolvedLda
+	bne .failLda
 	jsr checkUnresolvedOutput
-	bcs .unresolvedJmp
-.failUnresolvedLda:
-	lda #FAIL_UNRESOLVED_LDA
-	jmp finish
+	bcc .failLda
 
 	;; JMP target has known absolute mode but its value is still unresolved.
-.unresolvedJmp:
 	jsr parseNext
 	cmp #INSTRUCTION_OK
-	bne .failUnresolvedJmp
+	bne .failJmp
 	lda instructionMode
 	cmp #MODE_ABSOLUTE
-	bne .failUnresolvedJmp
+	bne .failJmp
 	lda instructionOperandKind
 	cmp #OPERAND_SYMBOL
-	bne .failUnresolvedJmp
+	bne .failJmp
 	jsr emitInstruction
 	cmp #EMIT_UNRESOLVED
-	bne .failUnresolvedJmp
+	bne .failJmp
 	jsr checkUnresolvedOutput
-	bcs .pass
-.failUnresolvedJmp:
+	bcc .failJmp
+	sec
+	rts
+.failLda:
+	lda #FAIL_UNRESOLVED_LDA
+	clc
+	rts
+.failJmp:
 	lda #FAIL_UNRESOLVED_JMP
-	jmp finish
-
-.pass:
-	lda #TEST_PASS
-finish:
-	sta TEST_RESULT
-.halt:
-	jmp .halt
+	clc
+	rts
 
 ;;; parseNext
 ;;;
@@ -345,9 +386,9 @@ parseNext:
 
 ;;; checkUnresolvedOutput
 ;;;
-;;; Verify that an unresolved emission left assemblyPtr and its two sentinel
-;;; bytes unchanged. Returns carry set on success. A and flags are clobbered;
-;;; X and Y are preserved.
+;;; Verify that unresolved emission left assemblyPtr and all three possible
+;;; instruction bytes unchanged. Returns carry set on success.
+;;; A and flags are clobbered; X and Y are preserved.
 checkUnresolvedOutput:
 	lda assemblyPtr
 	cmp #<UNRESOLVED_OUT
@@ -360,6 +401,9 @@ checkUnresolvedOutput:
 	bne .bad
 	lda UNRESOLVED_OUT+1
 	cmp #$96
+	bne .bad
+	lda UNRESOLVED_OUT+2
+	cmp #$3c
 	bne .bad
 	sec
 	rts
@@ -385,6 +429,8 @@ expectedBytes:
 	byte $a6, $20
 	byte $6c, $00, $20
 	byte $60
+expectedBytesEnd:
+EXPECTED_LENGTH = expectedBytesEnd-expectedBytes
 
 unresolvedSource:
 	string "LDA target"

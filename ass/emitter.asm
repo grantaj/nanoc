@@ -23,6 +23,7 @@ EMIT_BRANCH_RANGE = $02
 
 ;;; emitInstruction
 ;;;
+;;; Precondition: parseInstruction returned INSTRUCTION_OK.
 ;;; Write opcode and resolved operand bytes at assemblyPtr. Relative operands
 ;;; are target addresses and are converted to the 6502 signed byte displacement
 ;;; before any output is written.
@@ -79,7 +80,7 @@ emitInstruction:
 	sta (ZP_PTR0),y
 
 .advance:
-	iny				; Y was operand width, now total instruction size
+	iny				; Y is operand bytes written; include opcode
 	tya
 	clc
 	adc assemblyPtr
