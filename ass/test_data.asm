@@ -131,11 +131,11 @@ testByteRange:
 	lda #<rangeSource
 	sta ZP_PTR1
 	lda #>rangeSource
+	sta ZP_PTR1+1
+	lda #<rangeSourceEnd
 	sta sourceEnd
 	lda #>rangeSourceEnd
 	sta sourceEnd+1
-	lda #<rangeSourceEnd
-	sta sourceEnd
 	lda #<OUTPUT
 	sta assemblyPtr
 	lda #>OUTPUT
