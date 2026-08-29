@@ -102,6 +102,8 @@ The code under test and its assertions run as 6502 programs under VICE. The host
 
 Use distinct failure codes where practical so a failing CI run identifies the assertion that failed.
 
+Native test programs start at `$c000`. Keep each one below `$d000`, where the C64 I/O window begins. If a test grows toward that boundary, split it by behaviour rather than relocating it or hiding code or data under I/O.
+
 Keep the test stack simple:
 
 ```text

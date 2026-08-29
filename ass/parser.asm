@@ -68,19 +68,20 @@ nextStatement:
 	sta statementName+1
 	stx statementNameLength
 
-	;; A leading dot identifies a directive. The semantic name excludes it.
-	ldy #$00
-	lda (ZP_PTR0),y
-	cmp #'.'
-	beq .directive
-
-	;; A trailing colon identifies a label. The semantic name excludes it.
+	;; A trailing colon wins over leading-dot directive syntax, so `.done:` is
+	;; a local label while `.byte` remains a directive.
 	txa
 	tay
 	dey
 	lda (ZP_PTR0),y
 	cmp #':'
-	beq .label
+	bne .notLabel
+	jmp .label
+.notLabel:
+	ldy #$00
+	lda (ZP_PTR0),y
+	cmp #'.'
+	beq .directive
 
 	;; Otherwise the first lexeme is either a symbol name or a mnemonic.
 	jsr sourceAtEnd
