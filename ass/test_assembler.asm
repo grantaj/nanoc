@@ -189,9 +189,7 @@ testLocalScopeError:
 	lda #<localScopeSource
 	sta ZP_PTR1
 	lda #>localScopeSource
-	sta sourceEnd
-	lda #>localScopeSourceEnd
-	sta sourceEnd+1
+	sta ZP_PTR1+1
 	lda #<localScopeSourceEnd
 	sta sourceEnd
 	lda #>localScopeSourceEnd
