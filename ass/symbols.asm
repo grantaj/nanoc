@@ -109,7 +109,10 @@ defineSymbol:
 ;;; ZP_PTR0, A, X and Y are clobbered.
 findSymbol:
 	jsr symbolScope
-	bcc .noScope
+	bcs .scopeReady
+	clc
+	rts
+.scopeReady:
 	sta symbolWantedScope
 
 	;; Borrow ZP_PTR1 while walking the table, but give the source pointer back.
@@ -194,10 +197,6 @@ findSymbol:
 	sta ZP_PTR1+1
 	pla
 	sta ZP_PTR1
-	rts
-
-.noScope:
-	clc
 	rts
 
 ;;; symbolScope
