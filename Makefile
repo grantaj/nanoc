@@ -90,7 +90,7 @@ $(BUILD_DIR)/test_instruction.prg: ass/test_instruction.asm ass/instruction.asm 
 $(BUILD_DIR)/test_emitter.prg: ass/test_emitter.asm ass/emitter.asm ass/instruction.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc dis/mode_ids.inc dis/mode_widths.asm dis/opcode_table.asm dis/mnemonic_table.asm test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_emitter.asm
 
-$(BUILD_DIR)/test_assembler.prg: ass/test_assembler.asm ass/assembler.asm ass/symbols.asm ass/emitter.asm ass/instruction.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc dis/mode_ids.inc dis/mode_widths.asm dis/opcode_table.asm dis/mnemonic_table.asm test.inc | $(BUILD_DIR)
+$(BUILD_DIR)/test_assembler.prg: ass/test_assembler.asm ass/assembler.asm ass/symbols.asm ass/value.asm ass/emitter.asm ass/instruction.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc dis/mode_ids.inc dis/mode_widths.asm dis/opcode_table.asm dis/mnemonic_table.asm test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_assembler.asm
 
 $(BUILD_DIR)/border-demo.prg: examples/border/demo.asm | $(BUILD_DIR)
