@@ -129,7 +129,9 @@ prepareIncludeName:
 .build:
 	lda sourcePathBuffer
 	ora sourcePathBuffer+1
-	beq .bad
+	bne .bufferReady
+	jmp .bad
+.bufferReady:
 	lda sourcePathBuffer
 	sta ZP_PTR1
 	sta openName
