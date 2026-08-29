@@ -1,12 +1,14 @@
 	include "zp.inc"
 	include "../test.inc"
 
-FAIL_RESOLVED_PROGRAM = $01
-FAIL_PHASE_ERROR      = $02
-FAIL_LOCAL_SCOPE      = $03
-FAIL_BAD_CONSTANT     = $04
-FAIL_UNDEFINED        = $05
-FAIL_BRANCH_RANGE     = $06
+FAIL_RESOLVED_ASSEMBLE = $01
+FAIL_RESOLVED_BYTES    = $02
+FAIL_RESOLVED_POINTER  = $03
+FAIL_PHASE_ERROR       = $10
+FAIL_LOCAL_SCOPE       = $11
+FAIL_BAD_CONSTANT      = $12
+FAIL_UNDEFINED         = $13
+FAIL_BRANCH_RANGE      = $14
 
 OUTPUT       = $2000
 PHASE_OUTPUT = $0080
@@ -61,26 +63,34 @@ testResolvedProgram:
 	sta assemblyPtr+1
 	jsr assemble
 	cmp #ASSEMBLE_OK
-	bne .fail
+	beq .checkBytes
+	lda #FAIL_RESOLVED_ASSEMBLE
+	clc
+	rts
 
+.checkBytes:
 	ldx #$00
 .checkByte:
 	lda OUTPUT,x
 	cmp resolvedBytes,x
-	bne .fail
+	bne .badBytes
 	inx
 	cpx #resolvedBytesEnd-resolvedBytes
 	bne .checkByte
 	lda assemblyPtr
 	cmp #<(OUTPUT+resolvedBytesEnd-resolvedBytes)
-	bne .fail
+	bne .badPointer
 	lda assemblyPtr+1
 	cmp #>(OUTPUT+resolvedBytesEnd-resolvedBytes)
-	bne .fail
+	bne .badPointer
 	sec
 	rts
-.fail:
-	lda #FAIL_RESOLVED_PROGRAM
+.badBytes:
+	lda #FAIL_RESOLVED_BYTES
+	clc
+	rts
+.badPointer:
+	lda #FAIL_RESOLVED_POINTER
 	clc
 	rts
 
