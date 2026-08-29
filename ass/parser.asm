@@ -17,7 +17,9 @@
 ;;;   statementArgumentLength argument length, with surrounding whitespace
 ;;;                            excluded
 ;;;
-;;; On return ZP_PTR1 points to the start of the next source line or sourceEnd.
+;;; A label consumes only its own lexeme. If more text follows the colon on the
+;;; same source line, the next call returns that statement. Other statements
+;;; consume the rest of their line.
 
 STATEMENT_EOF         = 0
 STATEMENT_LABEL       = 1
@@ -117,7 +119,6 @@ nextStatement:
 
 .label:
 	dec statementNameLength
-	jsr skipRestOfLine
 	lda #STATEMENT_LABEL
 	rts
 
@@ -125,10 +126,12 @@ nextStatement:
 ;;;
 ;;; Capture the remainder of the current line as a zero-copy argument view.
 ;;; Leading and trailing spaces/tabs are excluded. Embedded whitespace is kept.
-;;; A comment ends the argument. The source cursor is advanced to the next line.
+;;; A semicolon ends the argument only outside single or double quotes. The
+;;; source cursor is advanced to the next line. There are no escapes.
 scanArgument:
 	lda #$00
 	sta statementArgumentLength
+	sta argumentQuote
 
 	jsr sourceAtEnd
 	beq .atEnd
@@ -149,19 +152,45 @@ scanArgument:
 	lda (ZP_PTR1),y
 	beq .endOfLine
 	cmp #';'
+	bne .maybeQuote
+	lda argumentQuote
 	beq .comment
+	jmp .nonWhitespace
 
-	cmp #' '
-	beq .advance
-	cmp #$09
-	beq .advance
+.maybeQuote:
+	cmp #39				; single quote
+	beq .quote
+	cmp #34				; double quote
+	bne .whitespace
 
+.quote:
+	lda argumentQuote
+	beq .openQuote
+	cmp (ZP_PTR1),y
+	bne .nonWhitespace
+	lda #$00
+	sta argumentQuote
+	jmp .nonWhitespace
+
+.openQuote:
+	lda (ZP_PTR1),y
+	sta argumentQuote
+
+.nonWhitespace:
 	;; Keep the extent through the most recent non-whitespace byte. This trims
 	;; only trailing whitespace without copying or rescanning the argument.
 	txa
 	clc
 	adc #$01
 	sta statementArgumentLength
+	jmp .advance
+
+.whitespace:
+	cmp #' '
+	beq .advance
+	cmp #$09
+	beq .advance
+	jmp .nonWhitespace
 
 .advance:
 	inx
@@ -185,7 +214,6 @@ scanArgument:
 	rts
 
 ;;; skipRestOfLine
-;;;
 ;;; Advances over the remainder of the current line, including its NUL EOL.
 ;;; Stops at sourceEnd if no EOL remains.
 skipRestOfLine:
@@ -212,6 +240,10 @@ statementNameLength:
 statementArgument:
 	word 0
 statementArgumentLength:
+	byte 0
+
+;; scanArgument scratch. Zero means outside quotes; otherwise stores ' or ".
+argumentQuote:
 	byte 0
 
 ;;; End of the caller-owned source region.

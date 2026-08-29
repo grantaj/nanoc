@@ -1,39 +1,34 @@
 ;;; representation.asm
 ;;;
-;;; Pass 1 is the assembler representation: almost-final machine bytes grow
-;;; upward from stagingStart while the few unresolved hole records grow downward
-;;; from stagingLimit. No source text survives here.
+;;; Assembly stages final-size machine bytes. Ordinary unresolved 16-bit label
+;;; references use their own two operand bytes as a chain and need no record
+;;; here. The only side records are exceptional forward fixups whose output byte
+;;; cannot also hold a 16-bit chain pointer: byte values, word expressions, and
+;;; relative branches.
 ;;;
-;;; Hole records are fixed-size and contiguous. The first source hole is at
-;;; stagingLimit-HOLE_SIZE; each later one is one HOLE_SIZE lower in memory.
-;;; holeFree is therefore both the allocation boundary and the end of a scan.
+;;; Fixups are fixed-size and contiguous, growing downward from stagingLimit.
+;;; Resolved fixups stay in place but have kind FIXUP_NONE. There is deliberately
+;;; no allocator or free list: these records are small and uncommon compared with
+;;; the staged machine image.
 
-HOLE_VALUE_BYTE = $01
-HOLE_VALUE_WORD = $02
-HOLE_RELATIVE   = $03
-HOLE_DIRECT     = $04
-HOLE_DATA_BYTE  = $05
+FIXUP_NONE             = $00
+FIXUP_INSTRUCTION_BYTE = $01
+FIXUP_WORD             = $02
+FIXUP_RELATIVE         = $03
+FIXUP_DATA_BYTE        = $04
 
-HOLE_FLAG_SHORT       = $01
-HOLE_FLAG_CAN_SHORTEN = $02
-HOLE_FLAG_HAS_SYMBOL  = $04
-
-HOLE_KIND       = 0
-HOLE_FLAGS      = 1
-HOLE_STAGE_LO   = 2
-HOLE_STAGE_HI   = 3
-HOLE_ADDRESS_LO = 4
-HOLE_ADDRESS_HI = 5
-HOLE_SYMBOL_LO  = 6
-HOLE_SYMBOL_HI  = 7
-HOLE_ADDEND_LO  = 8
-HOLE_ADDEND_HI  = 9
-HOLE_PREFIX     = 10
-HOLE_EXTRA      = 11
-HOLE_SIZE       = 12
+FIXUP_KIND       = 0
+FIXUP_STAGE_LO   = 1
+FIXUP_STAGE_HI   = 2
+FIXUP_SYMBOL_LO  = 3
+FIXUP_SYMBOL_HI  = 4
+FIXUP_ADDEND_LO  = 5
+FIXUP_ADDEND_HI  = 6
+FIXUP_PREFIX     = 7
+FIXUP_SIZE       = 8
 
 ;;; resetRepresentation
-;;; Reset the caller-owned staging workspace. Bytes and holes grow toward one
+;;; Reset the caller-owned staging workspace. Bytes and fixups grow toward one
 ;;; another and ASSEMBLE_WORK_FULL is returned before they overlap.
 resetRepresentation:
 	lda stagingStart
@@ -41,23 +36,23 @@ resetRepresentation:
 	lda stagingStart+1
 	sta stagingPtr+1
 	lda stagingLimit
-	sta holeFree
+	sta fixupFree
 	lda stagingLimit+1
-	sta holeFree+1
+	sta fixupFree+1
 	rts
 
 ;;; stageByte
-;;; A is one final/conservative output byte. Write it to staging and advance
-;;; both the staged cursor and the conservative target PC assemblyPtr.
-;;; Carry set on success, clear when staging has met the hole records.
+;;; A is one final output byte. Write it to staging and advance both the staging
+;;; cursor and the final target PC assemblyPtr.
+;;; Carry set on success, clear when staging has met the fixup records.
 stageByte:
 	tax
 	lda stagingPtr+1
-	cmp holeFree+1
+	cmp fixupFree+1
 	bcc .room
 	bne .full
 	lda stagingPtr
-	cmp holeFree
+	cmp fixupFree
 	bcc .room
 .full:
 	clc
@@ -81,16 +76,16 @@ stageByte:
 	sec
 	rts
 
-;;; appendHole
-;;; Allocate the next fixed-size record immediately below the previous one.
-;;; Inputs are holeKind, holeStage, holeAddress, holeExtra, and captured*.
+;;; appendFixup
+;;; Allocate one exceptional forward fixup. Inputs are fixupKind, fixupStage,
+;;; capturedSymbol, capturedAddend, and capturedPrefix.
 ;;; Carry set on success, clear with A=ASSEMBLE_WORK_FULL on collision.
-appendHole:
+appendFixup:
 	sec
-	lda holeFree
-	sbc #HOLE_SIZE
+	lda fixupFree
+	sbc #FIXUP_SIZE
 	sta ZP_PTR0
-	lda holeFree+1
+	lda fixupFree+1
 	sbc #$00
 	sta ZP_PTR0+1
 
@@ -102,37 +97,14 @@ appendHole:
 	cmp stagingPtr
 	bcc .full
 .room:
-	lda #$00
-	sta holeFlags
-	lda capturedCanShorten
-	beq .symbolFlag
-	lda #HOLE_FLAG_CAN_SHORTEN
-	sta holeFlags
-.symbolFlag:
-	lda capturedHasSymbol
-	beq .write
-	lda holeFlags
-	ora #HOLE_FLAG_HAS_SYMBOL
-	sta holeFlags
-
-.write:
-	ldy #HOLE_KIND
-	lda holeKind
+	ldy #FIXUP_KIND
+	lda fixupKind
 	sta (ZP_PTR0),y
 	iny
-	lda holeFlags
+	lda fixupStage
 	sta (ZP_PTR0),y
 	iny
-	lda holeStage
-	sta (ZP_PTR0),y
-	iny
-	lda holeStage+1
-	sta (ZP_PTR0),y
-	iny
-	lda holeAddress
-	sta (ZP_PTR0),y
-	iny
-	lda holeAddress+1
+	lda fixupStage+1
 	sta (ZP_PTR0),y
 	iny
 	lda capturedSymbol
@@ -149,14 +121,11 @@ appendHole:
 	iny
 	lda capturedPrefix
 	sta (ZP_PTR0),y
-	iny
-	lda holeExtra
-	sta (ZP_PTR0),y
 
 	lda ZP_PTR0
-	sta holeFree
+	sta fixupFree
 	lda ZP_PTR0+1
-	sta holeFree+1
+	sta fixupFree+1
 	sec
 	rts
 .full:
@@ -171,146 +140,60 @@ sealRepresentation:
 	sta stagingEnd+1
 	rts
 
-;;; firstHole / nextHole
-;;; Records were allocated downward, so source order is a simple downward walk.
-;;; A zero holeScan means there are no more records.
-firstHole:
+;;; firstFixup / nextFixup
+;;; Fixups were allocated downward, so source order is a simple downward walk.
+;;; A zero fixupScan means there are no more records.
+firstFixup:
 	lda stagingLimit
-	sta holeScan
+	sta fixupScan
 	lda stagingLimit+1
-	sta holeScan+1
-	jmp nextHole
+	sta fixupScan+1
+	jmp nextFixup
 
-nextHole:
+nextFixup:
 	sec
-	lda holeScan
-	sbc #HOLE_SIZE
-	sta holeScan
-	lda holeScan+1
+	lda fixupScan
+	sbc #FIXUP_SIZE
+	sta fixupScan
+	lda fixupScan+1
 	sbc #$00
-	sta holeScan+1
+	sta fixupScan+1
 
-	lda holeScan+1
-	cmp holeFree+1
+	lda fixupScan+1
+	cmp fixupFree+1
 	bcc .done
-	bne .haveHole
-	lda holeScan
-	cmp holeFree
+	bne .have
+	lda fixupScan
+	cmp fixupFree
 	bcc .done
-.haveHole:
+.have:
 	rts
 .done:
 	lda #$00
-	sta holeScan
-	sta holeScan+1
+	sta fixupScan
+	sta fixupScan+1
 	rts
 
-;;; adjustAddress
-;;; adjustInput is a conservative target address. Subtract one for every earlier
-;;; direct hole already marked short. A label at the same address as an
-;;; instruction is not moved by that instruction, hence the strict '<'.
-;;;
-;;; This routine preserves the caller's holeScan because it is also used while
-;;; resolving a particular hole.
-adjustAddress:
-	lda holeScan
-	pha
-	lda holeScan+1
-	pha
-	lda adjustInput
-	sta adjustResult
-	lda adjustInput+1
-	sta adjustResult+1
-	jsr firstHole
-.next:
-	lda holeScan
-	ora holeScan+1
-	beq .done
-	lda holeScan
+;;; resolveFixupValue
+;;; The label identified by symbolEntry has just been defined and symbolValue is
+;;; therefore final. Apply this fixup's small addend and optional byte selector.
+resolveFixupValue:
+	lda fixupScan
 	sta ZP_PTR0
-	lda holeScan+1
+	lda fixupScan+1
 	sta ZP_PTR0+1
-	ldy #HOLE_KIND
-	lda (ZP_PTR0),y
-	cmp #HOLE_DIRECT
-	bne .advance
-	iny
-	lda (ZP_PTR0),y
-	and #HOLE_FLAG_SHORT
-	beq .advance
-	ldy #HOLE_ADDRESS_HI
-	lda (ZP_PTR0),y
-	cmp adjustInput+1
-	bcc .subtract
-	bne .advance
-	dey
-	lda (ZP_PTR0),y
-	cmp adjustInput
-	bcs .advance
-.subtract:
-	lda adjustResult
-	bne .decLow
-	dec adjustResult+1
-.decLow:
-	dec adjustResult
-.advance:
-	jsr nextHole
-	jmp .next
-.done:
-	pla
-	sta holeScan+1
-	pla
-	sta holeScan
-	rts
-
-;;; resolveHoleValue
-;;; Resolve the tiny stored recipe at holeScan against current symbol values.
-;;; Carry clear means the referenced symbol is still undefined.
-resolveHoleValue:
-	lda holeScan
-	sta ZP_PTR0
-	lda holeScan+1
-	sta ZP_PTR0+1
-	ldy #HOLE_FLAGS
-	lda (ZP_PTR0),y
-	and #HOLE_FLAG_HAS_SYMBOL
-	beq .literal
-	ldy #HOLE_SYMBOL_LO
-	lda (ZP_PTR0),y
-	sta symbolEntry
-	iny
-	lda (ZP_PTR0),y
-	sta symbolEntry+1
-	jsr loadSymbolEntry
-	lda symbolKind
-	cmp #SYMBOL_LABEL_DEFINED
-	bne .undefined
-	lda symbolValue
-	sta resolvedValue
-	lda symbolValue+1
-	sta resolvedValue+1
-	jmp .addend
-.literal:
-	lda #$00
-	sta resolvedValue
-	sta resolvedValue+1
-.addend:
-	lda holeScan
-	sta ZP_PTR0
-	lda holeScan+1
-	sta ZP_PTR0+1
-	ldy #HOLE_ADDEND_LO
+	ldy #FIXUP_ADDEND_LO
 	clc
-	lda resolvedValue
+	lda symbolValue
 	adc (ZP_PTR0),y
 	sta resolvedValue
 	iny
-	lda resolvedValue+1
+	lda symbolValue+1
 	adc (ZP_PTR0),y
 	sta resolvedValue+1
 	iny
 	lda (ZP_PTR0),y
-	beq .ok
+	beq .done
 	cmp #VALUE_PREFIX_LOW
 	beq .low
 	lda resolvedValue+1
@@ -318,144 +201,123 @@ resolveHoleValue:
 .low:
 	lda #$00
 	sta resolvedValue+1
-.ok:
-	sec
-	rts
-.undefined:
-	clc
+.done:
 	rts
 
-;;; relaxLayout
-;;; Recompute label addresses and monotonically mark conservative absolute
-;;; instructions short until one complete memory walk makes no change.
-relaxLayout:
-.pass:
-	jsr updateLabelValues
-	lda #$00
-	sta layoutChanged
-	jsr firstHole
+;;; resolveSymbolFixups
+;;; A label has just been defined. Walk the small exceptional-fixup table and
+;;; patch every record waiting for this symbol immediately. Successful records
+;;; are marked FIXUP_NONE; their storage is not reclaimed.
+;;; Returns ASSEMBLE_* in A.
+resolveSymbolFixups:
+	jsr firstFixup
 .next:
-	lda holeScan
-	ora holeScan+1
-	beq .passDone
-	lda holeScan
+	lda fixupScan
+	ora fixupScan+1
+	beq .ok
+	lda fixupScan
 	sta ZP_PTR0
-	lda holeScan+1
+	lda fixupScan+1
 	sta ZP_PTR0+1
-	ldy #HOLE_KIND
+	ldy #FIXUP_KIND
 	lda (ZP_PTR0),y
-	cmp #HOLE_DIRECT
+	beq .advance
+	ldy #FIXUP_SYMBOL_LO
+	lda (ZP_PTR0),y
+	cmp symbolEntry
 	bne .advance
 	iny
 	lda (ZP_PTR0),y
-	and #HOLE_FLAG_SHORT
+	cmp symbolEntry+1
 	bne .advance
-	lda (ZP_PTR0),y
-	and #HOLE_FLAG_CAN_SHORTEN
-	beq .advance
-	jsr resolveHoleValue
-	bcc .undefined
-	lda resolvedValue+1
-	bne .advance
-	lda holeScan
+
+	jsr resolveFixupValue
+	jsr patchCurrentFixup
+	cmp #ASSEMBLE_OK
+	bne .done
+	lda fixupScan
 	sta ZP_PTR0
-	lda holeScan+1
+	lda fixupScan+1
 	sta ZP_PTR0+1
-	ldy #HOLE_FLAGS
-	lda (ZP_PTR0),y
-	ora #HOLE_FLAG_SHORT
+	ldy #FIXUP_KIND
+	lda #FIXUP_NONE
 	sta (ZP_PTR0),y
-	lda #$01
-	sta layoutChanged
 .advance:
-	jsr nextHole
+	jsr nextFixup
 	jmp .next
-.passDone:
-	lda layoutChanged
-	bne .pass
-	jsr updateLabelValues
+.ok:
 	lda #ASSEMBLE_OK
-	rts
-.undefined:
-	lda #ASSEMBLE_UNDEFINED
+.done:
 	rts
 
-;;; resolveAllHoles
-;;; Layout is now stable. Patch only staging memory and validate every machine
-;;; constraint before the final target region is touched.
-resolveAllHoles:
-	jsr firstHole
-.next:
-	lda holeScan
-	ora holeScan+1
-	bne .haveHole
-	jmp .ok
-.haveHole:
-	jsr resolveHoleValue
-	bcs .resolved
-	jmp .undefined
-.resolved:
-	lda holeScan
+;;; patchCurrentFixup
+;;; resolvedValue contains the final value for fixupScan.
+patchCurrentFixup:
+	lda fixupScan
 	sta ZP_PTR0
-	lda holeScan+1
+	lda fixupScan+1
 	sta ZP_PTR0+1
-	ldy #HOLE_KIND
+	ldy #FIXUP_KIND
 	lda (ZP_PTR0),y
-	cmp #HOLE_VALUE_BYTE
-	bne .notInstructionByte
-	jmp .instructionByte
-.notInstructionByte:
-	cmp #HOLE_VALUE_WORD
-	bne .notWord
-	jmp .word
-.notWord:
-	cmp #HOLE_RELATIVE
-	bne .notRelative
-	jmp .relative
-.notRelative:
-	cmp #HOLE_DIRECT
-	bne .notDirect
-	jmp .direct
-.notDirect:
-	cmp #HOLE_DATA_BYTE
-	bne .unknownKind
-	jmp .dataByte
-.unknownKind:
-	jmp .badInstruction
+	cmp #FIXUP_INSTRUCTION_BYTE
+	beq .instructionByte
+	cmp #FIXUP_WORD
+	beq .word
+	cmp #FIXUP_RELATIVE
+	beq .relative
+	cmp #FIXUP_DATA_BYTE
+	beq .dataByte
+	lda #ASSEMBLE_BAD_INSTRUCTION
+	rts
 
 .instructionByte:
 	lda resolvedValue+1
-	beq .instructionByteOk
-	jmp .badInstruction
-.instructionByteOk:
-	jsr patchHoleByte
-	jmp .advance
+	beq .patchByte
+	lda #ASSEMBLE_BAD_INSTRUCTION
+	rts
 .dataByte:
 	lda resolvedValue+1
-	beq .dataByteOk
-	jmp .badData
-.dataByteOk:
-	jsr patchHoleByte
-	jmp .advance
+	beq .patchByte
+	lda #ASSEMBLE_BAD_DATA
+	rts
+.patchByte:
+	jsr patchFixupByte
+	lda #ASSEMBLE_OK
+	rts
+
 .word:
-	jsr patchHoleWord
-	jmp .advance
+	jsr patchFixupWord
+	lda #ASSEMBLE_OK
+	rts
 
 .relative:
-	ldy #HOLE_ADDRESS_LO
+	;; fixupStage points at the branch operand byte. With fixed instruction widths,
+	;; its target address is assemblyStart + (fixupStage-stagingStart); the branch
+	;; base is the following byte.
+	ldy #FIXUP_STAGE_LO
 	lda (ZP_PTR0),y
-	sta adjustInput
+	sta fixupStage
 	iny
 	lda (ZP_PTR0),y
-	sta adjustInput+1
-	jsr adjustAddress
-	clc
-	lda adjustResult
-	adc #$02
+	sta fixupStage+1
+	sec
+	lda fixupStage
+	sbc stagingStart
 	sta relativeBase
-	lda adjustResult+1
-	adc #$00
+	lda fixupStage+1
+	sbc stagingStart+1
 	sta relativeBase+1
+	clc
+	lda relativeBase
+	adc assemblyStart
+	sta relativeBase
+	lda relativeBase+1
+	adc assemblyStart+1
+	sta relativeBase+1
+	inc relativeBase
+	bne .haveBase
+	inc relativeBase+1
+.haveBase:
 	sec
 	lda resolvedValue
 	sbc relativeBase
@@ -463,98 +325,32 @@ resolveAllHoles:
 	lda resolvedValue+1
 	sbc relativeBase+1
 	cpx #$80
-	bcc .relativePositive
+	bcc .positive
 	cmp #$ff
-	beq .relativeNegativeOk
-	jmp .branchRange
-.relativeNegativeOk:
+	bne .branchRange
 	txa
 	sta resolvedValue
-	jsr patchHoleByte
-	jmp .advance
-.relativePositive:
-	cmp #$00
-	beq .relativePositiveOk
-	jmp .branchRange
-.relativePositiveOk:
-	txa
-	sta resolvedValue
-	jsr patchHoleByte
-	jmp .advance
-
-.direct:
-	ldy #HOLE_FLAGS
-	lda (ZP_PTR0),y
-	and #HOLE_FLAG_SHORT
-	beq .directLong
-	lda resolvedValue+1
-	beq .directShortOk
-	jmp .badInstruction
-.directShortOk:
-	ldy #HOLE_EXTRA
-	lda (ZP_PTR0),y
-	tax				; short opcode
-	ldy #HOLE_STAGE_LO
-	lda (ZP_PTR0),y
-	sta patchPtr
-	iny
-	lda (ZP_PTR0),y
-	sta patchPtr+1
-	lda patchPtr
-	sta ZP_PTR0
-	lda patchPtr+1
-	sta ZP_PTR0+1
-	ldy #$00
-	txa
-	sta (ZP_PTR0),y
-	iny
-	lda resolvedValue
-	sta (ZP_PTR0),y
-	jmp .advance
-.directLong:
-	ldy #HOLE_STAGE_LO
-	lda (ZP_PTR0),y
-	sta patchPtr
-	iny
-	lda (ZP_PTR0),y
-	sta patchPtr+1
-	lda patchPtr
-	sta ZP_PTR0
-	lda patchPtr+1
-	sta ZP_PTR0+1
-	ldy #$01			; byte zero is the already-staged long opcode
-	lda resolvedValue
-	sta (ZP_PTR0),y
-	iny
-	lda resolvedValue+1
-	sta (ZP_PTR0),y
-	jmp .advance
-
-.advance:
-	jsr nextHole
-	jmp .next
-.ok:
+	jsr patchFixupByte
 	lda #ASSEMBLE_OK
 	rts
-.undefined:
-	lda #ASSEMBLE_UNDEFINED
-	rts
-.badInstruction:
-	lda #ASSEMBLE_BAD_INSTRUCTION
-	rts
-.badData:
-	lda #ASSEMBLE_BAD_DATA
+.positive:
+	cmp #$00
+	bne .branchRange
+	txa
+	sta resolvedValue
+	jsr patchFixupByte
+	lda #ASSEMBLE_OK
 	rts
 .branchRange:
 	lda #ASSEMBLE_EMIT_ERROR
 	rts
 
-patchHoleByte:
-	lda holeScan
+patchFixupByte:
+	lda fixupScan
 	sta ZP_PTR0
-	lda holeScan+1
+	lda fixupScan+1
 	sta ZP_PTR0+1
-	ldy #HOLE_STAGE_LO
+	ldy #FIXUP_STAGE_LO
 	lda (ZP_PTR0),y
 	sta patchPtr
 	iny
@@ -569,8 +365,8 @@ patchHoleByte:
 	sta (ZP_PTR0),y
 	rts
 
-patchHoleWord:
-	jsr patchHoleByte
+patchFixupWord:
+	jsr patchFixupByte
 	lda patchPtr
 	sta ZP_PTR0
 	lda patchPtr+1
@@ -580,15 +376,39 @@ patchHoleWord:
 	sta (ZP_PTR0),y
 	rts
 
+;;; allFixupsResolved
+;;; Once all labels are defined every exceptional forward fixup should already
+;;; have been patched by resolveSymbolFixups. Carry set means that invariant holds.
+allFixupsResolved:
+	jsr firstFixup
+.next:
+	lda fixupScan
+	ora fixupScan+1
+	beq .ok
+	lda fixupScan
+	sta ZP_PTR0
+	lda fixupScan+1
+	sta ZP_PTR0+1
+	ldy #FIXUP_KIND
+	lda (ZP_PTR0),y
+	bne .bad
+	jsr nextFixup
+	jmp .next
+.ok:
+	sec
+	rts
+.bad:
+	clc
+	rts
+
 ;;; copyRepresentation
-;;; Commit the validated staged image to assemblyStart. Short direct holes skip
-;;; the one conservative excess byte; everything else copies literally.
+;;; The staged image already has final widths and final bytes. Commit it literally
+;;; to assemblyStart only after all symbols and fixups have validated.
 copyRepresentation:
 	lda stagingStart
 	sta copyStage
 	lda stagingStart+1
 	sta copyStage+1
-	jsr firstHole
 	lda assemblyStart
 	sta assemblyPtr
 	lda assemblyStart+1
@@ -596,37 +416,11 @@ copyRepresentation:
 .loop:
 	lda copyStage
 	cmp stagingEnd
-	bne .haveByte
+	bne .copy
 	lda copyStage+1
 	cmp stagingEnd+1
-	bne .haveByte
-	jmp .done
-.haveByte:
-	lda holeScan
-	ora holeScan+1
-	beq .normal
-	lda holeScan
-	sta ZP_PTR0
-	lda holeScan+1
-	sta ZP_PTR0+1
-	ldy #HOLE_STAGE_LO
-	lda (ZP_PTR0),y
-	cmp copyStage
-	bne .normal
-	iny
-	lda (ZP_PTR0),y
-	cmp copyStage+1
-	bne .normal
-	ldy #HOLE_KIND
-	lda (ZP_PTR0),y
-	cmp #HOLE_DIRECT
-	bne .consumeHole
-	iny
-	lda (ZP_PTR0),y
-	and #HOLE_FLAG_SHORT
-	beq .consumeHole
-
-	;; Short direct form: copy opcode+operand, then skip the conservative high byte.
+	beq .done
+.copy:
 	lda copyStage
 	sta ZP_PTR0
 	lda copyStage+1
@@ -638,74 +432,29 @@ copyRepresentation:
 	ldy #$00
 	lda (ZP_PTR0),y
 	sta (ZP_PTR1),y
-	iny
-	lda (ZP_PTR0),y
-	sta (ZP_PTR1),y
-	lda #$03
-	jsr advanceCopyStage
-	lda #$02
-	jsr advanceFinalPtr
-	jsr nextHole
-	jmp .loop
-
-.consumeHole:
-	jsr nextHole
-.normal:
-	lda copyStage
-	sta ZP_PTR0
-	lda copyStage+1
-	sta ZP_PTR0+1
-	lda assemblyPtr
-	sta ZP_PTR1
-	lda assemblyPtr+1
-	sta ZP_PTR1+1
-	ldy #$00
-	lda (ZP_PTR0),y
-	sta (ZP_PTR1),y
-	lda #$01
-	jsr advanceCopyStage
-	lda #$01
-	jsr advanceFinalPtr
+	inc copyStage
+	bne .final
+	inc copyStage+1
+.final:
+	inc assemblyPtr
+	bne .loop
+	inc assemblyPtr+1
 	jmp .loop
 .done:
 	lda #ASSEMBLE_OK
-	rts
-
-advanceCopyStage:
-	clc
-	adc copyStage
-	sta copyStage
-	bcc .done
-	inc copyStage+1
-.done:
-	rts
-
-advanceFinalPtr:
-	clc
-	adc assemblyPtr
-	sta assemblyPtr
-	bcc .done
-	inc assemblyPtr+1
-.done:
 	rts
 
 stagingStart:	word 0
 stagingLimit:	word 0
 stagingPtr:	word 0
 stagingEnd:	word 0
-holeFree:	word 0
+fixupFree:	word 0
 
-holeKind:	byte 0
-holeFlags:	byte 0
-holeStage:	word 0
-holeAddress:	word 0
-holeExtra:	byte 0
-holeScan:	word 0
+fixupKind:	byte 0
+fixupStage:	word 0
+fixupScan:	word 0
 
-adjustInput:	word 0
-adjustResult:	word 0
 resolvedValue:	word 0
 relativeBase:	word 0
 patchPtr:	word 0
-layoutChanged:	byte 0
 copyStage:	word 0

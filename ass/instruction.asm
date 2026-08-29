@@ -59,7 +59,13 @@ parseInstruction:
 	lda statementArgumentLength
 	bne .hasOperand
 	lda #MODE_IMPLIED
+	jsr tryMode
+	bcs .noOperandOk
+	lda #MODE_ACCUMULATOR
 	jmp finishKnownMode
+.noOperandOk:
+	lda #INSTRUCTION_OK
+	rts
 
 .hasOperand:
 	lda statementArgument
@@ -93,7 +99,8 @@ clearInstruction:
 ;;; parseOperand
 ;;;
 ;;; ZP_PTR0/X identify the complete operand text. Dispatch by the punctuation
-;;; that distinguishes the 6502 addressing forms.
+;;; that distinguishes the 6502 addressing forms. The syntax letters A/X/Y are
+;;; case-insensitive; symbol text itself is never folded.
 ;;; Returns INSTRUCTION_* in A. A, X, Y and flags are clobbered; ZP_PTR0 may
 ;;; advance when leading punctuation is removed.
 parseOperand:
@@ -101,6 +108,7 @@ parseOperand:
 	bne .notAccumulator
 	ldy #$00
 	lda (ZP_PTR0),y
+	and #$df
 	cmp #'A'
 	bne parseDirectOperand
 	lda #MODE_ACCUMULATOR
@@ -154,6 +162,7 @@ parseIndirectOperand:
 	tay
 	dey
 	lda (ZP_PTR0),y
+	and #$df
 	cmp #'Y'
 	bne .insideParen
 	dey
@@ -296,6 +305,7 @@ stripIndexSuffix:
 	tay
 	dey
 	lda (ZP_PTR0),y
+	and #$df
 	cmp #'X'
 	beq .x
 	cmp #'Y'
@@ -356,7 +366,7 @@ parseOperandCore:
 
 ;;; parseHex
 ;;;
-;;; ZP_PTR0/X = '$' followed by 1..4 uppercase hexadecimal digits.
+;;; ZP_PTR0/X = '$' followed by 1..4 hexadecimal digits, either case.
 ;;; Returns the 16-bit value in instructionOperandValue and carry set.
 ;;; A, X, Y and flags are clobbered. ZP_PTR0 is preserved.
 parseHex:
@@ -399,13 +409,14 @@ parseHex:
 
 ;;; hexNibble
 ;;;
-;;; A = uppercase hexadecimal character. Returns its value in A and carry set,
-;;; or carry clear for a non-hexadecimal character. X and Y are preserved.
+;;; A = hexadecimal character. Returns its value in A and carry set, or carry
+;;; clear for a non-hexadecimal character. X and Y are preserved.
 hexNibble:
 	cmp #'0'
 	bcc .bad
 	cmp #'9'+1
 	bcc .decimal
+	and #$df			; fold a..f to A..F
 	cmp #'A'
 	bcc .bad
 	cmp #'F'+1
@@ -491,10 +502,11 @@ selectDirectMode:
 ;;; findMnemonic
 ;;;
 ;;; ZP_PTR0 points to mnemonic text and X is its length. Walk the fixed-width
-;;; mnemonic table until the three-byte name matches or the ??? sentinel is
-;;; reached. Returns the shared mnemonic-table index in A with carry set, or
-;;; carry clear if it is unknown.
-;;; ZP_PTR0 is preserved. A, X, Y and flags are clobbered.
+;;; upper-case mnemonic table until the three-byte name matches or the ???
+;;; sentinel is reached. Source mnemonic letters are folded only for comparison;
+;;; the source buffer is unchanged.
+;;; Returns the shared mnemonic-table index in A with carry set, or carry clear
+;;; if it is unknown. ZP_PTR0 is preserved. A, X, Y and flags are clobbered.
 findMnemonic:
 	cpx #$03
 	beq .lengthOk
@@ -515,6 +527,7 @@ findMnemonic:
 	ldy #$00
 .compare:
 	lda (ZP_PTR0),y
+	and #$df			; fold a..z to A..Z
 	cmp mnemonic_table,x
 	bne .mismatch
 	iny

@@ -39,8 +39,53 @@ main:
 	jmp .finish
 .labelLengthOk:
 	lda statementArgumentLength
-	beq .symbolCase
+	beq .inlineWordCase
 	lda #$05
+	jmp .finish
+
+	;; A label returns immediately after its colon. The next call must parse a
+	;; second statement from the same source line.
+.inlineWordCase:
+	jsr nextStatement
+	cmp #STATEMENT_INSTRUCTION
+	beq .inlineWordTypeOk
+	lda #$2a
+	jmp .finish
+.inlineWordTypeOk:
+	lda statementName
+	cmp #<inlineWordName
+	beq .inlineWordLowOk
+	lda #$2b
+	jmp .finish
+.inlineWordLowOk:
+	lda statementName+1
+	cmp #>inlineWordName
+	beq .inlineWordHighOk
+	lda #$2c
+	jmp .finish
+.inlineWordHighOk:
+	lda statementNameLength
+	cmp #$04
+	beq .inlineWordLengthOk
+	lda #$2d
+	jmp .finish
+.inlineWordLengthOk:
+	lda statementArgument
+	cmp #<inlineWordArgument
+	beq .inlineWordArgLowOk
+	lda #$2e
+	jmp .finish
+.inlineWordArgLowOk:
+	lda statementArgument+1
+	cmp #>inlineWordArgument
+	beq .inlineWordArgHighOk
+	lda #$2f
+	jmp .finish
+.inlineWordArgHighOk:
+	lda statementArgumentLength
+	cmp #$01
+	beq .symbolCase
+	lda #$30
 	jmp .finish
 
 .symbolCase:
@@ -168,57 +213,100 @@ main:
 .instructionArgHighOk:
 	lda statementArgumentLength
 	cmp #$04
-	beq .noOperandCase
+	beq .quotedCommentCase
 	lda #$1a
+	jmp .finish
+
+.quotedCommentCase:
+	jsr nextStatement
+	cmp #STATEMENT_INSTRUCTION
+	beq .quotedTypeOk
+	lda #$1b
+	jmp .finish
+.quotedTypeOk:
+	lda statementName
+	cmp #<quotedInstructionName
+	beq .quotedNameLowOk
+	lda #$1c
+	jmp .finish
+.quotedNameLowOk:
+	lda statementName+1
+	cmp #>quotedInstructionName
+	beq .quotedNameHighOk
+	lda #$1d
+	jmp .finish
+.quotedNameHighOk:
+	lda statementNameLength
+	cmp #$03
+	beq .quotedNameLengthOk
+	lda #$1e
+	jmp .finish
+.quotedNameLengthOk:
+	lda statementArgument
+	cmp #<quotedInstructionArgument
+	beq .quotedArgLowOk
+	lda #$1f
+	jmp .finish
+.quotedArgLowOk:
+	lda statementArgument+1
+	cmp #>quotedInstructionArgument
+	beq .quotedArgHighOk
+	lda #$20
+	jmp .finish
+.quotedArgHighOk:
+	lda statementArgumentLength
+	cmp #$04
+	beq .noOperandCase
+	lda #$21
 	jmp .finish
 
 .noOperandCase:
 	jsr nextStatement
 	cmp #STATEMENT_INSTRUCTION
 	beq .noOperandTypeOk
-	lda #$1b
+	lda #$22
 	jmp .finish
 .noOperandTypeOk:
 	lda statementName
 	cmp #<noOperandName
 	beq .noOperandNameLowOk
-	lda #$1c
+	lda #$23
 	jmp .finish
 .noOperandNameLowOk:
 	lda statementName+1
 	cmp #>noOperandName
 	beq .noOperandNameHighOk
-	lda #$1d
+	lda #$24
 	jmp .finish
 .noOperandNameHighOk:
 	lda statementNameLength
 	cmp #$03
 	beq .noOperandNameLengthOk
-	lda #$1e
+	lda #$25
 	jmp .finish
 .noOperandNameLengthOk:
 	lda statementArgumentLength
 	beq .eofCase
-	lda #$1f
+	lda #$26
 	jmp .finish
 
 .eofCase:
 	jsr nextStatement
 	cmp #STATEMENT_EOF
 	beq .eofTypeOk
-	lda #$20
+	lda #$27
 	jmp .finish
 .eofTypeOk:
 	lda ZP_PTR1
 	cmp #<inputEnd
 	beq .eofLowOk
-	lda #$21
+	lda #$28
 	jmp .finish
 .eofLowOk:
 	lda ZP_PTR1+1
 	cmp #>inputEnd
 	beq .pass
-	lda #$22
+	lda #$29
 	jmp .finish
 
 .pass:
@@ -236,7 +324,11 @@ input:
 	byte 0			; blank line
 
 labelName:
-	byte 'S','T','A','R','T',':',0
+	byte 'S','T','A','R','T',':',' '
+inlineWordName:
+	byte 'w','o','r','d',' '
+inlineWordArgument:
+	byte '0',0
 
 symbolName:
 	byte '*',' ','=',' '
@@ -253,6 +345,11 @@ instructionName:
 	byte 'L','D','A',' '
 instructionArgument:
 	byte '#','$','0','0',' ',' ',';',' ','c','o','m','m','e','n','t',0
+
+quotedInstructionName:
+	byte 'C','M','P',' '
+quotedInstructionArgument:
+	byte '#',39,';',39,' ',';',' ','c','o','m','m','e','n','t',0
 
 noOperandName:
 	byte 'R','T','S',0

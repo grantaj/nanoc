@@ -1,13 +1,14 @@
 ;;; data.asm
 ;;;
-;;; The three data declarations used by nanoc itself:
+;;; The three data declarations used by ass itself:
 ;;;
 ;;;     byte value [, value ...]
 ;;;     word value [, value ...]
 ;;;     string "literal"
 ;;;
-;;; Fixed values become staged bytes immediately. A label-dependent value gets
-;;; one compact hole and placeholder byte(s); the source text is then disposable.
+;;; Fixed values become staged bytes immediately. A plain unresolved `word label`
+;;; uses its own two staged bytes as part of the label's reference chain. Only
+;;; one-byte values and word expressions need a separate forward fixup.
 
 DATA_NONE   = $00
 DATA_BYTE   = $01
@@ -152,7 +153,7 @@ assembleDataList:
 	cmp #VALUE_OK
 	beq .fixed
 	cmp #VALUE_UNRESOLVED
-	beq .hole
+	beq .deferred
 	cmp #VALUE_SYMBOL_FULL
 	bne .notSymbolFull
 	jmp .symbolFull
@@ -173,49 +174,56 @@ assembleDataList:
 .fixedByteOk:
 	lda valueResult
 	jsr stageByte
-	bcc .workFull
+	bcc .workFullNear
 	jmp .itemDone
 .fixedWord:
 	lda valueResult
 	jsr stageByte
-	bcc .workFull
+	bcc .workFullNear
 	lda valueResult+1
 	jsr stageByte
-	bcc .workFull
+	bcc .workFullNear
 	jmp .itemDone
 
-.hole:
+.deferred:
+	lda dataWidth
+	cmp #$02
+	bne .fixup
+	jsr isPlainLabelValue
+	bcc .fixup
+	jsr stagePlainWordReference
+	bcc .workFullNear
+	jmp .itemDone
+
+.workFullNear:
+	jmp .workFull
+
+.fixup:
 	lda stagingPtr
-	sta holeStage
+	sta fixupStage
 	lda stagingPtr+1
-	sta holeStage+1
-	lda assemblyPtr
-	sta holeAddress
-	lda assemblyPtr+1
-	sta holeAddress+1
-	lda #$00
-	sta holeExtra
+	sta fixupStage+1
 	lda dataWidth
 	cmp #$01
-	beq .byteHole
-	lda #HOLE_VALUE_WORD
-	sta holeKind
+	beq .byteFixup
+	lda #FIXUP_WORD
+	sta fixupKind
 	lda #$00
 	jsr stageByte
 	bcc .workFull
 	lda #$00
 	jsr stageByte
 	bcc .workFull
-	jsr appendHole
+	jsr appendFixup
 	bcc .workFull
 	jmp .itemDone
-.byteHole:
-	lda #HOLE_DATA_BYTE
-	sta holeKind
+.byteFixup:
+	lda #FIXUP_DATA_BYTE
+	sta fixupKind
 	lda #$00
 	jsr stageByte
 	bcc .workFull
-	jsr appendHole
+	jsr appendFixup
 	bcc .workFull
 
 .itemDone:

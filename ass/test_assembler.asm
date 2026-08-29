@@ -1,15 +1,12 @@
 	include "zp.inc"
 	include "../test.inc"
 
-FAIL_RELAX         = $01
+FAIL_FORWARD       = $01
 FAIL_UNDEFINED     = $02
 FAIL_BRANCH_RANGE  = $03
-FAIL_MULTI_RELAX   = $04
-FAIL_ATOMIC_OUTPUT = $05
+FAIL_ATOMIC_OUTPUT = $04
 
 OUTPUT       = $2000
-RELAX_OUTPUT = $0080
-ITER_OUTPUT  = $00f9
 SYMBOLS      = $3000
 SYMBOLS_END  = $3600
 STAGING      = $3600
@@ -18,13 +15,9 @@ STAGING_END  = $4000
 	* = ASSEMBLER_TEST_ENTRY
 
 main:
-	;; The relaxation tests use zero-page addresses. Own the machine while they
-	;; run rather than letting a KERNAL IRQ use assembler workspace.
 	sei
 	jsr setupWorkspace
-	jsr testRelaxation
-	bcc finish
-	jsr testMultiRelaxation
+	jsr testForwardReferences
 	bcc finish
 	jsr testUndefinedSymbol
 	bcc finish
@@ -55,106 +48,43 @@ setupWorkspace:
 	sta stagingLimit+1
 	rts
 
-;;; Pass 1 conservatively stages LDA absolute. Once target is known to be in
-;;; zero page, the memory-only layout pass shrinks it and updates target.
-testRelaxation:
-	lda #<relaxSource
+;;; Constants choose zero-page addressing immediately. Forward labels use final
+;;; absolute width, and multiple plain word references to one undefined label are
+;;; chained through their own operand bytes until that label appears.
+testForwardReferences:
+	lda #<forwardSource
 	sta ZP_PTR1
-	lda #>relaxSource
+	lda #>forwardSource
 	sta ZP_PTR1+1
-	lda #<relaxSourceEnd
+	lda #<forwardSourceEnd
 	sta sourceEnd
-	lda #>relaxSourceEnd
+	lda #>forwardSourceEnd
 	sta sourceEnd+1
-	lda #<RELAX_OUTPUT
+	lda #<OUTPUT
 	sta assemblyPtr
-	lda #>RELAX_OUTPUT
+	lda #>OUTPUT
 	sta assemblyPtr+1
 	jsr assemble
 	cmp #ASSEMBLE_OK
 	bne .fail
-	lda RELAX_OUTPUT
-	cmp #$a5			; LDA zero page
+	ldx #$00
+.check:
+	lda OUTPUT,x
+	cmp forwardBytes,x
 	bne .fail
-	lda RELAX_OUTPUT+1
-	cmp #$82			; target moved from $0083 to $0082
-	bne .fail
-	lda RELAX_OUTPUT+2
-	cmp #$60
-	bne .fail
+	inx
+	cpx #forwardBytesEnd-forwardBytes
+	bne .check
 	lda assemblyPtr
-	cmp #$83
+	cmp #$09
 	bne .fail
 	lda assemblyPtr+1
+	cmp #$20
 	bne .fail
 	sec
 	rts
 .fail:
-	lda #FAIL_RELAX
-	clc
-	rts
-
-;;; The second LDA can shrink immediately because low is conservatively $00ff.
-;;; That moves near from $0100 to $00ff, enabling the first LDA only on the next
-;;; layout walk. After convergence low is $00fd and near is $00fe.
-;;;
-;;; This test deliberately stops before copyRepresentation: the address range
-;;; needed to exercise the $0100 boundary includes $fc-$ff, which are the
-;;; assembler's live zero-page pointers. The thing under test here is the
-;;; memory-only convergence itself; testRelaxation above already covers commit.
-testMultiRelaxation:
-	lda #<multiSource
-	sta ZP_PTR1
-	lda #>multiSource
-	sta ZP_PTR1+1
-	lda #<multiSourceEnd
-	sta sourceEnd
-	lda #>multiSourceEnd
-	sta sourceEnd+1
-	lda #<ITER_OUTPUT
-	sta assemblyPtr
-	lda #>ITER_OUTPUT
-	sta assemblyPtr+1
-	lda #$00
-	sta sourceFileMode
-	jsr beginAssembly
-.source:
-	jsr nextStatement
-	cmp #STATEMENT_EOF
-	beq .layout
-	jsr processStatement
-	cmp #ASSEMBLE_OK
-	bne .fail
-	jmp .source
-.layout:
-	jsr sealRepresentation
-	jsr allLabelsDefined
-	bcc .fail
-	jsr relaxLayout
-	cmp #ASSEMBLE_OK
-	bne .fail
-	jsr resolveAllHoles
-	cmp #ASSEMBLE_OK
-	bne .fail
-
-	;; Staging remains conservative-width. Both direct records must nevertheless
-	;; contain their final short opcodes and operands after convergence.
-	lda STAGING
-	cmp #$a5
-	bne .fail
-	lda STAGING+1
-	cmp #$fe			; near
-	bne .fail
-	lda STAGING+3
-	cmp #$a5
-	bne .fail
-	lda STAGING+4
-	cmp #$fd			; low
-	bne .fail
-	sec
-	rts
-.fail:
-	lda #FAIL_MULTI_RELAX
+	lda #FAIL_FORWARD
 	clc
 	rts
 
@@ -200,8 +130,8 @@ testUndefinedSymbol:
 	clc
 	rts
 
-;;; Branch displacement is computed from final relaxed addresses. A range error
-;;; is detected while staging is still private, before target memory is changed.
+;;; A fixed branch target is range-checked immediately. A range error still
+;;; occurs while staging is private, before target memory is changed.
 testBranchRange:
 	lda #$69
 	sta OUTPUT
@@ -245,21 +175,21 @@ testBranchRange:
 	include "value.asm"
 	include "assembler.asm"
 
-relaxSource:
+forwardSource:
+	string "PTR = $fc"
 	string "entry:"
+	string "LDA PTR"
 	string "LDA target"
+	string "JMP target"
 	string "target:"
 	string "RTS"
-relaxSourceEnd:
-
-multiSource:
-	string "LDA near"
-	string "LDA low"
-	string "low:"
-	string "RTS"
-	string "near:"
-	string "RTS"
-multiSourceEnd:
+forwardSourceEnd:
+forwardBytes:
+	byte $a5,$fc
+	byte $ad,$08,$20
+	byte $4c,$08,$20
+	byte $60
+forwardBytesEnd:
 
 undefinedSource:
 	string "entry:"

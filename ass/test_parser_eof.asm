@@ -79,8 +79,89 @@ main:
 	sta sourceEnd+1
 	jsr nextStatement
 	jsr checkCase
-	beq .pass
+	beq .case6
 	ora #$50
+	jmp .finish
+
+.case6:
+	;; A label consumes only itself. The following statement on the same line
+	;; must be returned by the next call rather than discarded with the line.
+	lda #<inlineInput
+	sta ZP_PTR1
+	lda #>inlineInput
+	sta ZP_PTR1+1
+	lda #<inlineEnd
+	sta sourceEnd
+	lda #>inlineEnd
+	sta sourceEnd+1
+
+	jsr nextStatement
+	cmp #STATEMENT_LABEL
+	beq .inlineLabelTypeOk
+	lda #$61
+	jmp .finish
+.inlineLabelTypeOk:
+	lda statementName
+	cmp #<inlineLabel
+	beq .inlineLabelLowOk
+	lda #$62
+	jmp .finish
+.inlineLabelLowOk:
+	lda statementName+1
+	cmp #>inlineLabel
+	beq .inlineLabelHighOk
+	lda #$63
+	jmp .finish
+.inlineLabelHighOk:
+	lda statementNameLength
+	cmp #$04
+	beq .inlineStatement
+	lda #$64
+	jmp .finish
+
+.inlineStatement:
+	jsr nextStatement
+	cmp #STATEMENT_INSTRUCTION
+	beq .inlineTypeOk
+	lda #$65
+	jmp .finish
+.inlineTypeOk:
+	lda statementName
+	cmp #<inlineWord
+	beq .inlineNameLowOk
+	lda #$66
+	jmp .finish
+.inlineNameLowOk:
+	lda statementName+1
+	cmp #>inlineWord
+	beq .inlineNameHighOk
+	lda #$67
+	jmp .finish
+.inlineNameHighOk:
+	lda statementNameLength
+	cmp #$04
+	beq .inlineArgPtr
+	lda #$68
+	jmp .finish
+.inlineArgPtr:
+	lda statementArgument
+	cmp #<inlineArgument
+	bne .inlineArgBad
+	lda statementArgument+1
+	cmp #>inlineArgument
+	bne .inlineArgBad
+	lda statementArgumentLength
+	cmp #$01
+	beq .inlineEof
+.inlineArgBad:
+	lda #$69
+	jmp .finish
+
+.inlineEof:
+	jsr nextStatement
+	jsr checkCase
+	beq .pass
+	lda #$6a
 	jmp .finish
 
 .pass:
@@ -137,6 +218,15 @@ whitespaceInput:
 	byte ' ', ' ', ' ', $09, ' '
 	string "; final comment   "
 whitespaceEnd:
+
+inlineInput:
+inlineLabel:
+	byte 'd','a','t','a',':',' '
+inlineWord:
+	byte 'w','o','r','d',' '
+inlineArgument:
+	byte '0',0
+inlineEnd:
 
 	;; Place the final fixture close to a page boundary so comment scanning
 	;; crosses from $c4ff to $c500.

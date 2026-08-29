@@ -11,6 +11,7 @@ DIS_TARGETS = \
 	$(BUILD_DIR)/test_modes.prg
 
 ASS_TARGETS = \
+	$(BUILD_DIR)/ass.prg \
 	$(BUILD_DIR)/parse.prg \
 	$(BUILD_DIR)/test_skipws.prg \
 	$(BUILD_DIR)/test_scanner.prg \
@@ -24,7 +25,8 @@ ASS_TARGETS = \
 	$(BUILD_DIR)/test_assembler.prg \
 	$(BUILD_DIR)/test_data.prg \
 	$(BUILD_DIR)/test_strings.prg \
-	$(BUILD_DIR)/test_streaming.prg
+	$(BUILD_DIR)/test_streaming.prg \
+	$(BUILD_DIR)/test_selfhost.prg
 
 ASSEMBLER_DEPS = \
 	ass/assembler.asm ass/representation.asm ass/source.asm ass/data.asm \
@@ -37,11 +39,16 @@ STREAM_FIXTURES = \
 	tests/stream-src/child.asm \
 	tests/stream-src/nested.asm
 
+SELFHOST_FIXTURES = \
+	ass/ass_0800.asm \
+	ass/ass.asm \
+	ass/selfhost_smoke.asm
+
 EXAMPLE_TARGETS = \
 	$(BUILD_DIR)/border-demo.prg \
 	$(BUILD_DIR)/border-c.prg
 
-.PHONY: all dis ass examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-emitter test-values test-globals test-locals test-assembler test-data test-strings test-streaming clean
+.PHONY: all dis ass examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-emitter test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost clean
 
 all: dis ass examples
 
@@ -51,7 +58,7 @@ ass: $(ASS_TARGETS)
 
 examples: $(EXAMPLE_TARGETS)
 
-test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-emitter test-values test-globals test-locals test-assembler test-data test-strings test-streaming
+test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-emitter test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost
 
 test-skipws: $(BUILD_DIR)/test_skipws.prg
 	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< skipws
@@ -92,6 +99,9 @@ test-strings: $(BUILD_DIR)/test_strings.prg
 test-streaming: $(BUILD_DIR)/test_streaming.prg $(STREAM_FIXTURES)
 	VICE_FS_DIR=$(CURDIR)/tests/stream-src VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< streaming
 
+test-selfhost: $(BUILD_DIR)/test_selfhost.prg $(SELFHOST_FIXTURES)
+	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR) VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< selfhost
+
 $(BUILD_DIR):
 	mkdir -p $@
 
@@ -103,6 +113,9 @@ $(BUILD_DIR)/hexdump.prg: dis/hexdump.asm | $(BUILD_DIR)
 
 $(BUILD_DIR)/test_modes.prg: dis/test_modes.asm dis/modes.asm dis/mode_ids.inc | $(BUILD_DIR)
 	cd dis && $(VASM) $(VASMFLAGS) -o ../$@ test_modes.asm
+
+$(BUILD_DIR)/ass.prg: ass/ass_4000.asm ass/ass.asm $(ASSEMBLER_DEPS) | $(BUILD_DIR)
+	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ ass_4000.asm
 
 $(BUILD_DIR)/parse.prg: ass/parse.asm ass/parser.asm ass/instruction.asm ass/scanner.asm ass/skipws.asm ass/zp.inc dis/mode_ids.inc dis/opcode_table.asm dis/mnemonic_table.asm | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ parse.asm
@@ -145,6 +158,9 @@ $(BUILD_DIR)/test_strings.prg: ass/test_strings.asm $(ASSEMBLER_DEPS) | $(BUILD_
 
 $(BUILD_DIR)/test_streaming.prg: ass/test_streaming.asm $(ASSEMBLER_DEPS) | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_streaming.asm
+
+$(BUILD_DIR)/test_selfhost.prg: ass/test_selfhost.asm ass/ass.asm $(ASSEMBLER_DEPS) | $(BUILD_DIR)
+	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_selfhost.asm
 
 $(BUILD_DIR)/border-demo.prg: examples/border/demo.asm | $(BUILD_DIR)
 	cd examples/border && $(VASM) $(VASMFLAGS) -o ../../$@ demo.asm

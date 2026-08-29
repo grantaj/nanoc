@@ -1,9 +1,11 @@
 ;;; assembler.asm
 ;;;
-;;; Source is parsed exactly once. Pass 1 consumes each statement into an
-;;; almost-final staged machine image, an owned symbol table, and only the tiny
-;;; holes whose values/layout are not yet known. Later work is memory-only:
-;;; shorten zero-page choices until stable, resolve holes, then commit the image.
+;;; Source is parsed exactly once. Each statement immediately contributes
+;;; final-size machine bytes to staging and owned names to the symbol table.
+;;; Plain unresolved 16-bit label references chain through their own operand
+;;; bytes; exceptional one-byte/expression references use small fixup records.
+;;; When a label appears, every reference waiting for it is patched immediately.
+;;; EOF only validates that nothing remains undefined and commits the staged image.
 ;;;
 ;;; `assemble` keeps the in-memory source entry point for native unit tests.
 ;;; `assembleFile` is the production path and reads one line at a time through
@@ -23,6 +25,11 @@ ASSEMBLE_WORK_FULL       = $0b
 ASSEMBLE_IO_ERROR        = $0c
 ASSEMBLE_LINE_TOO_LONG   = $0d
 ASSEMBLE_INCLUDE_DEPTH   = $0e
+
+;;; Representation constants are needed by the orchestration below. Keeping
+;;; representation.asm here also means ass never needs forward constant
+;;; definitions merely because of source-file ordering.
+	include "representation.asm"
 
 ;;; assemble
 ;;; Consume the existing caller-owned [ZP_PTR1,sourceEnd) fixture once. This is
@@ -44,7 +51,9 @@ assemble:
 ;;; Inputs in addition to the normal assembly/workspace pointers:
 ;;;   sourceName/sourceNameLength, sourceDevice, sourceLineBuffer.
 ;;; The root and included files are read sequentially; source text never needs
-;;; to coexist in RAM beyond the current NUL-terminated line.
+;;; to coexist in RAM beyond the current NUL-terminated line. A label may be
+;;; followed by another statement on that same line, so exhaust the line before
+;;; asking the KERNAL reader for another one.
 assembleFile:
 	lda #$01
 	sta sourceFileMode
@@ -60,12 +69,13 @@ assembleFile:
 	jmp .done
 .line:
 	jsr prepareSourceLine
+.statement:
 	jsr nextStatement
 	cmp #STATEMENT_EOF
-	beq .read			; blank/comment-only line
+	beq .read
 	jsr processStatement
 	cmp #ASSEMBLE_OK
-	beq .read
+	beq .statement
 	pha
 	jsr closeSourceTree
 	pla
@@ -89,21 +99,15 @@ beginAssembly:
 	rts
 
 ;;; finishAssembly
-;;; No source is touched beyond this point. Validate definitions, shorten direct
-;;; operands until layout is stable, resolve every hole in staging, then and only
-;;; then copy to target memory.
+;;; All widths and defined-symbol references are already final. Do not touch the
+;;; target region until every forward name and exceptional fixup has disappeared.
 finishAssembly:
 	jsr sealRepresentation
 	jsr allLabelsDefined
 	bcc .undefined
-	jsr relaxLayout
-	cmp #ASSEMBLE_OK
-	bne .done
-	jsr resolveAllHoles
-	cmp #ASSEMBLE_OK
-	bne .done
+	jsr allFixupsResolved
+	bcc .undefined
 	jsr copyRepresentation
-.done:
 	rts
 .undefined:
 	lda #ASSEMBLE_UNDEFINED
@@ -130,7 +134,20 @@ processStatement:
 	bcc .codeOrData
 	lda sourceFileMode
 	beq .badInclude
+
+	;; Include path construction borrows ZP_PTR1. Preserve the parser cursor so
+	;; the caller can continue the current line after includeSource returns.
+	lda ZP_PTR1
+	pha
+	lda ZP_PTR1+1
+	pha
 	jsr includeSource
+	tax
+	pla
+	sta ZP_PTR1+1
+	pla
+	sta ZP_PTR1
+	txa
 	rts
 .badInclude:
 	lda #ASSEMBLE_BAD_STATEMENT
@@ -191,8 +208,8 @@ isIncludeStatement:
 	rts
 
 ;;; assembleLabel
-;;; The symbol stores its conservative target address. Layout passes derive the
-;;; current/final value by subtracting earlier one-byte shortenings.
+;;; A label's address is final when it appears. Define it, immediately patch the
+;;; plain word-reference chain, then resolve any exceptional fixups for it.
 assembleLabel:
 	jsr enterLabelScope
 	bcc .scopeError
@@ -203,14 +220,20 @@ assembleLabel:
 	lda statementNameLength
 	sta symbolNameLength
 	jsr defineLabel
+	cmp #SYMBOL_OK
+	beq .defined
 	jmp mapSymbolStatus
+.defined:
+	jsr resolveWordReferencesForSymbol
+	jsr resolveSymbolFixups
+	rts
 .scopeError:
 	lda #ASSEMBLE_SCOPE_ERROR
 	rts
 
 ;;; assembleSymbol
 ;;; `* = value` fixes the one target origin before code/data. Other definitions
-;;; are fixed constants and must resolve immediately; they never affect layout.
+;;; are fixed constants and must resolve immediately.
 assembleSymbol:
 	lda statementNameLength
 	cmp #$01
@@ -273,10 +296,9 @@ assembleSymbol:
 	rts
 
 ;;; assembleInstruction
-;;; Parse the instruction once. The same value parser used by constants and data
-;;; returns either a fixed value or the compact label recipe a hole needs.
-;;; Relative instructions are holes even with numeric targets because their own
-;;; final PC can move during shortening.
+;;; Parse once. Numeric values and already-defined labels are emitted immediately.
+;;; Undefined labels either use the two-byte operand-chain trick or one small
+;;; exceptional fixup when the encoded field is only one byte / has an addend.
 assembleInstruction:
 	jsr parseInstruction
 	cmp #INSTRUCTION_OK
@@ -291,10 +313,8 @@ assembleInstruction:
 	beq .knownRelative
 	jsr stageResolvedInstruction
 	rts
-
 .knownRelative:
-	jsr setFixedInstructionValue
-	jsr stageRelativeHole
+	jsr stageResolvedRelative
 	rts
 
 .symbolic:
@@ -337,21 +357,20 @@ assembleInstruction:
 	jsr stageResolvedInstruction
 	rts
 .fixedRelative:
-	jsr setFixedInstructionValue
-	jsr stageRelativeHole
+	jsr stageResolvedRelative
 	rts
 
 .deferred:
 	lda instructionMode
 	cmp #MODE_DEFERRED
 	bne .notDirect
-	jmp stageDirectHole
+	jmp stageDeferredDirect
 .notDirect:
 	cmp #MODE_RELATIVE
-	bne .fixedWidthHole
-	jmp stageRelativeHole
-.fixedWidthHole:
-	jsr stageValueHoleInstruction
+	bne .fixedWidth
+	jmp stageRelativeFixup
+.fixedWidth:
+	jsr stageSymbolicInstruction
 	rts
 .bad:
 	lda #ASSEMBLE_BAD_INSTRUCTION
@@ -363,20 +382,99 @@ assembleInstruction:
 	lda #ASSEMBLE_SCOPE_ERROR
 	rts
 
-;;; setFixedInstructionValue
-;;; Put a fixed numeric target into the same small fields used by hole records.
-setFixedInstructionValue:
+;;; isPlainLabelValue
+;;; Carry set only for the common exact 16-bit value `label`. Expressions and
+;;; byte-selection prefixes need their own small fixup.
+isPlainLabelValue:
+	lda capturedHasSymbol
+	beq .no
+	lda capturedPrefix
+	bne .no
+	lda capturedAddend
+	ora capturedAddend+1
+	bne .no
+	sec
+	rts
+.no:
+	clc
+	rts
+
+;;; stagePlainWordReference
+;;; Stage two bytes for an unresolved exact label address and link them through
+;;; that label's symbol entry. The bytes are patched as soon as the label appears.
+;;; Carry set on success, clear if staging is full.
+stagePlainWordReference:
+	lda stagingPtr
+	sta referencePtr
+	lda stagingPtr+1
+	sta referencePtr+1
 	lda #$00
-	sta capturedHasSymbol
-	sta capturedSymbol
-	sta capturedSymbol+1
-	sta capturedCanShorten
-	lda instructionOperandValue
-	sta capturedAddend
-	lda instructionOperandValue+1
-	sta capturedAddend+1
-	lda #VALUE_PREFIX_NONE
-	sta capturedPrefix
+	jsr stageByte
+	bcc .full
+	lda #$00
+	jsr stageByte
+	bcc .full
+	lda capturedSymbol
+	sta symbolEntry
+	lda capturedSymbol+1
+	sta symbolEntry+1
+	jsr linkWordReference
+	sec
+	rts
+.full:
+	clc
+	rts
+
+;;; selectShortDirect / selectLongDirect
+;;; Resolve the addressing-mode choice for an unresolved direct value. Explicit
+;;; byte values (<label or >label) use the short mode; ordinary labels use long.
+selectShortDirect:
+	ldx instructionIndex
+	lda directShortModes,x
+	sta instructionMode
+	tax
+	lda instructionMnemonic
+	jsr findOpcode
+	bcc .bad
+	sta instructionOpcode
+	lda #INSTRUCTION_OK
+	rts
+.bad:
+	lda #INSTRUCTION_BAD_MODE
+	rts
+
+selectLongDirect:
+	ldx instructionIndex
+	lda directLongModes,x
+	sta instructionMode
+	tax
+	lda instructionMnemonic
+	jsr findOpcode
+	bcc .bad
+	sta instructionOpcode
+	lda #INSTRUCTION_OK
+	rts
+.bad:
+	lda #INSTRUCTION_BAD_MODE
+	rts
+
+;;; stageDeferredDirect
+;;; There is no zp/absolute relaxation. A forward label is an address and uses
+;;; the long form. Only an explicit < or > byte selector chooses the short form.
+stageDeferredDirect:
+	lda capturedPrefix
+	beq .long
+	jsr selectShortDirect
+	cmp #INSTRUCTION_OK
+	bne .bad
+	jmp stageSymbolicInstruction
+.long:
+	jsr selectLongDirect
+	cmp #INSTRUCTION_OK
+	bne .bad
+	jmp stageSymbolicInstruction
+.bad:
+	lda #ASSEMBLE_BAD_INSTRUCTION
 	rts
 
 ;;; stageResolvedInstruction
@@ -384,7 +482,7 @@ setFixedInstructionValue:
 stageResolvedInstruction:
 	lda instructionMode
 	cmp #MODE_RELATIVE
-	beq .bad			; callers deliberately route relative through a hole
+	beq .bad
 	tay
 	lda modeOperandWidths,y
 	sta instructionWidth
@@ -417,20 +515,63 @@ stageResolvedInstruction:
 	lda #ASSEMBLE_WORK_FULL
 	rts
 
-;;; stageValueHoleInstruction
-;;; Fixed-width symbolic instruction: opcode is final, only operand byte(s) wait.
-stageValueHoleInstruction:
+;;; stageResolvedRelative
+;;; The target and current PC are both final, so a backward/fixed branch can be
+;;; range-checked and encoded immediately.
+stageResolvedRelative:
+	clc
 	lda assemblyPtr
-	sta holeAddress
+	adc #$02
+	sta relativeBase
 	lda assemblyPtr+1
-	sta holeAddress+1
+	adc #$00
+	sta relativeBase+1
+	sec
+	lda instructionOperandValue
+	sbc relativeBase
+	tax
+	lda instructionOperandValue+1
+	sbc relativeBase+1
+	cpx #$80
+	bcc .positive
+	cmp #$ff
+	bne .range
+	txa
+	sta relativeByte
+	jmp .stage
+.positive:
+	cmp #$00
+	bne .range
+	txa
+	sta relativeByte
+.stage:
+	lda instructionOpcode
+	jsr stageByte
+	bcc .full
+	lda relativeByte
+	jsr stageByte
+	bcc .full
+	lda #ASSEMBLE_OK
+	rts
+.range:
+	lda #ASSEMBLE_EMIT_ERROR
+	rts
+.full:
+	lda #ASSEMBLE_WORK_FULL
+	rts
+
+;;; stageSymbolicInstruction
+;;; Fixed-width unresolved instruction. A plain word-sized `label` uses its own
+;;; two operand bytes as the forward-reference chain. Everything else gets one
+;;; small exceptional fixup.
+stageSymbolicInstruction:
 	lda instructionOpcode
 	jsr stageByte
 	bcc .full
 	lda stagingPtr
-	sta holeStage
+	sta fixupStage
 	lda stagingPtr+1
-	sta holeStage+1
+	sta fixupStage+1
 	ldy instructionMode
 	lda modeOperandWidths,y
 	cmp #$01
@@ -439,27 +580,32 @@ stageValueHoleInstruction:
 	beq .word
 	jmp .bad
 .byte:
-	lda #HOLE_VALUE_BYTE
-	sta holeKind
+	lda #FIXUP_INSTRUCTION_BYTE
+	sta fixupKind
 	lda #$00
-	sta holeExtra
 	jsr stageByte
 	bcc .full
-	jsr appendHole
+	jsr appendFixup
 	bcc .full
 	lda #ASSEMBLE_OK
 	rts
 .word:
-	lda #HOLE_VALUE_WORD
-	sta holeKind
+	jsr isPlainLabelValue
+	bcc .wordExpression
+	jsr stagePlainWordReference
+	bcc .full
+	lda #ASSEMBLE_OK
+	rts
+.wordExpression:
+	lda #FIXUP_WORD
+	sta fixupKind
 	lda #$00
-	sta holeExtra
 	jsr stageByte
 	bcc .full
 	lda #$00
 	jsr stageByte
 	bcc .full
-	jsr appendHole
+	jsr appendFixup
 	bcc .full
 	lda #ASSEMBLE_OK
 	rts
@@ -470,80 +616,25 @@ stageValueHoleInstruction:
 	lda #ASSEMBLE_WORK_FULL
 	rts
 
-;;; stageRelativeHole
-;;; Relative width is fixed but its encoded byte uses the final shortened PC.
-stageRelativeHole:
-	lda assemblyPtr
-	sta holeAddress
-	lda assemblyPtr+1
-	sta holeAddress+1
+;;; stageRelativeFixup
+;;; A forward branch has fixed width but only one operand byte, so it cannot use
+;;; the two-byte chain trick. Keep one small fixup until its label appears.
+stageRelativeFixup:
 	lda instructionOpcode
 	jsr stageByte
 	bcc .full
 	lda stagingPtr
-	sta holeStage
+	sta fixupStage
 	lda stagingPtr+1
-	sta holeStage+1
-	lda #HOLE_RELATIVE
-	sta holeKind
+	sta fixupStage+1
+	lda #FIXUP_RELATIVE
+	sta fixupKind
 	lda #$00
-	sta holeExtra
 	jsr stageByte
 	bcc .full
-	jsr appendHole
+	jsr appendFixup
 	bcc .full
 	lda #ASSEMBLE_OK
-	rts
-.full:
-	lda #ASSEMBLE_WORK_FULL
-	rts
-
-;;; stageDirectHole
-;;; The only layout-changing record. Stage the legal long form and remember the
-;;; corresponding short opcode; later passes may mark this record one byte short.
-stageDirectHole:
-	lda assemblyPtr
-	sta holeAddress
-	lda assemblyPtr+1
-	sta holeAddress+1
-	lda stagingPtr
-	sta holeStage
-	lda stagingPtr+1
-	sta holeStage+1
-
-	ldx instructionIndex
-	lda directShortModes,x
-	tax
-	lda instructionMnemonic
-	jsr findOpcode
-	bcc .bad
-	sta holeExtra
-
-	ldx instructionIndex
-	lda directLongModes,x
-	tax
-	lda instructionMnemonic
-	jsr findOpcode
-	bcc .bad
-	sta longOpcode
-	lda #HOLE_DIRECT
-	sta holeKind
-
-	lda longOpcode
-	jsr stageByte
-	bcc .full
-	lda #$00
-	jsr stageByte
-	bcc .full
-	lda #$00
-	jsr stageByte
-	bcc .full
-	jsr appendHole
-	bcc .full
-	lda #ASSEMBLE_OK
-	rts
-.bad:
-	lda #ASSEMBLE_BAD_INSTRUCTION
 	rts
 .full:
 	lda #ASSEMBLE_WORK_FULL
@@ -598,8 +689,7 @@ sourceFileMode:	byte 0
 originAllowed:	byte 0
 assemblyStart:	word 0
 instructionWidth:	byte 0
-longOpcode:	byte 0
+relativeByte:	byte 0
 
-	include "representation.asm"
 	include "source.asm"
 	include "data.asm"
