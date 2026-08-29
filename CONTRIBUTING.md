@@ -100,7 +100,18 @@ Tests should remain C64-native.
 
 The code under test and its assertions run as 6502 programs under VICE. The host side may assemble programs, start VICE, and inspect the agreed test-result byte, but it should not duplicate the test logic in Python or another host language.
 
-Use distinct failure codes where practical so a failing CI run identifies the assertion that failed.
+Each test writes `TEST_RESULT` once when it is finished: `TEST_PASS` means success and any other value is a named, test-specific `FAIL_*` code. The host runner should remain deliberately dumb and observe only that byte.
+
+Small tests should stay linear when that is clearest. For a larger test, named subtests may use the simple convention already used by the emitter and assembler tests:
+
+```text
+carry set   = subtest passed
+carry clear = subtest failed, A contains FAIL_* code
+```
+
+The caller stops at the first failure and writes the returned code to `TEST_RESULT`. This is a calling convention, not a test framework. Assertions should remain explicit `lda` / `cmp` / branch code; do not add assertion macros, generated cases, or a shared assertion runtime merely for uniformity.
+
+Use distinct failure codes where practical so a failing CI run identifies the assertion that failed. Reserving small ranges for related checks is fine when it makes a larger test easier to read, but the ranges have no machinery attached to them.
 
 Native test programs start at `$c000`. Keep each one below `$d000`, where the C64 I/O window begins. If a test grows toward that boundary, split it by behaviour rather than relocating it or hiding code or data under I/O.
 
