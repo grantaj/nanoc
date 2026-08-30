@@ -103,8 +103,18 @@ char opcode_mode[256] = {
     12, 11, 13, 13, 13, 4, 4, 13, 0, 8, 13, 13, 13, 7, 7, 13
 };
 
-/* Fixed workspaces.  These are intentionally bounded, not dynamically grown. */
-char ass_image[16384];
+/*
+ * Fixed Phase 1 workspace splits.  With 16-bit Nano C ints these consume the
+ * same budgets as the native assembler:
+ *
+ *   staging: 11264 bytes + 640 eight-byte fixups = 16384 bytes
+ *   symbols: 672 seven-byte records + 7584 name bytes = 12288 bytes
+ *
+ * The native assembler lets bytes/fixups and records/names share their regions
+ * dynamically.  Fixed splits keep the C representation simple without giving
+ * the host implementation extra target memory.
+ */
+char ass_image[11264];
 int ass_image_length;
 int ass_origin;
 
@@ -116,22 +126,21 @@ int source_depth;
 char *source_directory;
 int source_directory_length;
 
-int symbol_name_offset[512];
-char symbol_name_length[512];
-int symbol_payload[512];
-char symbol_scope[512];
-char symbol_kind[512];
-/* 512 seven-byte records plus 8 KiB of names fit inside ass's 12 KiB symbol workspace. */
-char symbol_name_bytes[8192];
+int symbol_name_offset[672];
+char symbol_name_length[672];
+int symbol_payload[672];
+char symbol_scope[672];
+char symbol_kind[672];
+char symbol_name_bytes[7584];
 int symbol_count;
 int symbol_name_used;
 int current_scope;
 
-char fixup_kind[512];
-int fixup_stage[512];
-int fixup_symbol[512];
-int fixup_addend[512];
-char fixup_prefix[512];
+char fixup_kind[640];
+int fixup_stage[640];
+int fixup_symbol[640];
+int fixup_addend[640];
+char fixup_prefix[640];
 int fixup_count;
 
 /* Symbol kinds. */
@@ -234,7 +243,7 @@ int append_fixup(int kind, int stage, int symbol, int addend, int prefix)
     int n;
 
     n = fixup_count;
-    if (n >= 512) {
+    if (n >= 640) {
         return ASSEMBLE_WORK_FULL;
     }
 
@@ -371,10 +380,10 @@ int allocate_symbol(char *name, int length, int kind, int payload)
     if (scope < 0) {
         return -2;
     }
-    if (symbol_count >= 512) {
+    if (symbol_count >= 672) {
         return -3;
     }
-    if (symbol_name_used + length > 8192) {
+    if (symbol_name_used + length > 7584) {
         return -3;
     }
 
@@ -759,7 +768,7 @@ int find_opcode(int mnemonic, int mode)
 
 int stage_byte(int value)
 {
-    if (ass_image_length >= 16384) {
+    if (ass_image_length >= 11264) {
         return ASSEMBLE_WORK_FULL;
     }
     ass_image[ass_image_length] = value & 255;
