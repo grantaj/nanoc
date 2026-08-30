@@ -12,9 +12,21 @@
 ;;; formatter may be walking text through them. #57 only needs to add the normal
 ;;; create/open/close wrapper around this already-streaming byte path.
 ;;;
-;;; This file deliberately formats only the few things the compiler repeatedly
-;;; needs: fixed fragments, hexadecimal values, source names and generated
-;;; storage/label names. It is not printf.
+;;; Generated storage names are deliberately derived only from persistent facts:
+;;;
+;;;   global/function       __c_<source-name>
+;;;   parameter/local       __c_<function-name>__vNN
+;;;   expression spill      __c_<function-name>__sNN
+;;;   deferred string       __nc_stringNN
+;;;   compiler label        __nc_LNNNN
+;;;
+;;; In particular, parameter slot names use the parameter ordinal/current-table
+;;; index rather than the source parameter name. The current table is discarded
+;;; after a function, so #57 can later reconstruct a callee parameter slot from
+;;; exactly the metadata #54 retained: function identity plus argument ordinal.
+;;;
+;;; This file formats only the few things the compiler repeatedly needs. It is
+;;; not printf and it is not an output representation.
 
 EMIT_PTR = $fc
 
@@ -154,36 +166,25 @@ emit_pool_name:
 .failed:
 	rts
 
-;;; Persistent globals/functions retain their source spelling directly.
-emit_persistent_name:
+;;; X=persistent symbol index. Emit only its source spelling, with no generated
+;;; namespace prefix. Current/spill names use this as their function component.
+emit_persistent_source_name:
 	lda persistentNameOffsetLo,x
 	sta nameCompareOffset
 	lda persistentNameOffsetHi,x
 	sta nameCompareOffset+1
 	jmp emit_pool_name
 
-;;; Current-function storage is qualified by the owning function identity so
-;;; shadowing never creates an assembler-name collision:
-;;;     __f12_local
-emit_current_name:
+;;; X=persistent symbol index -> __c_<source-name>.
+emit_persistent_name:
 	stx emitSavedIndex
-	lda #emitFunctionPrefixEnd-emitFunctionPrefix
-	ldx #<emitFunctionPrefix
-	ldy #>emitFunctionPrefix
+	lda #emitCPrefixEnd-emitCPrefix
+	ldx #<emitCPrefix
+	ldy #>emitCPrefix
 	jsr emit_text
 	bcc .failed
-	lda currentFunctionIndex
-	jsr emit_hex_byte
-	bcc .failed
-	lda #'_'
-	jsr emit_output_byte
-	bcc .failed
 	ldx emitSavedIndex
-	lda currentNameOffsetLo,x
-	sta nameCompareOffset
-	lda currentNameOffsetHi,x
-	sta nameCompareOffset+1
-	jsr emit_pool_name
+	jsr emit_persistent_source_name
 	ldx emitSavedIndex
 	rts
 .failed:
@@ -191,41 +192,64 @@ emit_current_name:
 	clc
 	rts
 
-;;; Compiler spill names are deterministic from function + spill depth:
-;;;     __f12_spill03
-;;; A=spill depth.
-emit_spill_name:
-	sta emitSavedIndex
-	lda #emitFunctionPrefixEnd-emitFunctionPrefix
-	ldx #<emitFunctionPrefix
-	ldy #>emitFunctionPrefix
+;;; X=current-function symbol index -> __c_<function-name>__vNN.
+;;; Parameters occupy current indices 0..parameter-count-1, so this spelling is
+;;; reconstructable by later callers without retaining parameter source names.
+emit_current_name:
+	stx emitSavedIndex
+	lda #emitCPrefixEnd-emitCPrefix
+	ldx #<emitCPrefix
+	ldy #>emitCPrefix
 	jsr emit_text
 	bcc .failed
-	lda currentFunctionIndex
+	ldx currentFunctionIndex
+	jsr emit_persistent_source_name
+	bcc .failed
+	lda #emitValueSuffixEnd-emitValueSuffix
+	ldx #<emitValueSuffix
+	ldy #>emitValueSuffix
+	jsr emit_text
+	bcc .failed
+	lda emitSavedIndex
 	jsr emit_hex_byte
+	ldx emitSavedIndex
+	rts
+.failed:
+	ldx emitSavedIndex
+	clc
+	rts
+
+;;; A=spill depth -> __c_<function-name>__sNN.
+emit_spill_name:
+	sta emitSavedValue
+	lda #emitCPrefixEnd-emitCPrefix
+	ldx #<emitCPrefix
+	ldy #>emitCPrefix
+	jsr emit_text
+	bcc .failed
+	ldx currentFunctionIndex
+	jsr emit_persistent_source_name
 	bcc .failed
 	lda #emitSpillSuffixEnd-emitSpillSuffix
 	ldx #<emitSpillSuffix
 	ldy #>emitSpillSuffix
 	jsr emit_text
 	bcc .failed
-	lda emitSavedIndex
+	lda emitSavedValue
 	jmp emit_hex_byte
 .failed:
 	clc
 	rts
 
-;;; Deferred strings have one simple generated namespace:
-;;;     __nc_string03
-;;; A=literal index.
+;;; A=literal index -> __nc_stringNN.
 emit_literal_name:
-	sta emitSavedIndex
+	sta emitSavedValue
 	lda #emitStringPrefixEnd-emitStringPrefix
 	ldx #<emitStringPrefix
 	ldy #>emitStringPrefix
 	jsr emit_text
 	bcc .failed
-	lda emitSavedIndex
+	lda emitSavedValue
 	jmp emit_hex_byte
 .failed:
 	clc
@@ -267,9 +291,11 @@ reset_generated_labels:
 	sta generatedLabelCounter+1
 	rts
 
-emitFunctionPrefix:	byte '_','_','f'
-emitFunctionPrefixEnd:
-emitSpillSuffix:	byte '_','s','p','i','l','l'
+emitCPrefix:		byte '_','_','c','_'
+emitCPrefixEnd:
+emitValueSuffix:	byte '_','_','v'
+emitValueSuffixEnd:
+emitSpillSuffix:	byte '_','_','s'
 emitSpillSuffixEnd:
 emitStringPrefix:	byte '_','_','n','c','_','s','t','r','i','n','g'
 emitStringPrefixEnd:
@@ -285,6 +311,7 @@ emitOutputStatus:	byte 0
 emitTextLength:		byte 0
 emitNumber:		byte 0
 emitSavedIndex:		byte 0
+emitSavedValue:		byte 0
 emitWord:		word 0
 generatedLabelCounter:	word 0
 emitLabelValue:		word 0
