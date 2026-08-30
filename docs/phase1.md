@@ -330,6 +330,8 @@ char *
 
 Local variables may have the same types except that no local array form is supported.
 
+Parameters and locals share one function-level name space. Duplicate parameter/local names within a function are errors. A parameter or local may shadow a global; lookup therefore prefers the current function's parameters/locals over globals. There are no nested block-local scopes.
+
 All local declarations appear immediately after the opening brace of the function body, before the first executable statement. There are no block-local declarations and no declarations after ordinary statements have begun.
 
 A local may optionally have an initializer expression:
