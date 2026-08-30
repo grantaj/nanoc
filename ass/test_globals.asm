@@ -44,8 +44,9 @@ setupWorkspace:
 	sta stagingLimit+1
 	rts
 
-;;; A forward global reference becomes a fixed-width word hole. JSR has only an
-;;; absolute form, so layout never depends on the eventual value.
+;;; A forward JSR has a fixed two-byte operand. Its staged operand bytes can
+;;; therefore carry the ordinary unresolved-label reference chain until the
+;;; target label is defined.
 testForwardGlobal:
 	lda #<forwardSource
 	sta ZP_PTR1
@@ -81,8 +82,8 @@ testForwardGlobal:
 	clc
 	rts
 
-;;; Backward label-dependent values are also retained as holes because an
-;;; earlier relaxation could still move the label after its line was consumed.
+;;; Once a label has been seen its address is final, so a backward reference is
+;;; resolved immediately and staged with no forward-reference state.
 testBackwardGlobal:
 	lda #<backwardSource
 	sta ZP_PTR1

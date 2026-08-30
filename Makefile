@@ -48,9 +48,12 @@ EXAMPLE_TARGETS = \
 	$(BUILD_DIR)/border-demo.prg \
 	$(BUILD_DIR)/border-c.prg
 
-.PHONY: all dis ass examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost clean
+.PHONY: all setup dis ass examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost clean
 
 all: dis ass examples
+
+setup:
+	sh scripts/setup-dev.sh
 
 dis: $(DIS_TARGETS)
 

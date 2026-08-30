@@ -14,25 +14,8 @@ jobs:
       - name: Check out nanoc
         uses: actions/checkout@v7.0.1
 
-      - name: Install build and emulator dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cc65 vice subversion
-
-      - name: Install VICE 3.7.1 ROM data
-        run: |
-          svn export \
-            https://svn.code.sf.net/p/vice-emu/code/tags/v3.7.1/vice/data \
-            /tmp/vice-data
-          sudo cp -a /tmp/vice-data/. /usr/share/vice/
-
-      - name: Build vasm 6502 oldstyle
-        run: |
-          git clone https://github.com/StarWolf3000/vasm-mirror.git /tmp/vasm
-          cd /tmp/vasm
-          git checkout a13e7e728a3dd5a9ba468bf479119e0bc23e70fd
-          make CPU=6502 SYNTAX=oldstyle
-          sudo install -m 0755 vasm6502_oldstyle /usr/local/bin/vasm6502_oldstyle
+      - name: Set up development environment
+        run: make setup
 
       - name: Build all targets
         run: make

@@ -1,210 +1,155 @@
 # nanoc
-Learning to write a compiler by writing one for the c64
 
-## Build
+nanoc is a C compiler for the 6502/6510, built as a learning project from the machine upward on the Commodore 64.
 
-The repository has a single root-level build interface:
+The goal is not merely to produce working code. The implementation should be unusually easy to understand for someone who knows C and 6502 assembly but has never written a compiler: direct state changes, fixed memory where that is clearer, few data structures, and no textbook compiler machinery unless the machine actually earns it.
 
+## Current status
+
+The project started with a small native disassembler and then built the assembler needed for the compiler.
+
+The assembler is now a genuine native, self-hosting milestone:
+
+```text
+vasm-built assembler A
+        |
+        | assembles the real nanoc assembler source tree
+        v
+nanoc-built assembler B
+        |
+        | B itself executes
+        | B assembles known source
+        v
+verified 6502 machine code
 ```
-make        # build the disassembler, assembler work-in-progress, and examples
-make test   # assemble and execute the C64-native tests under VICE
-make clean
+
+This is behavioral self-hosting, not a byte-for-byte comparison with vasm.
+
+The assembler reads source one line at a time, keeps lexemes as transient source views, stages final-size machine bytes, patches forward references as labels appear, validates unresolved state at EOF, and only then commits the finished image to its target address.
+
+The C compiler proper is the next stage.
+
+## Quick start
+
+The continuously tested development environment is Ubuntu 24.04. On a completely fresh install, bootstrap Git and Make, then let the repository set up everything else:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y git make
+
+git clone https://github.com/grantaj/nanoc.git
+cd nanoc
+make setup
+make
+make test
 ```
+
+`make setup` installs the same host tools, VICE data, and pinned vasm build used by GitHub Actions. It may ask for your `sudo` password. The initial Git/Make install is the only setup that must happen before the repository can invoke its own setup target.
 
 Build products are written to `build/`.
 
-GitHub Actions runs the same `make` and `make test` commands on pull requests and on pushes to `main`.
+For a guided tour, including other-host prerequisites and a source-reading order, start with **[Getting started](docs/getting-started.md)**.
 
-## C64-native testing
+## The project in one picture
 
-The testing philosophy for nanoc is deliberately C64-native. The code under test and the assertions about its behaviour run as ordinary 6502 programs, not in a host-language test framework.
-
-Tests include `test.inc`, which reserves `$02` as `TEST_RESULT`. A test writes this byte exactly once, when it is complete:
-
-- `$ff` (`TEST_PASS`) means success.
-- Any other value is a test-specific failure code identifying the assertion that failed.
-
-The VICE monitor watches `$02` for a store. When the 6502 program writes its result, the thin shell runner reads that byte and reports it to `make`. The host side does not reproduce the assertions or decide whether pointer arithmetic, register behaviour, parsing, or any other C64 behaviour is correct; that logic remains in the 6502 test program.
-
-In other words: **the C64 tests itself; CI only turns the machine on and looks at the result.**
-
-The assembler tests cover whitespace scanning, zero-copy lexeme scanning, statement recognition, EOL/EOF handling, and page-boundary pointer advancement. No Python test framework is used.
-
-## Vice
-```
-	apt install vice
-
-	apt install subversion
-	git clone https://github.com/lharsfalvi/vice-roms-deb.git
-	cd vice-roms
-	./makedeb.sh
-	dpkg -i ivce-roms*.deb
-
-	x64
-```
-## Toolchain
-### cc65
-`apt install cc65`
-
-### vasm
-Not really required, since `cc65` has an assembler (`ca65`) but I wanted to compare...
-```
-	git clone https://github.com/StarWolf3000/vasm-mirror.git
-	cd vasm-mirror
-	make CPU=6502 SYNTAX=oldstyle
-	cp vasm6502_oldstyle /usr/local/bin/.
-```	
-
-CI pins the vasm mirror to a known commit so that builds do not silently change as upstream changes.
-
-### 64tass
-```
-	apt-get install 64tass
-```
-	
-## Demo
-Demo in `examples/border`
-Compile from C:
-```
-	make main.prg
-	make run
-```
-There is also handwritten `demo.asm` . Assembles using `vasm6502_oldstyle`
-```
-	make demo.prg
-	make run_asm
-```
-Then inside c64: `sys 49152`
-
-Produce `main.s` assembly from C for comparison with `demo.asm`:
-```
-	make main.s
+```text
+                     shared 6502 metadata
+                  mnemonic / opcode / mode
+                         /           \
+                        v             v
+                 disassembler     assembler
+                                      |
+                        source line -> parse views
+                                      |
+                                      v
+                              final-size staged bytes
+                                      |
+                         forward refs patched in place
+                                      |
+                                      v
+                               validated 6502 image
+                                      |
+                                      v
+                                  C compiler
+                                   (next)
 ```
 
-## Step 1: Write a Disassembler
+The assembler and disassembler share one 256-entry opcode table, mnemonic table, addressing-mode IDs, and operand-width table. The disassembler indexes opcode -> mnemonic/mode directly; the assembler deliberately scans the same table in the reverse direction rather than maintaining another index.
 
-Complete! See `dis/dis.asm`
+## Why the assembler looks unusual
 
-Build with 
-```
-	cd dis
-	vasm6502_oldstyle -Fbin -cbm-prg -o dis.prg dis.asm
-```
-### Opcode Table
-- There is a many to one mapping between opcodes and mnemonics
-- This is due to multiple addressing modes
-- Opcode table has 0xff entries
-- Each entry consists of
+The implementation follows a few strong rules:
 
-  byte mnemonic_index
-  byte mode_index
+- keep source text in place instead of copying tokens;
+- retain only information that must survive the current source line;
+- decide final instruction width when the statement is parsed;
+- let ordinary unresolved 16-bit label references use their own operand bytes as a linked list;
+- use small explicit fixup records only for the exceptional cases that cannot use those two bytes;
+- prefer linear scans and bounded fixed storage when they substantially simplify the code;
+- do not add an AST, generic assembler IR, relocation framework, object format, heap, linker, or layout-relaxation engine merely because conventional assemblers often have them.
 
-  By having 0xff entries, we can do a direct lookup based on the opcode without having to search. Table size will be 512 bytes (0x200)
+The result is intended to be explainable almost literally as the 6502 executes it:
 
-  `mnemonic_index` is an index into the _mnemonic table_
-  `mode_index` is an index into _address mode table_
-  
-  invalid opcodes will map to a sentinel entry
+> Read a line. Turn almost all of it into bytes. Remember only what is not yet knowable. When a label appears, patch what was waiting for it. At EOF, make sure nothing is missing and copy the finished image.
 
-### Mnemonic Table
-- This is an array of strings, indexed by the `mnemonic_index`
-- Each string is 3 bytes
-- Mnemonic outputter writes exactly three bytes from this table
-- There are 56 mnemonics - table is 168 bytes
-```
-ADC AND ASL BCC BCS BEQ BIT BMI BNE BPL BRK BVC BVS
-CLC CLD CLI CLV CMP CPX CPY DEC DEX DEY EOR INC INX INY
-JMP JSR LDA LDX LDY LSR NOP ORA PHA PHP PLA PLP ROL
-ROR RTI RTS SBC SEC SED SEI STA STX STY TAX TAY TSX
-TXA TXS TYA
+See **[Assembler design](docs/assembler.md)** for the complete machine-level story, including the operand-byte forward-reference chain, memory map, symbol representation, include handling, and self-host proof.
+
+For the technical contrast with period-native tools, **[How native C64 assemblers actually assemble](docs/assembler-comparison.md)** compares nanoc with Supermon64, Commodore MADS, and Turbo Assembler/TMP: source representation, passes, forward-reference handling, zero-page decisions, output strategy, and supported language features.
+
+## C64-native tests
+
+The tests are not host-language models of the 6502 implementation. Each test is itself a C64 program running under VICE.
+
+A native test checks its own behavior and writes one result byte to `$02` when complete:
+
+```text
+$ff        pass
+other      test-specific failure code
 ```
 
-### Address Mode Table
-- Each entry consists of
-  ```
-  word formatter
-  ```
-- `formatter` is the address of the output function for this mode
-- disassembler pushes the next width bytes onto stack and `jsr formatter` (actually it does jmp (vector) where vector points to formatter, with return address manually loaded onto the stack)
-- Formatter routines output the formatted operand and return the width of the operand in the accumulator (to facilitate incrementing the pointer)
+The host runner only boots the PRG, watches for that store, reads the byte, and reports it to Make/CI.
 
-### Outline
-
-1. Set `pointer` to start of disassembly region
-2. Read `opcode`
-3. Retrieve `mnemonic_index` and `mode_index` (indexing into opcode table)
-4. Output mnemonic (from mnemonic index)
-5. Call formatter
-6. Increment pointer
-7. Check if pointer is at end of region (stop)
-8. Jump to read `opcode`
-
-## Step 2: Write an Assembler
-Advantages of starting with an assembler:
-- Can work line by line (except for symbols and labels)
-- Simple syntax
-- Direct translation from mnemonic & addressing mode to opcode & operand
-
-### Assembler front end
-
-The assembler walks the source buffer directly. It does not copy lexeme strings or build a persistent token stream between scanning and parsing.
-
-The source buffer has an explicit `[start, end)` contract. `ZP_PTR1` is the current source pointer and `sourceEnd` is the address one byte past the buffer. Lines inside the buffer are NUL terminated:
-
-- NUL means end of line only.
-- EOF means `ZP_PTR1 == sourceEnd`.
-- Blank and consecutive blank lines are therefore unambiguous.
-
-`scanLexeme` is a small lexical helper. It leaves the text in place, returns `ZP_PTR0` pointing at the lexeme and X containing its length, and advances `ZP_PTR1` to the delimiter.
-
-`nextStatement` consumes source a line at a time and returns one of:
-
-```
-STATEMENT_LABEL
-STATEMENT_SYMBOL
-STATEMENT_INSTRUCTION
-STATEMENT_EOF
+```text
+6502 test + assertions -> VICE -> $02 -> thin shell -> make
 ```
 
-The current statement is represented only by transient views into the source:
+The suite includes parser, symbols, data, exact branch-boundary, streamed-file/include, and behavioral self-host tests.
 
-```
-statementName + statementNameLength
-statementArgument + statementArgumentLength
-```
+See **[Native testing and CI](docs/testing.md)** for the protocol, test-writing convention, VICE runner, CI setup, and debugging workflow.
 
-These views are overwritten by the next call. Mnemonics, pseudo-operation names, operands and punctuation therefore do not require allocated strings or persistent token objects. Later assembler state should retain a source reference only when textual identity genuinely has to survive, principally for symbols.
+## Documentation
 
-Supported statement forms are deliberately small. Pseudo-operations are bare names and travel through the same instruction-like parser path as mnemonics; the assembler decides what each name means:
+There are deliberately only a few main documents:
 
-```
-; comment
-label:
-symbol = value
-include "file.asm"
-byte 0, 1, 2
-word value
-string "text"
-LDA #$00
-RTS
-```
+- **[Getting started](docs/getting-started.md)** — copy/paste setup, first build and test, assembler syntax, guided code tour, and reading order.
+- **[Assembler design](docs/assembler.md)** — structure, representation choices, fixed C64 memory contract, and the reasons behind them.
+- **[Native assembler comparison](docs/assembler-comparison.md)** — how Supermon64, Commodore MADS, Turbo/TMP, and nanoc represent source, resolve addresses, emit bytes, and trade features against memory.
+- **[Native testing and CI](docs/testing.md)** — how the C64 owns behavioral assertions and how CI executes them.
+- **[Contributing](CONTRIBUTING.md)** — coding style, routine contracts, state ownership, testing rules, and the project's “spiritually 6502” design standard.
 
-Conceptually the flow is:
+The documentation is intended to point into the real source rather than create a parallel textbook architecture.
 
-```
-source cursor
-     |
-     +--> skipWhitespace / scanLexeme
-     |
-     v
-nextStatement
-     |
-     +--> label
-     +--> symbol definition
-     +--> instruction-like statement
-              |
-              +--> mnemonic
-              `--> pseudo-operation
+## Build interface
+
+The root Makefile is the supported interface:
+
+```sh
+make setup    # prepare the Ubuntu 24.04 development environment
+make          # build disassembler, assembler, tests, and examples
+make test     # execute the full C64-native test suite under VICE
+make clean
 ```
 
-Scanning and parsing remain different responsibilities, but there is no intermediate token data structure merely to preserve that conceptual boundary.
+GitHub Actions uses the same `make setup`, `make`, and `make test` path.
+
+## Repository map
+
+```text
+ass/        native assembler, source reader, symbols, staging, and tests
+dis/        original disassembler and shared 6502 instruction metadata
+docs/       onboarding, assembler design/comparison, and native test documentation
+examples/   small C/assembly comparison examples
+tests/      VICE runner and streamed-source fixtures
+```
+
+If you are reading the code to learn how the assembler works, do not start by treating those directories as compiler stages. Follow the guided order in [Getting started](docs/getting-started.md); it tracks actual source bytes and machine state instead.
