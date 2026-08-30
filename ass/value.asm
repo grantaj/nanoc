@@ -7,13 +7,12 @@
 ;;; atom is $hex, decimal, 'c', a constant, or a label. There is no precedence,
 ;;; tree, recursion, or general expression language.
 ;;;
-;;; Parsing produces either a fixed 16-bit value or the one persistent recipe
-;;; needed after a source line disappears:
+;;; Parsing produces either a fixed 16-bit value or the one forward-reference
+;;; recipe needed after a source line disappears:
 ;;;
-;;;     label entry + 16-bit addend + optional < / > prefix
+;;;     undefined label entry + 16-bit addend + optional < / > prefix
 ;;;
-;;; Labels remain deferred even when already defined because shortening an
-;;; earlier instruction can still move their final addresses.
+;;; A label becomes an ordinary fixed value as soon as its definition is seen.
 
 VALUE_OK          = $00
 VALUE_UNRESOLVED  = $01
@@ -32,8 +31,8 @@ VALUE_ATOM_LABEL = $01
 ;;;
 ;;; Input: ZP_PTR0/X = complete value text.
 ;;; Output:
-;;;   VALUE_OK         -> valueResult is fixed and layout-independent
-;;;   VALUE_UNRESOLVED -> captured* describes one label-dependent value
+;;;   VALUE_OK         -> valueResult is fixed
+;;;   VALUE_UNRESOLVED -> captured* describes one undefined-label value
 ;;;   VALUE_BAD / VALUE_SYMBOL_FULL / VALUE_SCOPE_ERROR
 ;;;
 ;;; X is deliberately not parser state after entry; the remaining byte count
@@ -50,7 +49,6 @@ parseValue:
 	sta capturedSymbol+1
 	sta capturedAddend
 	sta capturedAddend+1
-	sta capturedCanShorten
 	lda #VALUE_PREFIX_NONE
 	sta capturedPrefix
 
@@ -87,7 +85,6 @@ parseValue:
 .firstLabel:
 	lda #$01
 	sta capturedHasSymbol
-	sta capturedCanShorten		; bare label only moves downward
 	lda valueAtomSymbol
 	sta capturedSymbol
 	lda valueAtomSymbol+1
@@ -121,7 +118,7 @@ parseValue:
 	beq .secondLabel
 
 	;; A fixed second atom is either ordinary 16-bit arithmetic or the addend
-	;; attached to a deferred label.
+	;; attached to an unresolved label.
 	lda valueOperator
 	cmp #'+'
 	beq .addFixed
@@ -132,10 +129,6 @@ parseValue:
 	lda capturedAddend+1
 	sbc valueAtom+1
 	sta capturedAddend+1
-	lda capturedHasSymbol
-	beq .finish
-	lda #$00			; arithmetic may wrap, so do not shorten direct mode
-	sta capturedCanShorten
 	jmp .finish
 .addFixed:
 	clc
@@ -145,10 +138,6 @@ parseValue:
 	lda capturedAddend+1
 	adc valueAtom+1
 	sta capturedAddend+1
-	lda capturedHasSymbol
-	beq .finish
-	lda #$00			; label+literal stays conservatively long
-	sta capturedCanShorten
 	jmp .finish
 
 .secondLabel:
@@ -159,8 +148,6 @@ parseValue:
 	bne .bad			; literal - label is deliberately unsupported
 	lda #$01
 	sta capturedHasSymbol
-	lda #$00			; binary arithmetic stays conservatively long
-	sta capturedCanShorten
 	lda valueAtomSymbol
 	sta capturedSymbol
 	lda valueAtomSymbol+1
@@ -178,11 +165,6 @@ parseValue:
 	rts
 
 .deferred:
-	lda capturedPrefix
-	beq .unresolved
-	lda #$01			; <label and >label are one-byte results
-	sta capturedCanShorten
-.unresolved:
 	lda #VALUE_UNRESOLVED
 	rts
 
@@ -194,8 +176,8 @@ parseValue:
 	rts
 
 ;;; parseValueAtom
-;;; Consume one atom. Fixed atoms use valueAtom; labels use valueAtomSymbol.
-;;; Carry clear returns valueStatus.
+;;; Consume one atom. Fixed atoms use valueAtom; unresolved labels use
+;;; valueAtomSymbol. Carry clear returns valueStatus.
 parseValueAtom:
 	lda valueLeft
 	beq .bad
@@ -234,8 +216,8 @@ parseValueAtom:
 	rts
 
 ;;; parseHexAtom
-;;; $ followed by 1..4 hexadecimal digits. Both cases are accepted because the
-;;; existing nanoc source uses lowercase constants such as $fc.
+;;; $ followed by 1..4 hexadecimal digits. Both cases are accepted because ass
+;;; source uses lower-case hex as ordinary 6502 source does.
 parseHexAtom:
 	lda #$00
 	sta valueAtom
@@ -387,8 +369,9 @@ parseCharAtom:
 	rts
 
 ;;; parseValueSymbolAtom
-;;; Existing constants collapse to fixed values. Labels, defined or not, remain
-;;; layout-dependent and are represented only by their symbol-table entry.
+;;; Constants and already-defined labels are fixed values. Only a label whose
+;;; definition has not yet appeared remains unresolved and is represented by its
+;;; symbol-table entry.
 parseValueSymbolAtom:
 	lda ZP_PTR0
 	sta symbolName
@@ -420,8 +403,8 @@ parseValueSymbolAtom:
 	jsr findSymbolEntry
 	bcc .intern
 	lda symbolKind
-	cmp #SYMBOL_CONSTANT
-	bne .label
+	cmp #SYMBOL_LABEL_UNDEFINED
+	beq .label
 	lda symbolValue
 	sta valueAtom
 	lda symbolValue+1
@@ -479,7 +462,8 @@ parseValueSymbolAtom:
 	rts
 
 ;;; applyValuePrefix
-;;; Apply < or > to a fixed result. Deferred values apply it after layout.
+;;; Apply < or > to a fixed result. Forward fixups apply the same operation when
+;;; their label is eventually defined.
 applyValuePrefix:
 	lda capturedPrefix
 	beq .done
@@ -505,12 +489,11 @@ advanceValue:
 
 valueResult:		word 0
 
-;;; Persistent parse result when VALUE_UNRESOLVED is returned.
+;;; Persistent parse result only when VALUE_UNRESOLVED is returned.
 capturedHasSymbol:	byte 0
 capturedSymbol:		word 0
 capturedAddend:		word 0
 capturedPrefix:		byte 0
-capturedCanShorten:	byte 0
 
 ;;; Small explicit parser state.
 valueLeft:		byte 0

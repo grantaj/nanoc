@@ -4,4 +4,4 @@ include "CHILD.ASM"
 start:
 LDA #CONST
 JSR child
-RTS
+include "TAIL.ASM"

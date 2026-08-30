@@ -4,17 +4,26 @@
 ;;;
 ;;; Entries grow upward from symbolTableStart while owned name bytes grow
 ;;; downward from symbolTableLimit. The two regions simply meet when full.
+;;;
+;;; The two-byte payload has one meaning at a time:
+;;;   constant / defined label -> final value
+;;;   undefined label          -> head of its staged 16-bit reference chain
+;;; An undefined label has no value yet, and a defined label has no outstanding
+;;; word references, so keeping both would waste two bytes in every symbol.
 
-SYMBOL_NAME_LO   = 0
-SYMBOL_NAME_HI   = 1
-SYMBOL_LENGTH    = 2
-SYMBOL_BASE_LO   = 3
-SYMBOL_BASE_HI   = 4
-SYMBOL_VALUE_LO  = 5
-SYMBOL_VALUE_HI  = 6
-SYMBOL_SCOPE     = 7
-SYMBOL_KIND      = 8
-SYMBOL_SIZE      = 9
+SYMBOL_NAME_LO    = 0
+SYMBOL_NAME_HI    = 1
+SYMBOL_LENGTH     = 2
+SYMBOL_PAYLOAD_LO = 3
+SYMBOL_PAYLOAD_HI = 4
+SYMBOL_SCOPE      = 5
+SYMBOL_KIND       = 6
+SYMBOL_SIZE       = 7
+
+SYMBOL_VALUE_LO = SYMBOL_PAYLOAD_LO
+SYMBOL_VALUE_HI = SYMBOL_PAYLOAD_HI
+SYMBOL_REFS_LO  = SYMBOL_PAYLOAD_LO
+SYMBOL_REFS_HI  = SYMBOL_PAYLOAD_HI
 
 SYMBOL_CONSTANT        = $00
 SYMBOL_LABEL_UNDEFINED = $01
@@ -45,9 +54,6 @@ defineConstant:
 	bcc .noScope
 	jsr findSymbolEntry
 	bcs .duplicate
-	lda #$00
-	sta symbolBase
-	sta symbolBase+1
 	lda #SYMBOL_CONSTANT
 	sta symbolKind
 	jsr allocateSymbol
@@ -75,10 +81,8 @@ internLabel:
 	rts
 .new:
 	lda #$00
-	sta symbolBase
-	sta symbolBase+1
-	sta symbolValue
-	sta symbolValue+1
+	sta symbolRefs
+	sta symbolRefs+1
 	lda #SYMBOL_LABEL_UNDEFINED
 	sta symbolKind
 	jsr allocateSymbol
@@ -99,8 +103,10 @@ internLabel:
 	rts
 
 ;;; defineLabel
-;;; Define a label at the current conservative assemblyPtr. A previous forward
-;;; reference may already have created its undefined entry.
+;;; Define a label at the current final assemblyPtr. For an existing undefined
+;;; entry, findSymbolEntry leaves its old reference-chain head in symbolRefs.
+;;; Replace the shared payload with the final value, mark the label defined, and
+;;; consume that old chain immediately. The payload changes meaning in one place.
 defineLabel:
 	jsr symbolScope
 	bcc .noScope
@@ -114,13 +120,7 @@ defineLabel:
 	sta ZP_PTR0
 	lda symbolEntry+1
 	sta ZP_PTR0+1
-	ldy #SYMBOL_BASE_LO
-	lda assemblyPtr
-	sta (ZP_PTR0),y
-	iny
-	lda assemblyPtr+1
-	sta (ZP_PTR0),y
-	iny
+	ldy #SYMBOL_VALUE_LO
 	lda assemblyPtr
 	sta (ZP_PTR0),y
 	iny
@@ -131,20 +131,20 @@ defineLabel:
 	sta (ZP_PTR0),y
 	sta symbolKind
 	lda assemblyPtr
-	sta symbolBase
 	sta symbolValue
 	lda assemblyPtr+1
-	sta symbolBase+1
 	sta symbolValue+1
+	jsr resolveWordReferencesForSymbol
 	lda #SYMBOL_OK
 	rts
 
 .new:
+	lda #$00
+	sta symbolRefs
+	sta symbolRefs+1
 	lda assemblyPtr
-	sta symbolBase
 	sta symbolValue
 	lda assemblyPtr+1
-	sta symbolBase+1
 	sta symbolValue+1
 	lda #SYMBOL_LABEL_DEFINED
 	sta symbolKind
@@ -157,25 +157,10 @@ defineLabel:
 	lda #SYMBOL_NO_SCOPE
 	rts
 
-;;; findConstant
-;;; Fixed-value lookup used by parseValue. Labels deliberately do not resolve
-;;; here: even a backward label can move when an earlier instruction shortens.
-findConstant:
-	jsr findSymbolEntry
-	bcc .notFound
-	lda symbolKind
-	cmp #SYMBOL_CONSTANT
-	bne .notFound
-	sec
-	rts
-.notFound:
-	clc
-	rts
-
 ;;; findSymbolEntry
 ;;; Look up symbolName/symbolNameLength in the current local-label scope.
-;;; Carry set returns symbolEntry, symbolBase, symbolValue, and symbolKind.
-;;; ZP_PTR1 is preserved because it is normally the source cursor.
+;;; The entry payload is copied to both symbolValue and symbolRefs; symbolKind
+;;; tells the caller which interpretation is meaningful. ZP_PTR1 is preserved.
 findSymbolEntry:
 	jsr symbolScope
 	bcs .scopeReady
@@ -245,18 +230,14 @@ findSymbolEntry:
 	lda symbolScan+1
 	sta symbolEntry+1
 	sta ZP_PTR1+1
-	ldy #SYMBOL_BASE_LO
-	lda (ZP_PTR1),y
-	sta symbolBase
-	iny
-	lda (ZP_PTR1),y
-	sta symbolBase+1
-	iny
+	ldy #SYMBOL_PAYLOAD_LO
 	lda (ZP_PTR1),y
 	sta symbolValue
+	sta symbolRefs
 	iny
 	lda (ZP_PTR1),y
 	sta symbolValue+1
+	sta symbolRefs+1
 	ldy #SYMBOL_KIND
 	lda (ZP_PTR1),y
 	sta symbolKind
@@ -287,7 +268,8 @@ findSymbolEntry:
 
 ;;; allocateSymbol
 ;;; Append one entry and copy its name into the downward-growing name area.
-;;; Inputs: symbolName/Length, symbolBase, symbolValue, symbolKind.
+;;; Undefined labels store symbolRefs in the payload; everything else stores
+;;; symbolValue.
 allocateSymbol:
 	lda symbolNameLength
 	bne .hasName
@@ -363,17 +345,22 @@ allocateSymbol:
 	lda symbolNameLength
 	sta (ZP_PTR1),y
 	iny
-	lda symbolBase
-	sta (ZP_PTR1),y
-	iny
-	lda symbolBase+1
-	sta (ZP_PTR1),y
-	iny
+	lda symbolKind
+	cmp #SYMBOL_LABEL_UNDEFINED
+	beq .storeRefs
 	lda symbolValue
 	sta (ZP_PTR1),y
 	iny
 	lda symbolValue+1
 	sta (ZP_PTR1),y
+	jmp .storedPayload
+.storeRefs:
+	lda symbolRefs
+	sta (ZP_PTR1),y
+	iny
+	lda symbolRefs+1
+	sta (ZP_PTR1),y
+.storedPayload:
 	iny
 	lda symbolWantedScope
 	sta (ZP_PTR1),y
@@ -403,57 +390,92 @@ allocateSymbol:
 	lda #SYMBOL_NO_SCOPE
 	rts
 
-;;; updateLabelValues
-;;; Recompute defined labels by subtracting each earlier direct instruction that
-;;; has shortened from three bytes to two.
-updateLabelValues:
-	lda symbolTableStart
-	sta symbolScan
-	lda symbolTableStart+1
-	sta symbolScan+1
-.next:
-	lda symbolScan
-	cmp symbolTableEnd
-	bne .entry
-	lda symbolScan+1
-	cmp symbolTableEnd+1
+;;; linkWordReference
+;;; referencePtr identifies two staged operand bytes for an unresolved plain
+;;; label. Those bytes temporarily point to the previous reference, and the same
+;;; two-byte symbol payload becomes the new chain head.
+linkWordReference:
+	lda ZP_PTR1
+	pha
+	lda ZP_PTR1+1
+	pha
+
+	lda symbolEntry
+	sta ZP_PTR0
+	lda symbolEntry+1
+	sta ZP_PTR0+1
+	ldy #SYMBOL_REFS_LO
+	lda (ZP_PTR0),y
+	sta referenceNext
+	iny
+	lda (ZP_PTR0),y
+	sta referenceNext+1
+
+	lda referencePtr
+	sta ZP_PTR1
+	lda referencePtr+1
+	sta ZP_PTR1+1
+	ldy #$00
+	lda referenceNext
+	sta (ZP_PTR1),y
+	iny
+	lda referenceNext+1
+	sta (ZP_PTR1),y
+
+	lda symbolEntry
+	sta ZP_PTR0
+	lda symbolEntry+1
+	sta ZP_PTR0+1
+	ldy #SYMBOL_REFS_LO
+	lda referencePtr
+	sta (ZP_PTR0),y
+	iny
+	lda referencePtr+1
+	sta (ZP_PTR0),y
+
+	pla
+	sta ZP_PTR1+1
+	pla
+	sta ZP_PTR1
+	rts
+
+;;; resolveWordReferencesForSymbol
+;;; symbolRefs is the chain head captured by defineLabel before the entry payload
+;;; changed to the final value. Patch every staged link immediately.
+resolveWordReferencesForSymbol:
+	lda symbolRefs
+	sta referencePtr
+	lda symbolRefs+1
+	sta referencePtr+1
+.reference:
+	lda referencePtr
+	ora referencePtr+1
 	beq .done
-.entry:
-	lda symbolScan
+	lda referencePtr
 	sta ZP_PTR0
-	lda symbolScan+1
+	lda referencePtr+1
 	sta ZP_PTR0+1
-	ldy #SYMBOL_KIND
+	ldy #$00
 	lda (ZP_PTR0),y
-	cmp #SYMBOL_LABEL_DEFINED
-	bne .advance
-	ldy #SYMBOL_BASE_LO
-	lda (ZP_PTR0),y
-	sta adjustInput
+	sta referenceNext
 	iny
 	lda (ZP_PTR0),y
-	sta adjustInput+1
-	jsr adjustAddress
-	lda symbolScan
-	sta ZP_PTR0
-	lda symbolScan+1
-	sta ZP_PTR0+1
-	ldy #SYMBOL_VALUE_LO
-	lda adjustResult
+	sta referenceNext+1
+	dey
+	lda symbolValue
 	sta (ZP_PTR0),y
 	iny
-	lda adjustResult+1
+	lda symbolValue+1
 	sta (ZP_PTR0),y
-.advance:
-	clc
-	lda symbolScan
-	adc #SYMBOL_SIZE
-	sta symbolScan
-	bcc .samePage
-	inc symbolScan+1
-.samePage:
-	jmp .next
+	lda referenceNext
+	sta referencePtr
+	lda referenceNext+1
+	sta referencePtr+1
+	jmp .reference
 .done:
+	lda #$00
+	sta symbolRefs
+	sta symbolRefs+1
 	rts
 
 ;;; allLabelsDefined
@@ -496,18 +518,21 @@ allLabelsDefined:
 	rts
 
 ;;; loadSymbolEntry
-;;; symbolEntry -> symbolValue/symbolKind.
+;;; Copy the shared payload to both interpretations; symbolKind tells the caller
+;;; whether it is a final value or an unresolved-reference head.
 loadSymbolEntry:
 	lda symbolEntry
 	sta ZP_PTR0
 	lda symbolEntry+1
 	sta ZP_PTR0+1
-	ldy #SYMBOL_VALUE_LO
+	ldy #SYMBOL_PAYLOAD_LO
 	lda (ZP_PTR0),y
 	sta symbolValue
+	sta symbolRefs
 	iny
 	lda (ZP_PTR0),y
 	sta symbolValue+1
+	sta symbolRefs+1
 	ldy #SYMBOL_KIND
 	lda (ZP_PTR0),y
 	sta symbolKind
@@ -547,11 +572,13 @@ currentScope:		byte 0
 symbolName:		word 0
 symbolNameLength:	byte 0
 symbolEntry:		word 0
-symbolBase:		word 0
 symbolValue:		word 0
+symbolRefs:		word 0
 symbolKind:		byte 0
 
 symbolWantedScope:	byte 0
 symbolNext:		word 0
 symbolNewName:		word 0
 symbolScan:		word 0
+referencePtr:		word 0
+referenceNext:		word 0

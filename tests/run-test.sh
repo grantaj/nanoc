@@ -3,6 +3,7 @@ set -eu
 
 VICE=${VICE:-x64sc}
 BUILD_DIR=${BUILD_DIR:-build}
+VICE_TIMEOUT=${VICE_TIMEOUT:-15}
 PRG=$1
 NAME=${2:-$(basename "$PRG" .prg)}
 
@@ -25,8 +26,10 @@ bsave "$RESULT_FILE" 0 0002 0003
 quit
 EOF
 
+# -warp removes real-time throttling so native tests run as fast as the host can
+# execute them. The filesystem-device form is used only by tests that read files.
 if [ -n "${VICE_FS_DIR:-}" ]; then
-    if ! timeout 15s "$VICE" -console -warp +sound \
+    if ! timeout "${VICE_TIMEOUT}s" "$VICE" -console -warp +sound \
         -iecdevice8 -device8 1 -fs8 "$VICE_FS_DIR" \
         -initbreak ready -moncommands "$MONITOR_FILE" >"$LOG_FILE" 2>&1; then
         echo "FAIL $NAME: VICE did not complete the test" >&2
@@ -34,7 +37,7 @@ if [ -n "${VICE_FS_DIR:-}" ]; then
         exit 1
     fi
 else
-    if ! timeout 15s "$VICE" -console -warp +sound \
+    if ! timeout "${VICE_TIMEOUT}s" "$VICE" -console -warp +sound \
         -initbreak ready -moncommands "$MONITOR_FILE" >"$LOG_FILE" 2>&1; then
         echo "FAIL $NAME: VICE did not complete the test" >&2
         cat "$LOG_FILE" >&2

@@ -3,6 +3,11 @@
 ;;; Direct C64 KERNAL sequential source input. Only one 256-byte caller-owned
 ;;; line buffer is resident; included files remain open on a tiny fixed channel
 ;;; stack so EOF can resume the parent at its existing position.
+;;;
+;;; sourceDirectory is optional. When its length is nonzero, local include names
+;;; are prefixed with that one directory into sourcePathBuffer. A leading `../`
+;;; drops the prefix instead. This is deliberately only the path behavior nanoc's
+;;; real source tree needs; it is not a general path normalizer.
 
 	include "../dis/kernal.inc"
 
@@ -30,7 +35,23 @@ openRootSource:
 ;;; includeSource
 ;;; statementArgument must be exactly one quoted filename. Open it as the next
 ;;; input channel; the parent remains open and positioned after the include line.
+;;; Include-name construction borrows ZP_PTR1 internally, so this routine owns
+;;; preserving the parser cursor rather than requiring its caller to know that.
 includeSource:
+	lda ZP_PTR1
+	pha
+	lda ZP_PTR1+1
+	pha
+	jsr includeSourceBody
+	tax
+	pla
+	sta ZP_PTR1+1
+	pla
+	sta ZP_PTR1
+	txa
+	rts
+
+includeSourceBody:
 	lda statementArgumentLength
 	cmp #$03
 	bcc .bad
@@ -52,6 +73,45 @@ includeSource:
 	cmp #SOURCE_MAX_DEPTH
 	bcs .depth
 	inc sourceDepth
+	jsr prepareIncludeName
+	bcc .nameBad
+	jsr openSourceAtDepth
+	cmp #ASSEMBLE_OK
+	beq .ok
+	dec sourceDepth
+	pha
+	jsr selectSourceAtDepth		; restore parent input channel
+	pla
+	rts
+.ok:
+	ldx sourceDepth
+	lda #$00
+	sta sourceEofPending,x		; leave the parent's pending EOF untouched
+	lda #ASSEMBLE_OK
+	rts
+.nameBad:
+	dec sourceDepth
+.bad:
+	lda #ASSEMBLE_BAD_STATEMENT
+	rts
+.depth:
+	lda #ASSEMBLE_INCLUDE_DEPTH
+	rts
+
+;;; prepareIncludeName
+;;; With no configured sourceDirectory, keep the old zero-copy filename view.
+;;; Otherwise construct a KERNAL filename in sourcePathBuffer:
+;;;
+;;;     "parser.asm"        -> sourceDirectory + "PARSER.ASM"
+;;;     "../dis/table.asm"  -> "DIS/TABLE.ASM"
+;;;
+;;; Source files are ASCII text while the C64 filename bytes expected by VICE's
+;;; filesystem device use the upper-case PETSCII/ASCII range, so a-z is folded to
+;;; A-Z while copying. Carry set means openName/openNameLength are ready.
+prepareIncludeName:
+	lda sourceDirectoryLength
+	bne .build
+
 	clc
 	lda statementArgument
 	adc #$01
@@ -63,24 +123,130 @@ includeSource:
 	sec
 	sbc #$02
 	sta openNameLength
-	jsr openSourceAtDepth
-	cmp #ASSEMBLE_OK
-	beq .ok
-	dec sourceDepth
-	pha
-	jsr selectSourceAtDepth		; restore parent input channel
-	pla
+	sec
 	rts
-.ok:
+
+.build:
+	lda sourcePathBuffer
+	ora sourcePathBuffer+1
+	bne .bufferReady
+	jmp .bad
+.bufferReady:
+	lda sourcePathBuffer
+	sta ZP_PTR1
+	sta openName
+	lda sourcePathBuffer+1
+	sta ZP_PTR1+1
+	sta openName+1
 	lda #$00
-	sta sourceEofPending
-	lda #ASSEMBLE_OK
+	sta sourcePathLength
+
+	;; Point ZP_PTR0 at the first byte inside the quotes and detect the only
+	;; parent form needed by the production tree: ../dis/...
+	clc
+	lda statementArgument
+	adc #$01
+	sta ZP_PTR0
+	lda statementArgument+1
+	adc #$00
+	sta ZP_PTR0+1
+	lda #$00
+	sta sourceInputOffset
+	lda statementArgumentLength
+	sec
+	sbc #$02
+	sta sourceInputLength
+	cmp #$03
+	bcc .local
+	ldy #$00
+	lda (ZP_PTR0),y
+	cmp #'.'
+	bne .local
+	iny
+	lda (ZP_PTR0),y
+	cmp #'.'
+	bne .local
+	iny
+	lda (ZP_PTR0),y
+	cmp #'/'
+	bne .local
+	lda #$03
+	sta sourceInputOffset
+	jmp .filename
+
+.local:
+	;; Every local production include lives in the configured one directory.
+	lda sourceDirectory
+	sta ZP_PTR0
+	lda sourceDirectory+1
+	sta ZP_PTR0+1
+	lda #$00
+	sta sourceInputOffset
+.copyDirectory:
+	lda sourceInputOffset
+	cmp sourceDirectoryLength
+	beq .directoryDone
+	ldy sourceInputOffset
+	lda (ZP_PTR0),y
+	jsr appendPathByte
+	bcc .bad
+	inc sourceInputOffset
+	jmp .copyDirectory
+.directoryDone:
+	lda #$00
+	sta sourceInputOffset
+
+	clc
+	lda statementArgument
+	adc #$01
+	sta ZP_PTR0
+	lda statementArgument+1
+	adc #$00
+	sta ZP_PTR0+1
+
+.filename:
+	lda sourceInputOffset
+	cmp sourceInputLength
+	beq .done
+	ldy sourceInputOffset
+	lda (ZP_PTR0),y
+	cmp #'a'
+	bcc .copy
+	cmp #'z'+1
+	bcs .copy
+	and #$df			; ASCII lower-case source -> C64 filename byte
+.copy:
+	jsr appendPathByte
+	bcc .bad
+	inc sourceInputOffset
+	jmp .filename
+.done:
+	lda sourcePathLength
+	beq .bad
+	sta openNameLength
+	sec
 	rts
 .bad:
-	lda #ASSEMBLE_BAD_STATEMENT
+	clc
 	rts
-.depth:
-	lda #ASSEMBLE_INCLUDE_DEPTH
+
+;;; appendPathByte
+;;; Append A to sourcePathBuffer. The one-byte KERNAL filename length makes 255
+;;; bytes the natural hard limit. Carry clear means there is no room.
+appendPathByte:
+	ldx sourcePathLength
+	cpx #$ff
+	beq .full
+	pha
+	txa
+	tay
+	pla
+	sta (ZP_PTR1),y
+	inc sourcePathLength
+	sec
+	rts
+.full:
+	clc
 	rts
 
 ;;; openSourceAtDepth
@@ -136,10 +302,11 @@ selectSourceAtDepth:
 ;;; CR and LF both end a line. CRLF therefore yields one harmless blank line.
 readSourceLine:
 .start:
-	lda sourceEofPending
+	ldx sourceDepth
+	lda sourceEofPending,x
 	beq .newLine
 	lda #$00
-	sta sourceEofPending
+	sta sourceEofPending,x
 	jsr finishSourceFile
 	bcs .start			; child EOF: continue parent
 	rts				; root EOF or parent-channel error
@@ -165,8 +332,9 @@ readSourceLine:
 	lda sourceStatus
 	and #SOURCE_STATUS_EOI
 	beq .notLast
+	ldx sourceDepth
 	lda #$01
-	sta sourceEofPending
+	sta sourceEofPending,x
 .notLast:
 	lda sourceByte
 	cmp #SOURCE_EOL_CR
@@ -185,7 +353,8 @@ readSourceLine:
 	lda sourceByte
 	sta (ZP_PTR0),y
 	inc sourceLineLength
-	lda sourceEofPending
+	ldx sourceDepth
+	lda sourceEofPending,x
 	beq .read
 
 .lineDone:
@@ -276,8 +445,19 @@ sourceLineBuffer:	word 0
 sourceLineLength:	byte 0
 sourceDepth:		byte 0
 sourceCurrentLfn:	byte 0
-sourceEofPending:	byte 0
+;;; EOI belongs to the open source that observed it. A parent can already be at
+;;; EOF while its final include is being read, so keep one byte per source depth.
+sourceEofPending:	byte 0,0,0,0,0
 sourceByte:		byte 0
 sourceStatus:		byte 0
 openName:		word 0
 openNameLength:		byte 0
+
+;;; Optional simple include-path configuration. A zero length keeps the original
+;;; direct filename behavior used by small tests.
+sourceDirectory:	word 0
+sourceDirectoryLength:	byte 0
+sourcePathBuffer:	word 0
+sourcePathLength:	byte 0
+sourceInputOffset:	byte 0
+sourceInputLength:	byte 0
