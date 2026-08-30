@@ -37,7 +37,8 @@ ASSEMBLER_DEPS = \
 STREAM_FIXTURES = \
 	tests/stream-src/main.asm \
 	tests/stream-src/child.asm \
-	tests/stream-src/nested.asm
+	tests/stream-src/nested.asm \
+	tests/stream-src/tail.asm
 
 SELFHOST_FIXTURES = \
 	ass/ass_0800.asm \
