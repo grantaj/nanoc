@@ -24,8 +24,7 @@
 STATEMENT_EOF         = 0
 STATEMENT_LABEL       = 1
 STATEMENT_SYMBOL      = 2
-STATEMENT_DIRECTIVE   = 3
-STATEMENT_INSTRUCTION = 4
+STATEMENT_INSTRUCTION = 3
 
 ;;; nextStatement
 ;;;
@@ -70,8 +69,6 @@ nextStatement:
 	sta statementName+1
 	stx statementNameLength
 
-	;; A trailing colon wins over leading-dot directive syntax, so `.done:` is
-	;; a local label while `.byte` remains a directive.
 	txa
 	tay
 	dey
@@ -79,13 +76,11 @@ nextStatement:
 	cmp #':'
 	bne .notLabel
 	jmp .label
-.notLabel:
-	ldy #$00
-	lda (ZP_PTR0),y
-	cmp #'.'
-	beq .directive
 
-	;; Otherwise the first lexeme is either a symbol name or a mnemonic.
+.notLabel:
+	;; Otherwise the first lexeme is either a symbol name or an instruction-like
+	;; statement name. Bare pseudo-operations such as byte and word use this same
+	;; path; their meaning belongs to the assembler, not the parser.
 	jsr sourceAtEnd
 	beq .instruction
 	jsr skipWhitespace
@@ -105,16 +100,6 @@ nextStatement:
 	jsr advanceSource		; consume '='
 	jsr scanArgument
 	lda #STATEMENT_SYMBOL
-	rts
-
-.directive:
-	inc statementName
-	bne .directiveNameReady
-	inc statementName+1
-.directiveNameReady:
-	dec statementNameLength
-	jsr scanArgument
-	lda #STATEMENT_DIRECTIVE
 	rts
 
 .label:

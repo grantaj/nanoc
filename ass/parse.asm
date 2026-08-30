@@ -34,5 +34,5 @@ INPUT:
 	string "START:   "
 	string "  \tLDA #$00 ; COMMENT"
 	string "\tRTS"
-	string ".BYTE 0, 1, 2"
+	string "byte 0, 1, 2"
 INPUT_END:

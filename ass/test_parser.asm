@@ -127,47 +127,49 @@ main:
 .symbolArgHighOk:
 	lda statementArgumentLength
 	cmp #$05
-	beq .directiveCase
+	beq .pseudoCase
 	lda #$0c
 	jmp .finish
 
-.directiveCase:
+	;; Pseudo-operations are ordinary instruction-like statement names. Their
+	;; meaning is decided by the assembler, not represented as a parser category.
+.pseudoCase:
 	jsr nextStatement
-	cmp #STATEMENT_DIRECTIVE
-	beq .directiveTypeOk
+	cmp #STATEMENT_INSTRUCTION
+	beq .pseudoTypeOk
 	lda #$0d
 	jmp .finish
-.directiveTypeOk:
+.pseudoTypeOk:
 	lda statementName
-	cmp #<directiveName
-	beq .directiveNameLowOk
+	cmp #<pseudoName
+	beq .pseudoNameLowOk
 	lda #$0e
 	jmp .finish
-.directiveNameLowOk:
+.pseudoNameLowOk:
 	lda statementName+1
-	cmp #>directiveName
-	beq .directiveNameHighOk
+	cmp #>pseudoName
+	beq .pseudoNameHighOk
 	lda #$0f
 	jmp .finish
-.directiveNameHighOk:
+.pseudoNameHighOk:
 	lda statementNameLength
 	cmp #$04
-	beq .directiveNameLengthOk
+	beq .pseudoNameLengthOk
 	lda #$10
 	jmp .finish
-.directiveNameLengthOk:
+.pseudoNameLengthOk:
 	lda statementArgument
-	cmp #<directiveArgument
-	beq .directiveArgLowOk
+	cmp #<pseudoArgument
+	beq .pseudoArgLowOk
 	lda #$11
 	jmp .finish
-.directiveArgLowOk:
+.pseudoArgLowOk:
 	lda statementArgument+1
-	cmp #>directiveArgument
-	beq .directiveArgHighOk
+	cmp #>pseudoArgument
+	beq .pseudoArgHighOk
 	lda #$12
 	jmp .finish
-.directiveArgHighOk:
+.pseudoArgHighOk:
 	lda statementArgumentLength
 	cmp #$07
 	beq .instructionCase
@@ -335,10 +337,9 @@ symbolName:
 symbolValue:
 	byte '$','C','0','0','0',0
 
-	byte '.'
-directiveName:
-	byte 'B','Y','T','E',' '
-directiveArgument:
+pseudoName:
+	byte 'b','y','t','e',' '
+pseudoArgument:
 	byte '0',',',' ','1',',',' ','2',0
 
 instructionName:
