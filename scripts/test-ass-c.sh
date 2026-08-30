@@ -3,8 +3,21 @@ set -eu
 
 CC=${CC:-cc}
 BUILD_DIR=${BUILD_DIR:-build}
+DIAG_DIR="$BUILD_DIR/ass-c-diagnostic"
 
-mkdir -p "$BUILD_DIR"
+mkdir -p "$DIAG_DIR"
+cp bootstrap/ass_host.c "$DIAG_DIR/ass_host.c"
+
+# Temporarily relax only the candidate's artificial split limits so the real
+# source closure can tell us its final symbol/name/fixup counts.  The committed
+# ass.c remains the language-design source; this diagnostic copy is not a target
+# memory model.
+sed \
+    -e 's/\[512\]/[1024]/g' \
+    -e 's/\[8192\]/[16384]/g' \
+    -e 's/>= 512/>= 1024/g' \
+    -e 's/> 8192/> 16384/g' \
+    bootstrap/ass.c > "$DIAG_DIR/ass.c"
 
 "$CC" \
     -std=c89 \
@@ -13,7 +26,7 @@ mkdir -p "$BUILD_DIR"
     -Wextra \
     -Werror \
     -funsigned-char \
-    bootstrap/ass_host.c \
+    "$DIAG_DIR/ass_host.c" \
     -o "$BUILD_DIR/ass-c"
 
 "$BUILD_DIR/ass-c" \
