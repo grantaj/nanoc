@@ -916,9 +916,9 @@ parse_one_local:
 	clc
 	rts
 
-;;; The local under construction is slot currentCount but is not visible to
-;;; lookup until make_current_visible below. The ordinary expression engine thus
-;;; enforces self-reference/forward-reference rules without a special case.
+;;; A failed initializer is owned by the expression layer. The declaration
+;;; parser reports that boundary while expressionError retains the precise cause
+;;; such as EXPR_UNDECLARED or EXPR_BAD_TYPE for diagnostics and tests.
 compile_local_initializer:
 	lda currentTokenKind
 	cmp #';'
@@ -943,12 +943,6 @@ compile_local_initializer:
 	sec
 	rts
 .expressionFail:
-	lda expressionError
-	cmp #EXPR_UNDECLARED
-	bne .genericExpressionFail
-	lda #PARSE_UNDECLARED
-	jmp parser_fail
-.genericExpressionFail:
 	lda #PARSE_EXPRESSION_ERROR
 	jmp parser_fail
 
