@@ -27,6 +27,9 @@ ASS_TARGETS = \
 	$(BUILD_DIR)/test_streaming.prg \
 	$(BUILD_DIR)/test_selfhost.prg
 
+NANOC0_TARGETS = \
+	$(BUILD_DIR)/test_nanoc0_scanner.prg
+
 ASSEMBLER_DEPS = \
 	ass/assembler.asm ass/representation.asm ass/source.asm ass/data.asm \
 	ass/symbols.asm ass/value.asm ass/instruction.asm ass/parser.asm \
@@ -39,6 +42,21 @@ STREAM_FIXTURES = \
 	tests/stream-src/nested.asm \
 	tests/stream-src/tail.asm
 
+NANOC0_SCANNER_FIXTURES = \
+	tests/nanoc0-src/tokens.c \
+	tests/nanoc0-src/lines.c \
+	tests/nanoc0-src/odec.c \
+	tests/nanoc0-src/ohex.c \
+	tests/nanoc0-src/badchar.c \
+	tests/nanoc0-src/uchar.c \
+	tests/nanoc0-src/ustr.c \
+	tests/nanoc0-src/ucom.c \
+	tests/nanoc0-src/longid.c \
+	tests/nanoc0-src/longstr.c \
+	tests/nanoc0-src/badhex.c \
+	tests/nanoc0-src/bad.c \
+	tests/nanoc0-src/slash.c
+
 SELFHOST_FIXTURES = \
 	ass/ass_0800.asm \
 	ass/ass.asm \
@@ -48,9 +66,9 @@ EXAMPLE_TARGETS = \
 	$(BUILD_DIR)/border-demo.prg \
 	$(BUILD_DIR)/border-c.prg
 
-.PHONY: all setup dis ass examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost clean
+.PHONY: all setup dis ass nanoc0 examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner clean
 
-all: dis ass examples
+all: dis ass nanoc0 examples
 
 setup:
 	sh scripts/setup-dev.sh
@@ -59,9 +77,11 @@ dis: $(DIS_TARGETS)
 
 ass: $(ASS_TARGETS)
 
+nanoc0: $(NANOC0_TARGETS)
+
 examples: $(EXAMPLE_TARGETS)
 
-test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost
+test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner
 
 test-skipws: $(BUILD_DIR)/test_skipws.prg
 	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< skipws
@@ -101,6 +121,9 @@ test-streaming: $(BUILD_DIR)/test_streaming.prg $(STREAM_FIXTURES)
 
 test-selfhost: $(BUILD_DIR)/test_selfhost.prg $(SELFHOST_FIXTURES)
 	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR) VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< selfhost
+
+test-nanoc0-scanner: $(BUILD_DIR)/test_nanoc0_scanner.prg $(NANOC0_SCANNER_FIXTURES)
+	VICE_FS_DIR=$(CURDIR)/tests/nanoc0-src VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< nanoc0-scanner
 
 $(BUILD_DIR):
 	mkdir -p $@
@@ -158,6 +181,9 @@ $(BUILD_DIR)/test_streaming.prg: ass/test_streaming.asm $(ASSEMBLER_DEPS) | $(BU
 
 $(BUILD_DIR)/test_selfhost.prg: ass/test_selfhost.asm ass/ass.asm $(ASSEMBLER_DEPS) | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_selfhost.asm
+
+$(BUILD_DIR)/test_nanoc0_scanner.prg: nanoc0/test_scanner.asm nanoc0/scanner.asm dis/kernal.inc test.inc | $(BUILD_DIR)
+	cd nanoc0 && $(VASM) $(VASMFLAGS) -o ../$@ test_scanner.asm
 
 $(BUILD_DIR)/border-demo.prg: examples/border/demo.asm | $(BUILD_DIR)
 	cd examples/border && $(VASM) $(VASMFLAGS) -o ../../$@ demo.asm
