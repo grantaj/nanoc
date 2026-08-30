@@ -118,6 +118,8 @@ Phase 1 still supports nested calls to different functions. The frozen machine m
 
 Generated control flow follows the same philosophy. `nanoc0` will not retain enough layout state to ask whether a conditional target fits a 6502 relative branch. It always emits a nearby conditional branch over an absolute `JMP`, deliberately spending a few bytes to remove branch-distance bookkeeping and relaxation from the bootstrap compiler.
 
+The C language itself remains a character stream. `nanoc0` may use a small refill buffer, but physical source lines are only whitespace boundaries: declarations, expressions and block comments may cross them. This keeps the language ordinary C-like syntax without requiring the compiler to retain the whole source file.
+
 ## Features that remain deferred
 
 ### `struct`
