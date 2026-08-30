@@ -1,26 +1,21 @@
 ;;; scanner.asm
 ;;;
-;;; Nano C Phase 1 source input and scanner.
+;;; Nano C Phase 1 scanner.
 ;;;
-;;; The input side reads directly from one C64 KERNAL sequential file.  It keeps
-;;; only one scanner pushback byte; there is no source-file or source-line copy.
-;;; CR and CRLF are normalised to one LF while reading so sourceLine counts
-;;; physical lines consistently for C64, Unix and mixed test files.
+;;; source.asm supplies one normalised source byte at a time.  This file turns
+;;; that stream into exactly one reusable current token.  There is no token
+;;; array, source copy, allocation, AST or parser state here.
 ;;;
-;;; next_token replaces one reusable current-token record.  Identifiers and
-;;; strings share the same fixed 64-byte text buffer.  Nothing allocates a token
-;;; object or retains a token stream.
+;;; Character predicates in this file take the byte in A, return their answer in
+;;; carry, and preserve A.  That matters because a failed lookahead is pushed
+;;; straight back to the source reader.
 
-	include "../dis/kernal.inc"
+	include "source.asm"
 
-SOURCE_LFN_DEFAULT       = 2
-SOURCE_STATUS_EOI        = $40
-SOURCE_STATE_OK          = 0
-SOURCE_STATE_EOF         = 1
-SOURCE_STATE_IO_ERROR    = 2
 SOURCE_TAB               = $09
-SOURCE_LF                = $0a
-SOURCE_CR                = $0d
+ASCII_SINGLE_QUOTE       = $27
+ASCII_DOUBLE_QUOTE       = $22
+ASCII_BACKSLASH          = $5c
 
 TOKEN_TEXT_CAPACITY      = 64
 
@@ -61,162 +56,18 @@ LEX_IO_ERROR             = 8
 LEX_BAD_HEX              = 9
 LEX_UNSUPPORTED_ESCAPE   = 10
 
-;;; open_source
-;;; sourceName/sourceNameLength/sourceDevice identify the source file.
-;;; Carry set means the KERNAL input channel is ready.
-open_source:
-	jsr close_source
-	lda #SOURCE_STATE_OK
-	sta sourceState
-	lda #$00
-	sta sourcePushbackValid
-	sta sourceEofPending
-	sta sourceSkipLf
-	sta sourceLine+1
-	lda #$01
-	sta sourceLine
-
-	jsr CLRCHN
-	lda sourceNameLength
-	ldx sourceName
-	ldy sourceName+1
-	jsr SETNAM
-	lda sourceLfn
-	ldx sourceDevice
-	ldy sourceLfn
-	jsr SETLFS
-	jsr OPEN
-	bcs .error
-	lda #$01
-	sta sourceOpen
-	ldx sourceLfn
-	jsr CHKIN
-	bcc .ok
-.error:
-	;; CLOSE is harmless after a failed OPEN and also cleans up a CHKIN failure.
-	jsr CLRCHN
-	lda sourceLfn
-	jsr CLOSE
-	lda #$00
-	sta sourceOpen
-	lda #SOURCE_STATE_IO_ERROR
-	sta sourceState
-	clc
-	rts
-.ok:
-	sec
-	rts
-
-;;; close_source
-;;; Close only the logical file owned by this scanner.
-close_source:
-	lda sourceOpen
-	beq .done
-	jsr CLRCHN
-	lda sourceLfn
-	jsr CLOSE
-	lda #$00
-	sta sourceOpen
-.done:
-	rts
-
-;;; read_source_byte
-;;; Carry set: A is one source byte.
-;;; Carry clear: sourceState says EOF or I/O error.
-;;;
-;;; One raw LF immediately following CR is discarded.  CR itself is returned as
-;;; LF, so the scanner has one newline spelling and increments sourceLine once.
-read_source_byte:
-	lda sourcePushbackValid
-	beq .notPushed
-	lda #$00
-	sta sourcePushbackValid
-	lda sourcePushbackByte
-	sec
-	rts
-
-.notPushed:
-	lda sourceState
-	cmp #SOURCE_STATE_OK
-	beq .raw
-	clc
-	rts
-
-.raw:
-	lda sourceEofPending
-	beq .read
-	jsr close_source
-	lda #SOURCE_STATE_EOF
-	sta sourceState
-	clc
-	rts
-
-.read:
-	jsr CHRIN
-	sta sourceByte
-	jsr READST
-	sta sourceKernalStatus
-
-	;; EOI accompanies the final valid byte.  Any other status is an error.
-	and #$bf
-	beq .statusOk
-	jsr close_source
-	lda #SOURCE_STATE_IO_ERROR
-	sta sourceState
-	clc
-	rts
-
-.statusOk:
-	lda sourceKernalStatus
-	and #SOURCE_STATUS_EOI
-	beq .haveByte
-	lda #$01
-	sta sourceEofPending
-
-.haveByte:
-	lda sourceSkipLf
-	beq .normalise
-	lda #$00
-	sta sourceSkipLf
-	lda sourceByte
-	cmp #SOURCE_LF
-	beq .raw			; discard the LF half of CRLF
-
-.normalise:
-	lda sourceByte
-	cmp #SOURCE_CR
-	bne .returnByte
-	lda #$01
-	sta sourceSkipLf
-	lda #SOURCE_LF
-.returnByte:
-	sec
-	rts
-
-;;; push_source_byte
-;;; The scanner never pushes more than the one byte it just looked at.
-push_source_byte:
-	sta sourcePushbackByte
-	lda #$01
-	sta sourcePushbackValid
-	rts
-
-increment_source_line:
-	inc sourceLine
-	bne .done
-	inc sourceLine+1
-.done:
-	rts
-
 ;;; next_token
 ;;; Consume source bytes until one Phase 1 token replaces currentToken*.
+;;;
+;;; TOKEN_ERROR is terminal for the compiler.  Individual tests may open a new
+;;; source and call next_token again, but recovery within malformed input is not
+;;; part of the scanner contract.
 next_token:
 	lda #LEX_OK
 	sta scannerError
 .again:
 	jsr read_source_byte
 	bcs .haveByte
-	lda sourceState
 	cmp #SOURCE_STATE_EOF
 	bne .inputError
 	jmp .eof
@@ -231,9 +82,7 @@ next_token:
 	cmp #SOURCE_TAB
 	beq .again
 	cmp #SOURCE_LF
-	bne .tokenStart
-	jsr increment_source_line
-	jmp .again
+	beq .again
 
 .tokenStart:
 	sta scanByte
@@ -245,12 +94,11 @@ next_token:
 	bne .notSlash
 	jsr read_source_byte
 	bcs .slashSecond
-	lda sourceState
 	cmp #SOURCE_STATE_IO_ERROR
 	bne .slashUnexpected
 	jmp .ioError
 .slashUnexpected:
-	lda #LEX_UNEXPECTED_CHARACTER
+	lda #LEX_UNEXPECTED_CHARACTER	; bare '/' at EOF
 	jmp set_lex_error
 .slashSecond:
 	cmp #'*'
@@ -276,11 +124,11 @@ next_token:
 	jmp scan_number
 
 .notNumber:
-	cmp #$27			; single quote
+	cmp #ASCII_SINGLE_QUOTE
 	bne .notCharacter
 	jmp scan_character_literal
 .notCharacter:
-	cmp #$22
+	cmp #ASCII_DOUBLE_QUOTE
 	bne .notString
 	jmp scan_string_literal
 .notString:
@@ -343,6 +191,10 @@ next_token:
 	sta currentTokenKind
 	rts
 
+;;; begin_current_token
+;;; Reset the fields whose previous values must not survive.  The text buffer is
+;;; deliberately not cleared and is not NUL terminated: only bytes
+;;; [0,currentTokenLength) belong to the current token.
 begin_current_token:
 	lda #TOKEN_TYPE_NONE
 	sta currentTokenType
@@ -365,26 +217,17 @@ set_lex_error:
 ;;; skip_block_comment
 ;;; Carry set: closing */ consumed.
 ;;; Carry clear: A is LEX_UNTERMINATED_COMMENT or LEX_IO_ERROR.
+;;; source.asm already accounts for any newline bytes consumed here.
 skip_block_comment:
 .loop:
 	jsr read_source_byte
 	bcc .noByte
-	cmp #SOURCE_LF
-	bne .notLine
-	jsr increment_source_line
-	jmp .loop
-.notLine:
 	cmp #'*'
 	bne .loop
 
 .afterStar:
 	jsr read_source_byte
 	bcc .noByte
-	cmp #SOURCE_LF
-	bne .notLineAfterStar
-	jsr increment_source_line
-	jmp .loop
-.notLineAfterStar:
 	cmp #'/'
 	beq .done
 	cmp #'*'
@@ -392,7 +235,6 @@ skip_block_comment:
 	jmp .loop
 
 .noByte:
-	lda sourceState
 	cmp #SOURCE_STATE_IO_ERROR
 	bne .unterminated
 	lda #LEX_IO_ERROR
@@ -426,65 +268,263 @@ scan_identifier:
 	jsr push_source_byte
 	jmp classify_identifier
 .endSource:
-	lda sourceState
 	cmp #SOURCE_STATE_EOF
 	beq classify_identifier
 	lda #LEX_IO_ERROR
 	jmp set_lex_error
 
 ;;; classify_identifier
-;;; The eight Phase 1 keywords live in one small length-prefixed table.  This
-;;; avoids eight separate string-scanning paths while still comparing each
-;;; identifier only once after it has been collected.
+;;; Phase 1 has only eight keywords.  Dispatch by identifier length and compare
+;;; those words directly so the language vocabulary is visible in the code.
 classify_identifier:
-	ldx #$00
-.nextKeyword:
-	lda keywordTable,x
-	beq .ordinary
-	sta scanKeywordLength
-	inx
-	lda keywordTable,x
-	sta scanKeywordKind
-	inx
-	txa
-	clc
-	adc scanKeywordLength
-	sta scanKeywordNext
+	lda currentTokenLength
+	cmp #$02
+	bne .not2
+	jmp .checkIf
+.not2:
+	cmp #$03
+	bne .not3
+	jmp .checkInt
+.not3:
+	cmp #$04
+	bne .not4
+	jmp .checkLength4
+.not4:
+	cmp #$05
+	bne .not5
+	jmp .checkLength5
+.not5:
+	cmp #$06
+	bne .not6
+	jmp .checkReturn
+.not6:
+	cmp #$08
+	bne .not8
+	jmp .checkUnsigned
+.not8:
+	jmp set_identifier
 
-	lda scanKeywordLength
-	cmp currentTokenLength
-	bne .next
-	ldy #$00
-.compare:
-	lda keywordTable,x
-	cmp currentTokenText,y
-	bne .next
-	inx
-	iny
-	cpy scanKeywordLength
-	bne .compare
-	lda scanKeywordKind
+.checkIf:
+	lda currentTokenText
+	cmp #'i'
+	beq .ifSecond
+	jmp set_identifier
+.ifSecond:
+	lda currentTokenText+1
+	cmp #'f'
+	beq .ifKeyword
+	jmp set_identifier
+.ifKeyword:
+	lda #TOKEN_KW_IF
 	sta currentTokenKind
 	rts
-.next:
-	ldx scanKeywordNext
-	jmp .nextKeyword
-.ordinary:
+
+.checkInt:
+	lda currentTokenText
+	cmp #'i'
+	beq .intSecond
+	jmp set_identifier
+.intSecond:
+	lda currentTokenText+1
+	cmp #'n'
+	beq .intThird
+	jmp set_identifier
+.intThird:
+	lda currentTokenText+2
+	cmp #'t'
+	beq .intKeyword
+	jmp set_identifier
+.intKeyword:
+	lda #TOKEN_KW_INT
+	sta currentTokenKind
+	rts
+
+.checkLength4:
+	lda currentTokenText
+	cmp #'c'
+	beq .checkChar
+	cmp #'e'
+	beq .checkElse
+	jmp set_identifier
+.checkChar:
+	lda currentTokenText+1
+	cmp #'h'
+	beq .charThird
+	jmp set_identifier
+.charThird:
+	lda currentTokenText+2
+	cmp #'a'
+	beq .charFourth
+	jmp set_identifier
+.charFourth:
+	lda currentTokenText+3
+	cmp #'r'
+	beq .charKeyword
+	jmp set_identifier
+.charKeyword:
+	lda #TOKEN_KW_CHAR
+	sta currentTokenKind
+	rts
+.checkElse:
+	lda currentTokenText+1
+	cmp #'l'
+	beq .elseThird
+	jmp set_identifier
+.elseThird:
+	lda currentTokenText+2
+	cmp #'s'
+	beq .elseFourth
+	jmp set_identifier
+.elseFourth:
+	lda currentTokenText+3
+	cmp #'e'
+	beq .elseKeyword
+	jmp set_identifier
+.elseKeyword:
+	lda #TOKEN_KW_ELSE
+	sta currentTokenKind
+	rts
+
+.checkLength5:
+	lda currentTokenText
+	cmp #'w'
+	beq .checkWhile
+	cmp #'b'
+	beq .checkBreak
+	jmp set_identifier
+.checkWhile:
+	lda currentTokenText+1
+	cmp #'h'
+	beq .whileThird
+	jmp set_identifier
+.whileThird:
+	lda currentTokenText+2
+	cmp #'i'
+	beq .whileFourth
+	jmp set_identifier
+.whileFourth:
+	lda currentTokenText+3
+	cmp #'l'
+	beq .whileFifth
+	jmp set_identifier
+.whileFifth:
+	lda currentTokenText+4
+	cmp #'e'
+	beq .whileKeyword
+	jmp set_identifier
+.whileKeyword:
+	lda #TOKEN_KW_WHILE
+	sta currentTokenKind
+	rts
+.checkBreak:
+	lda currentTokenText+1
+	cmp #'r'
+	beq .breakThird
+	jmp set_identifier
+.breakThird:
+	lda currentTokenText+2
+	cmp #'e'
+	beq .breakFourth
+	jmp set_identifier
+.breakFourth:
+	lda currentTokenText+3
+	cmp #'a'
+	beq .breakFifth
+	jmp set_identifier
+.breakFifth:
+	lda currentTokenText+4
+	cmp #'k'
+	beq .breakKeyword
+	jmp set_identifier
+.breakKeyword:
+	lda #TOKEN_KW_BREAK
+	sta currentTokenKind
+	rts
+
+.checkReturn:
+	lda currentTokenText
+	cmp #'r'
+	beq .returnSecond
+	jmp set_identifier
+.returnSecond:
+	lda currentTokenText+1
+	cmp #'e'
+	beq .returnThird
+	jmp set_identifier
+.returnThird:
+	lda currentTokenText+2
+	cmp #'t'
+	beq .returnFourth
+	jmp set_identifier
+.returnFourth:
+	lda currentTokenText+3
+	cmp #'u'
+	beq .returnFifth
+	jmp set_identifier
+.returnFifth:
+	lda currentTokenText+4
+	cmp #'r'
+	beq .returnSixth
+	jmp set_identifier
+.returnSixth:
+	lda currentTokenText+5
+	cmp #'n'
+	beq .returnKeyword
+	jmp set_identifier
+.returnKeyword:
+	lda #TOKEN_KW_RETURN
+	sta currentTokenKind
+	rts
+
+.checkUnsigned:
+	lda currentTokenText
+	cmp #'u'
+	beq .unsignedSecond
+	jmp set_identifier
+.unsignedSecond:
+	lda currentTokenText+1
+	cmp #'n'
+	beq .unsignedThird
+	jmp set_identifier
+.unsignedThird:
+	lda currentTokenText+2
+	cmp #'s'
+	beq .unsignedFourth
+	jmp set_identifier
+.unsignedFourth:
+	lda currentTokenText+3
+	cmp #'i'
+	beq .unsignedFifth
+	jmp set_identifier
+.unsignedFifth:
+	lda currentTokenText+4
+	cmp #'g'
+	beq .unsignedSixth
+	jmp set_identifier
+.unsignedSixth:
+	lda currentTokenText+5
+	cmp #'n'
+	beq .unsignedSeventh
+	jmp set_identifier
+.unsignedSeventh:
+	lda currentTokenText+6
+	cmp #'e'
+	beq .unsignedEighth
+	jmp set_identifier
+.unsignedEighth:
+	lda currentTokenText+7
+	cmp #'d'
+	beq .unsignedKeyword
+	jmp set_identifier
+.unsignedKeyword:
+	lda #TOKEN_KW_UNSIGNED
+	sta currentTokenKind
+	rts
+
+set_identifier:
 	lda #TOKEN_IDENTIFIER
 	sta currentTokenKind
 	rts
-
-;;; Each entry is: text length, token kind, text bytes.  A zero length ends it.
-keywordTable:
-	byte 4,TOKEN_KW_CHAR,'c','h','a','r'
-	byte 3,TOKEN_KW_INT,'i','n','t'
-	byte 8,TOKEN_KW_UNSIGNED,'u','n','s','i','g','n','e','d'
-	byte 2,TOKEN_KW_IF,'i','f'
-	byte 4,TOKEN_KW_ELSE,'e','l','s','e'
-	byte 5,TOKEN_KW_WHILE,'w','h','i','l','e'
-	byte 5,TOKEN_KW_BREAK,'b','r','e','a','k'
-	byte 6,TOKEN_KW_RETURN,'r','e','t','u','r','n'
-	byte 0
 
 ;;; append_token_byte
 ;;; Append A to the shared identifier/string buffer. Carry clear means full.
@@ -500,6 +540,9 @@ append_token_byte:
 	clc
 	rts
 
+;;; Character predicates
+;;; Input: A is the source byte.
+;;; Output: carry says yes/no; A is unchanged.
 is_identifier_start:
 	cmp #'_'
 	beq .yes
@@ -564,7 +607,6 @@ scan_number:
 	jsr push_source_byte
 	jmp finish_integer
 .zeroEndSource:
-	lda sourceState
 	cmp #SOURCE_STATE_EOF
 	bne .zeroIo
 	jmp finish_integer
@@ -592,7 +634,6 @@ scan_number:
 	jsr push_source_byte
 	jmp finish_integer
 .decimalEndSource:
-	lda sourceState
 	cmp #SOURCE_STATE_EOF
 	bne .decimalIo
 	jmp finish_integer
@@ -618,17 +659,16 @@ scan_number:
 	jsr push_source_byte
 	jmp finish_integer
 .hexMissingDigit:
+	;; hex_digit_value preserves the non-digit source byte in A on failure.
 	jsr push_source_byte
 	lda #LEX_BAD_HEX
 	jmp set_lex_error
 .hexMissingSource:
-	lda sourceState
 	cmp #SOURCE_STATE_IO_ERROR
 	beq .hexIo
 	lda #LEX_BAD_HEX
 	jmp set_lex_error
 .hexEndSource:
-	lda sourceState
 	cmp #SOURCE_STATE_EOF
 	bne .hexIo
 	jmp finish_integer
@@ -678,7 +718,7 @@ accumulate_decimal_digit:
 	rol scanTemp+1
 	asl scanTemp
 	rol scanTemp+1
-	;; sum = old*10 + digit
+	;; currentTokenValue = old*10 + digit
 	clc
 	lda currentTokenValue
 	adc scanTemp
@@ -697,7 +737,9 @@ accumulate_decimal_digit:
 	rts
 
 ;;; hex_digit_value
-;;; Carry set and A=0..15 for a hexadecimal digit; carry clear otherwise.
+;;; Input: A is the source byte.
+;;; Carry set:   A is the digit value 0..15.
+;;; Carry clear: A is the original source byte unchanged.
 hex_digit_value:
 	cmp #'0'
 	bcc .tryUpper
@@ -769,21 +811,18 @@ finish_integer:
 
 scan_character_literal:
 	jsr read_source_byte
-	bcs .haveFirst
-	jmp .missingFirst
-.haveFirst:
+	bcc .missingFirst
 	cmp #SOURCE_LF
 	bne .notLine
-	jsr increment_source_line
 	lda #LEX_UNTERMINATED_CHAR
 	jmp set_lex_error
 .notLine:
-	cmp #$5c
+	cmp #ASCII_BACKSLASH
 	bne .notEscape
 	lda #LEX_UNSUPPORTED_ESCAPE
 	jmp set_lex_error
 .notEscape:
-	cmp #$27
+	cmp #ASCII_SINGLE_QUOTE
 	bne .haveCharacter
 	lda #LEX_BAD_CHAR_LENGTH		; empty character literal
 	jmp set_lex_error
@@ -795,11 +834,10 @@ scan_character_literal:
 	bcc .missingClose
 	cmp #SOURCE_LF
 	bne .checkClose
-	jsr increment_source_line
 	lda #LEX_UNTERMINATED_CHAR
 	jmp set_lex_error
 .checkClose:
-	cmp #$27
+	cmp #ASCII_SINGLE_QUOTE
 	beq .done
 	lda #LEX_BAD_CHAR_LENGTH
 	jmp set_lex_error
@@ -811,7 +849,6 @@ scan_character_literal:
 	rts
 .missingFirst:
 .missingClose:
-	lda sourceState
 	cmp #SOURCE_STATE_IO_ERROR
 	beq .io
 	lda #LEX_UNTERMINATED_CHAR
@@ -826,16 +863,15 @@ scan_string_literal:
 	bcc .missingClose
 	cmp #SOURCE_LF
 	bne .notLine
-	jsr increment_source_line
 	lda #LEX_UNTERMINATED_STRING
 	jmp set_lex_error
 .notLine:
-	cmp #$5c
+	cmp #ASCII_BACKSLASH
 	bne .notEscape
 	lda #LEX_UNSUPPORTED_ESCAPE
 	jmp set_lex_error
 .notEscape:
-	cmp #$22
+	cmp #ASCII_DOUBLE_QUOTE
 	beq .done
 	jsr append_token_byte
 	bcs .loop
@@ -846,7 +882,6 @@ scan_string_literal:
 	sta currentTokenKind
 	rts
 .missingClose:
-	lda sourceState
 	cmp #SOURCE_STATE_IO_ERROR
 	beq .io
 	lda #LEX_UNTERMINATED_STRING
@@ -870,7 +905,6 @@ scan_equals:
 	sta currentTokenKind
 	rts
 .noSecond:
-	lda sourceState
 	cmp #SOURCE_STATE_EOF
 	beq .single
 	lda #LEX_IO_ERROR
@@ -889,7 +923,6 @@ scan_bang:
 	sta currentTokenKind
 	rts
 .noSecond:
-	lda sourceState
 	cmp #SOURCE_STATE_IO_ERROR
 	beq .io
 	lda #LEX_UNEXPECTED_CHARACTER
@@ -919,7 +952,6 @@ scan_less:
 	sta currentTokenKind
 	rts
 .noSecond:
-	lda sourceState
 	cmp #SOURCE_STATE_EOF
 	beq .single
 	lda #LEX_IO_ERROR
@@ -946,26 +978,10 @@ scan_greater:
 	sta currentTokenKind
 	rts
 .noSecond:
-	lda sourceState
 	cmp #SOURCE_STATE_EOF
 	beq .single
 	lda #LEX_IO_ERROR
 	jmp set_lex_error
-
-;;; Streaming source state.
-sourceName:		word 0
-sourceNameLength:	byte 0
-sourceDevice:		byte 8
-sourceLfn:		byte SOURCE_LFN_DEFAULT
-sourceOpen:		byte 0
-sourceState:		byte SOURCE_STATE_EOF
-sourcePushbackValid:	byte 0
-sourcePushbackByte:	byte 0
-sourceEofPending:	byte 0
-sourceSkipLf:		byte 0
-sourceByte:		byte 0
-sourceKernalStatus:	byte 0
-sourceLine:		word 1
 
 ;;; Exactly one reusable current token.
 currentTokenKind:	byte TOKEN_EOF
@@ -988,6 +1004,3 @@ scannerError:		byte LEX_OK
 scanByte:		byte 0
 scanDigit:		byte 0
 scanTemp:		word 0
-scanKeywordLength:	byte 0
-scanKeywordKind:	byte 0
-scanKeywordNext:	byte 0

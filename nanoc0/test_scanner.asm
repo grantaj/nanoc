@@ -20,34 +20,27 @@ FAIL_LONG_STRING     = $11
 FAIL_BAD_HEX         = $12
 FAIL_UNEXPECTED      = $13
 FAIL_SLASH_COMMENT   = $14
+FAIL_EMPTY_CHAR      = $15
 
-;;; The scanner plus its focused native tests are larger than the older tiny
-;;; unit tests, so use the ordinary RAM window at $8000-$9fff rather than crowd
-;;; the $c000-$cfff page below C64 I/O space.
+;;; The scanner plus its focused native tests fit comfortably in ordinary RAM
+;;; at $8000-$9fff.  All lexical assertions execute on the C64; the host only
+;;; starts VICE and observes TEST_RESULT.
 	* = $8000
 
 main:
 	jsr test_valid_tokens
-	bcs .lines
-	jmp finish
-.lines:
+	bcc finish
 	jsr test_mixed_line_endings
-	bcs .errors
-	jmp finish
-.errors:
+	bcc finish
 	jsr test_errors
-	bcs .pass
-	jmp finish
-.pass:
+	bcc finish
 	lda #TEST_PASS
 finish:
 	sta TEST_RESULT
 .halt:
 	jmp .halt
 
-;;; test_valid_tokens
-;;; One real streamed file exercises every valid lexical form.  The assertions
-;;; below deliberately inspect scanner state; the host only observes TEST_RESULT.
+;;; One real streamed file exercises every valid lexical form.
 test_valid_tokens:
 	lda #tokensNameEnd-tokensName
 	ldx #<tokensName
@@ -93,7 +86,7 @@ test_valid_tokens:
 	lda #TOKEN_KW_IF
 	jsr expect_kind
 	bcc .identifierFail
-	lda #TOKEN_IDENTIFIER
+	lda #TOKEN_IDENTIFIER		; iffy
 	jsr expect_kind
 	bcc .identifierFail
 	lda currentTokenLength
@@ -219,7 +212,7 @@ test_valid_tokens:
 	jsr expect_character
 	bcc .literalFail
 
-	jsr next_token
+	jsr next_token			; "abc"
 	lda currentTokenKind
 	cmp #TOKEN_STRING
 	bne .literalFail
@@ -236,7 +229,7 @@ test_valid_tokens:
 	cmp #'c'
 	bne .literalFail
 
-	jsr next_token
+	jsr next_token			; ""
 	lda currentTokenKind
 	cmp #TOKEN_STRING
 	bne .literalFail
@@ -265,15 +258,15 @@ test_valid_tokens:
 	rts
 
 .comments:
-	;; No whitespace is needed around a discarded block comment.  Its newline
-	;; still advances the line counter before the following token.
+	;; No whitespace is needed around a discarded block comment.  Newlines inside
+	;; the comment are counted by the source reader before the next token begins.
 	lda #TOKEN_IDENTIFIER		; foo, line 7
 	jsr expect_kind
 	bcc .commentsFail
 	lda currentTokenLine
 	cmp #$07
 	bne .commentsFail
-	lda #TOKEN_IDENTIFIER		; bar, line 8 after comment newline
+	lda #TOKEN_IDENTIFIER		; bar, line 8
 	jsr expect_kind
 	bcc .commentsFail
 	lda currentTokenLine
@@ -282,10 +275,10 @@ test_valid_tokens:
 	lda #TOKEN_IDENTIFIER		; baz, line 9
 	jsr expect_kind
 	bcc .commentsFail
-	lda #'+'				; token separated by physical lines
+	lda #'+'				; line 10
 	jsr expect_kind
 	bcc .commentsFail
-	lda #TOKEN_IDENTIFIER		; qux, line 11
+	lda #TOKEN_IDENTIFIER		; qux, line 11, no final newline
 	jsr expect_kind
 	bcc .commentsFail
 	lda currentTokenLine
@@ -335,190 +328,276 @@ test_mixed_line_endings:
 	clc
 	rts
 
-;;; Each malformed fixture stops at one deliberate lexical error.  Keeping the
-;;; expectations here makes it obvious which native scanner status is required.
+;;; Malformed inputs are separate named tests.  Each opens a fresh source, so no
+;;; test relies on recovery after TOKEN_ERROR.
 test_errors:
+	jsr test_decimal_overflow
+	bcc .done
+	jsr test_hex_overflow
+	bcc .done
+	jsr test_multibyte_character
+	bcc .done
+	jsr test_empty_character
+	bcc .done
+	jsr test_unterminated_character
+	bcc .done
+	jsr test_unterminated_string
+	bcc .done
+	jsr test_unterminated_comment
+	bcc .done
+	jsr test_long_identifier
+	bcc .done
+	jsr test_long_string
+	bcc .done
+	jsr test_bad_hex
+	bcc .done
+	jsr test_unexpected_character
+	bcc .done
+	jsr test_slash_comment
+.done:
+	rts
+
+test_decimal_overflow:
 	lda #odecNameEnd-odecName
 	ldx #<odecName
 	ldy #>odecName
 	jsr open_fixture
-	bcs .opened1
+	bcs .opened
 	lda #FAIL_OPEN
 	clc
 	rts
-.opened1:
+.opened:
 	lda #LEX_INTEGER_OVERFLOW
 	jsr expect_error
-	bcs .hexOverflow
+	bcs .pass
 	lda #FAIL_DEC_OVERFLOW
 	clc
 	rts
-.hexOverflow:
+.pass:
+	sec
+	rts
+
+test_hex_overflow:
 	lda #ohexNameEnd-ohexName
 	ldx #<ohexName
 	ldy #>ohexName
 	jsr open_fixture
-	bcs .opened2
+	bcs .opened
 	lda #FAIL_OPEN
 	clc
 	rts
-.opened2:
+.opened:
 	lda #LEX_INTEGER_OVERFLOW
 	jsr expect_error
-	bcs .badChar
+	bcs .pass
 	lda #FAIL_HEX_OVERFLOW
 	clc
 	rts
-.badChar:
+.pass:
+	sec
+	rts
+
+test_multibyte_character:
 	lda #badCharNameEnd-badCharName
 	ldx #<badCharName
 	ldy #>badCharName
 	jsr open_fixture
-	bcs .opened3
+	bcs .opened
 	lda #FAIL_OPEN
 	clc
 	rts
-.opened3:
+.opened:
 	lda #LEX_BAD_CHAR_LENGTH
 	jsr expect_error
-	bcs .untermChar
+	bcs .pass
 	lda #FAIL_BAD_CHAR
 	clc
 	rts
-.untermChar:
+.pass:
+	sec
+	rts
+
+test_empty_character:
+	lda #emptyCharNameEnd-emptyCharName
+	ldx #<emptyCharName
+	ldy #>emptyCharName
+	jsr open_fixture
+	bcs .opened
+	lda #FAIL_OPEN
+	clc
+	rts
+.opened:
+	lda #LEX_BAD_CHAR_LENGTH
+	jsr expect_error
+	bcs .pass
+	lda #FAIL_EMPTY_CHAR
+	clc
+	rts
+.pass:
+	sec
+	rts
+
+test_unterminated_character:
 	lda #ucharNameEnd-ucharName
 	ldx #<ucharName
 	ldy #>ucharName
 	jsr open_fixture
-	bcs .opened4
+	bcs .opened
 	lda #FAIL_OPEN
 	clc
 	rts
-.opened4:
+.opened:
 	lda #LEX_UNTERMINATED_CHAR
 	jsr expect_error
-	bcs .untermString
+	bcs .pass
 	lda #FAIL_UNTERM_CHAR
 	clc
 	rts
-.untermString:
+.pass:
+	sec
+	rts
+
+test_unterminated_string:
 	lda #ustrNameEnd-ustrName
 	ldx #<ustrName
 	ldy #>ustrName
 	jsr open_fixture
-	bcs .opened5
+	bcs .opened
 	lda #FAIL_OPEN
 	clc
 	rts
-.opened5:
+.opened:
 	lda #LEX_UNTERMINATED_STRING
 	jsr expect_error
-	bcs .untermComment
+	bcs .pass
 	lda #FAIL_UNTERM_STRING
 	clc
 	rts
-.untermComment:
+.pass:
+	sec
+	rts
+
+test_unterminated_comment:
 	lda #ucomNameEnd-ucomName
 	ldx #<ucomName
 	ldy #>ucomName
 	jsr open_fixture
-	bcs .opened6
+	bcs .opened
 	lda #FAIL_OPEN
 	clc
 	rts
-.opened6:
+.opened:
 	lda #LEX_UNTERMINATED_COMMENT
 	jsr expect_error
-	bcs .longIdentifier
+	bcs .pass
 	lda #FAIL_UNTERM_COMMENT
 	clc
 	rts
-.longIdentifier:
+.pass:
+	sec
+	rts
+
+test_long_identifier:
 	lda #longIdNameEnd-longIdName
 	ldx #<longIdName
 	ldy #>longIdName
 	jsr open_fixture
-	bcs .opened7
+	bcs .opened
 	lda #FAIL_OPEN
 	clc
 	rts
-.opened7:
+.opened:
 	lda #LEX_TEXT_TOO_LONG
 	jsr expect_error
-	bcs .longString
+	bcs .pass
 	lda #FAIL_LONG_IDENTIFIER
 	clc
 	rts
-.longString:
+.pass:
+	sec
+	rts
+
+test_long_string:
 	lda #longStringNameEnd-longStringName
 	ldx #<longStringName
 	ldy #>longStringName
 	jsr open_fixture
-	bcs .opened8
+	bcs .opened
 	lda #FAIL_OPEN
 	clc
 	rts
-.opened8:
+.opened:
 	lda #LEX_TEXT_TOO_LONG
 	jsr expect_error
-	bcs .badHex
+	bcs .pass
 	lda #FAIL_LONG_STRING
 	clc
 	rts
-.badHex:
+.pass:
+	sec
+	rts
+
+test_bad_hex:
 	lda #badHexNameEnd-badHexName
 	ldx #<badHexName
 	ldy #>badHexName
 	jsr open_fixture
-	bcs .opened9
+	bcs .opened
 	lda #FAIL_OPEN
 	clc
 	rts
-.opened9:
+.opened:
 	lda #LEX_BAD_HEX
 	jsr expect_error
-	bcs .unexpected
+	bcs .pass
 	lda #FAIL_BAD_HEX
 	clc
 	rts
-.unexpected:
+.pass:
+	sec
+	rts
+
+test_unexpected_character:
 	lda #badNameEnd-badName
 	ldx #<badName
 	ldy #>badName
 	jsr open_fixture
-	bcs .opened10
+	bcs .opened
 	lda #FAIL_OPEN
 	clc
 	rts
-.opened10:
+.opened:
 	lda #LEX_UNEXPECTED_CHARACTER
 	jsr expect_error
-	bcc .unexpectedFail
+	bcc .fail
 	lda currentTokenLine
-	cmp #$03			; two leading physical lines in BAD.C
-	bne .unexpectedFail
-	jmp .slashComment
-.unexpectedFail:
+	cmp #$03			; BAD.C has two leading physical lines
+	beq .pass
+.fail:
 	lda #FAIL_UNEXPECTED
 	clc
 	rts
-.slashComment:
+.pass:
+	sec
+	rts
+
+test_slash_comment:
 	lda #slashNameEnd-slashName
 	ldx #<slashName
 	ldy #>slashName
 	jsr open_fixture
-	bcs .opened11
+	bcs .opened
 	lda #FAIL_OPEN
 	clc
 	rts
-.opened11:
+.opened:
 	lda #LEX_UNEXPECTED_CHARACTER
 	jsr expect_error
-	bcs .done
+	bcs .pass
 	lda #FAIL_SLASH_COMMENT
 	clc
 	rts
-.done:
+.pass:
 	sec
 	rts
 
@@ -654,6 +733,9 @@ ohexNameEnd:
 badCharName:
 	byte 'B','A','D','C','H','A','R','.','C'
 badCharNameEnd:
+emptyCharName:
+	byte 'E','M','P','T','Y','C','H','A','R','.','C'
+emptyCharNameEnd:
 ucharName:
 	byte 'U','C','H','A','R','.','C'
 ucharNameEnd:
