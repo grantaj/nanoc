@@ -84,8 +84,9 @@ includeSourceBody:
 	pla
 	rts
 .ok:
+	ldx sourceDepth
 	lda #$00
-	sta sourceEofPending
+	sta sourceEofPending,x		; leave the parent's pending EOF untouched
 	lda #ASSEMBLE_OK
 	rts
 .nameBad:
@@ -301,10 +302,11 @@ selectSourceAtDepth:
 ;;; CR and LF both end a line. CRLF therefore yields one harmless blank line.
 readSourceLine:
 .start:
-	lda sourceEofPending
+	ldx sourceDepth
+	lda sourceEofPending,x
 	beq .newLine
 	lda #$00
-	sta sourceEofPending
+	sta sourceEofPending,x
 	jsr finishSourceFile
 	bcs .start			; child EOF: continue parent
 	rts				; root EOF or parent-channel error
@@ -330,8 +332,9 @@ readSourceLine:
 	lda sourceStatus
 	and #SOURCE_STATUS_EOI
 	beq .notLast
+	ldx sourceDepth
 	lda #$01
-	sta sourceEofPending
+	sta sourceEofPending,x
 .notLast:
 	lda sourceByte
 	cmp #SOURCE_EOL_CR
@@ -350,7 +353,8 @@ readSourceLine:
 	lda sourceByte
 	sta (ZP_PTR0),y
 	inc sourceLineLength
-	lda sourceEofPending
+	ldx sourceDepth
+	lda sourceEofPending,x
 	beq .read
 
 .lineDone:
@@ -441,7 +445,9 @@ sourceLineBuffer:	word 0
 sourceLineLength:	byte 0
 sourceDepth:		byte 0
 sourceCurrentLfn:	byte 0
-sourceEofPending:	byte 0
+;;; EOI belongs to the open source that observed it. A parent can already be at
+;;; EOF while its final include is being read, so keep one byte per source depth.
+sourceEofPending:	byte 0,0,0,0,0
 sourceByte:		byte 0
 sourceStatus:		byte 0
 openName:		word 0

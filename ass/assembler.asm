@@ -502,9 +502,13 @@ stageResolvedInstruction:
 	rts
 
 ;;; stageResolvedRelative
-;;; The target and current PC are both final, so a backward/fixed branch can be
-;;; range-checked and encoded immediately.
+;;; The target and current PC are both final. Put them into the same tiny branch
+;;; encoder used by forward fixups, then stage the opcode and signed byte.
 stageResolvedRelative:
+	lda instructionOperandValue
+	sta resolvedValue
+	lda instructionOperandValue+1
+	sta resolvedValue+1
 	clc
 	lda assemblyPtr
 	adc #$02
@@ -512,25 +516,8 @@ stageResolvedRelative:
 	lda assemblyPtr+1
 	adc #$00
 	sta relativeBase+1
-	sec
-	lda instructionOperandValue
-	sbc relativeBase
-	tax
-	lda instructionOperandValue+1
-	sbc relativeBase+1
-	cpx #$80
-	bcc .positive
-	cmp #$ff
-	bne .range
-	txa
-	sta relativeByte
-	jmp .stage
-.positive:
-	cmp #$00
-	bne .range
-	txa
-	sta relativeByte
-.stage:
+	jsr encodeRelativeByte
+	bcc .range
 	lda instructionOpcode
 	jsr stageByte
 	bcc .full
@@ -675,7 +662,6 @@ sourceFileMode:	byte 0
 originAllowed:	byte 0
 assemblyStart:	word 0
 instructionWidth:	byte 0
-relativeByte:	byte 0
 
 	include "source.asm"
 	include "data.asm"
