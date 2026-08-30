@@ -187,7 +187,7 @@ The preferred architecture is as direct as the language permits: scan source, re
 
 The input is a character stream, not a sequence of semantically independent lines. The implementation may refill a small bounded buffer, but whitespace, expressions and block comments may cross physical input lines.
 
-The output is ordinary `ass` source. `nanoc0` tracks generated size from the beginning because the native assembler has a finite 16 KiB staging region; compact obvious code matters, but not at the cost of introducing layout machinery such as branch relaxation.
+The output is ordinary `ass` source. `nanoc0` must keep generated output comfortably inside the native assembler's 16 KiB staging region for the bootstrap programs. Measure that from the first integration programs rather than discovering it only at the final `ass.c` test. Compact obvious code matters, but not at the cost of introducing layout machinery such as branch relaxation.
 
 `nanoc0` is also allowed to be bootstrap-specific. Once Nano C is self-hosted, we do not need to keep extending the assembly compiler. It should be correct, compact and exceptionally readable, but it does not need speculative architecture for Phase 2.
 
