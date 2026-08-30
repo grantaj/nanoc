@@ -2,21 +2,62 @@
 ;;;
 ;;; Tiny text formatter shared by Nano C code generators.
 ;;;
-;;; The compiler emits ordinary `ass` source one byte at a time through the
-;;; external emit_output_byte hook:
+;;; Generated `ass` source is streamed one byte at a time. When
+;;; emitOutputEnabled is zero the sink discards text (useful while declaration-
+;;; only tests exercise parser state). When enabled, the caller must already
+;;; have selected a KERNAL output channel with CHKOUT and bytes go straight to
+;;; CHROUT. There is no line/output buffer.
 ;;;
-;;;   A = byte to write
-;;;   carry set on success
-;;;   X, Y and $fc-$ff preserved
-;;;
-;;; The eventual compiler driver supplies the real byte sink. Native tests can
-;;; use a RAM/file sink without changing any parser/code-generation logic.
+;;; emit_output_byte preserves X, Y and both compiler scratch pairs because the
+;;; formatter may be walking text through them. #57 only needs to add the normal
+;;; create/open/close wrapper around this already-streaming byte path.
 ;;;
 ;;; This file deliberately formats only the few things the compiler repeatedly
 ;;; needs: fixed fragments, hexadecimal values, source names and generated
-;;; storage/label names. It is not printf and it does not build lines in RAM.
+;;; storage/label names. It is not printf.
 
 EMIT_PTR = $fc
+
+;;; emit_output_byte
+;;; A=byte. Carry set success. X/Y and $fc-$ff preserved.
+emit_output_byte:
+	sta emitOutputByte
+	lda emitOutputEnabled
+	bne .write
+	sec
+	rts
+.write:
+	stx emitOutputSavedX
+	sty emitOutputSavedY
+	lda $fc
+	sta emitOutputSavedScratch
+	lda $fd
+	sta emitOutputSavedScratch+1
+	lda $fe
+	sta emitOutputSavedScratch+2
+	lda $ff
+	sta emitOutputSavedScratch+3
+	lda emitOutputByte
+	jsr CHROUT
+	jsr READST
+	sta emitOutputStatus
+	lda emitOutputSavedScratch
+	sta $fc
+	lda emitOutputSavedScratch+1
+	sta $fd
+	lda emitOutputSavedScratch+2
+	sta $fe
+	lda emitOutputSavedScratch+3
+	sta $ff
+	ldx emitOutputSavedX
+	ldy emitOutputSavedY
+	lda emitOutputStatus
+	beq .ok
+	clc
+	rts
+.ok:
+	sec
+	rts
 
 ;;; emit_text
 ;;; A=length, X/Y=address. Carry set when all bytes were accepted.
@@ -235,6 +276,12 @@ emitStringPrefixEnd:
 emitLabelPrefix:	byte '_','_','n','c','_','L'
 emitLabelPrefixEnd:
 
+emitOutputEnabled:	byte 0
+emitOutputByte:		byte 0
+emitOutputSavedX:	byte 0
+emitOutputSavedY:	byte 0
+emitOutputSavedScratch:	ds 4
+emitOutputStatus:	byte 0
 emitTextLength:		byte 0
 emitNumber:		byte 0
 emitSavedIndex:		byte 0
