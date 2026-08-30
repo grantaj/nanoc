@@ -1,31 +1,32 @@
 ;;; expression.asm
 ;;;
-;;; Nano C Phase 1 expression parser and direct `ass` code generator.
+;;; Nano C Phase 1 expression parser.
 ;;;
-;;; This is intentionally one small explicit machine rather than recursive
-;;; descent. The current value is always the value the generated program will
-;;; have in A/X. Binary left operands are emitted to fixed per-function spill
-;;; slots before later source is consumed. The compiler retains no expression
-;;; tree, RPN stream or runtime value stack.
+;;; This is one explicit bounded state machine, not recursive descent. The
+;;; generated program's current value is always in A/X. A binary left operand
+;;; that must survive later source is emitted to a reusable fixed per-function
+;;; spill slot. The compiler retains no expression tree, RPN stream or generic
+;;; intermediate representation.
 ;;;
-;;; emit.asm streams generated source directly when its output flag is enabled.
-;;; Function calls are the one deliberately unfinished primary:
-;;; expression_call_primary receives X=known persistent function index with
-;;; currentTokenKind='(' and will become #57's non-recursive pending-call state
-;;; machine. The #55 stub fails explicitly rather than pretending to compile a
-;;; call with semantics that would later have to be replaced.
+;;; expression_codegen.asm contains the literal 6502 sequences emitted by
+;;; reductions. Keeping those sequences separate makes the parser itself readable
+;;; without introducing an abstraction between parsing and code generation.
+;;;
+;;; Calls are the one deliberately unfinished primary. The #55 stub fails at a
+;;; call expression without consuming it; #57 replaces that one routine with the
+;;; explicit pending-call state machine.
 
 	include "emit.asm"
 
-EXPR_OK                    = 0
-EXPR_EXPECTED_VALUE        = 1
-EXPR_STACK_OVERFLOW        = 2
-EXPR_UNMATCHED_DELIMITER   = 3
-EXPR_UNDECLARED            = 4
-EXPR_BAD_PRIMARY           = 5
-EXPR_BAD_TYPE              = 6
-EXPR_BSS_OVERFLOW          = 7
-EXPR_EMIT_ERROR            = 8
+EXPR_OK                     = 0
+EXPR_EXPECTED_VALUE         = 1
+EXPR_STACK_OVERFLOW         = 2
+EXPR_UNMATCHED_DELIMITER    = 3
+EXPR_UNDECLARED             = 4
+EXPR_BAD_PRIMARY            = 5
+EXPR_BAD_TYPE               = 6
+EXPR_BSS_OVERFLOW           = 7
+EXPR_EMIT_ERROR             = 8
 EXPR_LITERAL_COUNT_OVERFLOW = 9
 EXPR_LITERAL_POOL_OVERFLOW  = 10
 EXPR_CALL_UNAVAILABLE       = 11
@@ -71,7 +72,7 @@ reset_expression_translation_state:
 
 ;;; reset_expression_function_state
 ;;; Spill labels are reused by depth inside each function. Previously allocated
-;;; BSS itself remains allocated, but a new function owns a new label namespace.
+;;; BSS remains allocated, but the new function has a new label namespace.
 reset_expression_function_state:
 	lda #$00
 	sta operatorCount
@@ -82,9 +83,13 @@ reset_expression_function_state:
 
 ;;; parse_expression
 ;;; Compile one expression beginning at currentToken. The first token that is
-;;; not part of the expression is left current for the caller (typically ';',
-;;; ',', ')' or ']'). Carry set means the generated value is in target A/X and
+;;; not part of it remains current for the caller, normally ';', ',', ')' or ']'.
+;;; Carry set means the generated value is in target A/X and
 ;;; expressionValueType describes it.
+;;;
+;;; Long failure paths use an adjacent branch followed by RTS/JMP rather than
+;;; relying on 6502 relative-branch reach. That keeps this state machine robust
+;;; as its individual cases grow.
 parse_expression:
 	lda #EXPR_OK
 	sta expressionError
@@ -101,11 +106,17 @@ parse_expression:
 	cmp #'('
 	beq .openGroup
 	jsr parse_expression_primary
-	bcc .failed
+	bcs .primaryDone
+	rts
+.primaryDone:
 	jsr reduce_unary_operators
-	bcc .failed
+	bcs .unaryDone
+	rts
+.unaryDone:
 	jsr handle_postfix_index
-	bcc .failed
+	bcs .postfixDone
+	rts
+.postfixDone:
 	lda expressionNeedValue
 	bne .value
 	jmp .operator
@@ -113,17 +124,25 @@ parse_expression:
 .unaryMinus:
 	lda #OP_NEG
 	jsr push_simple_operator
-	bcc .failed
+	bcs .unaryPushed
+	rts
+.unaryPushed:
 	jsr parser_next
-	bcc .scannerFail
+	bcs .unaryAdvanced
+	jmp .scannerFail
+.unaryAdvanced:
 	jmp .value
 
 .openGroup:
 	lda #OP_GROUP
 	jsr push_simple_operator
-	bcc .failed
+	bcs .groupPushed
+	rts
+.groupPushed:
 	jsr parser_next
-	bcc .scannerFail
+	bcs .groupAdvanced
+	jmp .scannerFail
+.groupAdvanced:
 	jmp .value
 
 .operator:
@@ -138,13 +157,21 @@ parse_expression:
 	sta pendingOperator
 	sty pendingPrecedence
 	jsr reduce_for_precedence
-	bcc .failed
+	bcs .precedenceDone
+	rts
+.precedenceDone:
 	jsr spill_current_value
-	bcc .failed
+	bcs .leftSpilled
+	rts
+.leftSpilled:
 	jsr push_pending_binary
-	bcc .failed
+	bcs .binaryPushed
+	rts
+.binaryPushed:
 	jsr parser_next
-	bcc .scannerFail
+	bcs .binaryAdvanced
+	jmp .scannerFail
+.binaryAdvanced:
 	lda #$01
 	sta expressionNeedValue
 	jmp .value
@@ -152,15 +179,28 @@ parse_expression:
 .closeGroup:
 	lda #OP_GROUP
 	jsr reduce_to_marker
-	bcc .finish
+	bcs .groupMarker
+	lda expressionError
+	beq .finish
+	clc
+	rts
+.groupMarker:
 	jsr pop_group_marker
-	bcc .failed
+	bcs .groupPopped
+	rts
+.groupPopped:
 	jsr parser_next
-	bcc .scannerFail
+	bcs .groupCloseAdvanced
+	jmp .scannerFail
+.groupCloseAdvanced:
 	jsr reduce_unary_operators
-	bcc .failed
+	bcs .groupUnaryDone
+	rts
+.groupUnaryDone:
 	jsr handle_postfix_index
-	bcc .failed
+	bcs .groupPostfixDone
+	rts
+.groupPostfixDone:
 	lda expressionNeedValue
 	bne .value
 	jmp .operator
@@ -168,15 +208,28 @@ parse_expression:
 .closeIndex:
 	lda #OP_INDEX
 	jsr reduce_to_marker
-	bcc .finish
+	bcs .indexMarker
+	lda expressionError
+	beq .finish
+	clc
+	rts
+.indexMarker:
 	jsr pop_index_marker
-	bcc .failed
+	bcs .indexPopped
+	rts
+.indexPopped:
 	jsr parser_next
-	bcc .scannerFail
+	bcs .indexCloseAdvanced
+	jmp .scannerFail
+.indexCloseAdvanced:
 	jsr reduce_unary_operators
-	bcc .failed
+	bcs .indexUnaryDone
+	rts
+.indexUnaryDone:
 	jsr handle_postfix_index
-	bcc .failed
+	bcs .indexPostfixDone
+	rts
+.indexPostfixDone:
 	lda expressionNeedValue
 	bne .value
 	jmp .operator
@@ -188,7 +241,9 @@ parse_expression:
 	jmp expression_fail
 .haveValue:
 	jsr reduce_all_operators
-	bcc .failed
+	bcs .reduced
+	rts
+.reduced:
 	lda operatorCount
 	beq .ok
 	lda #EXPR_UNMATCHED_DELIMITER
@@ -196,12 +251,10 @@ parse_expression:
 .ok:
 	sec
 	rts
+
 .scannerFail:
 	lda #EXPR_BAD_PRIMARY
 	jmp expression_fail
-.failed:
-	clc
-	rts
 
 expression_fail:
 	sta expressionError
@@ -242,13 +295,13 @@ parse_expression_primary:
 .integerTypeDone:
 	sta expressionValueType
 	jsr emit_load_literal
-	bcc .emitFail
+	bcs .integerEmitted
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
+.integerEmitted:
 	jsr parser_next
-	bcc .scanFail
-	lda #$00
-	sta expressionNeedValue
-	sec
-	rts
+	bcs .primaryDone
+	jmp .scanFail
 
 .character:
 	lda currentTokenValue
@@ -258,19 +311,24 @@ parse_expression_primary:
 	lda #TYPE_INT
 	sta expressionValueType
 	jsr emit_load_literal
-	bcc .emitFail
+	bcs .characterEmitted
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
+.characterEmitted:
 	jsr parser_next
-	bcc .scanFail
-	lda #$00
-	sta expressionNeedValue
-	sec
-	rts
+	bcs .primaryDone
+	jmp .scanFail
 
 .string:
 	jsr capture_string_literal
-	bcc .failed
+	bcs .stringCaptured
+	rts
+.stringCaptured:
 	jsr emit_load_literal_address
-	bcc .emitFail
+	bcs .stringEmitted
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
+.stringEmitted:
 	lda #TYPE_CHAR_PTR
 	sta expressionValueType
 	lda #$01
@@ -278,11 +336,8 @@ parse_expression_primary:
 	lda #TYPE_CHAR
 	sta expressionElementType
 	jsr parser_next
-	bcc .scanFail
-	lda #$00
-	sta expressionNeedValue
-	sec
-	rts
+	bcs .primaryDone
+	jmp .scanFail
 
 .identifier:
 	jsr lookup_symbol
@@ -309,8 +364,9 @@ parse_expression_primary:
 	sta primarySymbolType
 .advanceName:
 	jsr parser_next
-	bcc .scanFail
-
+	bcs .nameAdvanced
+	jmp .scanFail
+.nameAdvanced:
 	lda primarySymbolArea
 	cmp #SYMBOL_AREA_PERSISTENT
 	bne .ordinaryScalar
@@ -333,11 +389,9 @@ parse_expression_primary:
 	sta expressionElementType
 .loadScalar:
 	jsr emit_load_primary_scalar
-	bcc .emitFail
-	lda #$00
-	sta expressionNeedValue
-	sec
-	rts
+	bcs .primaryDone
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
 
 .array:
 	lda primarySymbolType
@@ -353,11 +407,9 @@ parse_expression_primary:
 	sta expressionArrayOnly
 .arrayCanDecay:
 	jsr emit_load_primary_address
-	bcc .emitFail
-	lda #$00
-	sta expressionNeedValue
-	sec
-	rts
+	bcs .primaryDone
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
 
 .function:
 	lda currentTokenKind
@@ -368,31 +420,27 @@ parse_expression_primary:
 .call:
 	ldx primarySymbolIndex
 	jsr expression_call_primary
-	bcc .failed
+	bcs .primaryDone
+	rts
+
+.primaryDone:
 	lda #$00
 	sta expressionNeedValue
 	sec
 	rts
-
-.emitFail:
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
 .scanFail:
 	lda #EXPR_BAD_PRIMARY
 	jmp expression_fail
-.failed:
-	clc
-	rts
 
-;;; #55 intentionally exposes the final call-primary shape but does not consume
+;;; #55 intentionally exposes the final call-primary seam but does not consume
 ;;; call syntax. #57 replaces this routine with the pending-call stack without
 ;;; changing the expression parser above.
 expression_call_primary:
 	lda #EXPR_CALL_UNAVAILABLE
 	jmp expression_fail
 
-;;; Postfix indexing is represented by a marker on the same explicit operator
-;;; stack. The base address is spilled before the index expression begins.
+;;; Postfix indexing uses a marker on the same explicit operator stack. The full
+;;; 16-bit base address is spilled before the index expression begins.
 handle_postfix_index:
 	lda currentTokenKind
 	cmp #'['
@@ -417,7 +465,9 @@ handle_postfix_index:
 	sta expressionElementType
 .allowed:
 	jsr spill_current_value
-	bcc .failed
+	bcs .baseSpilled
+	rts
+.baseSpilled:
 	ldx operatorCount
 	cpx #EXPR_STACK_CAPACITY
 	bcc .space
@@ -434,19 +484,16 @@ handle_postfix_index:
 	sta operatorType,x
 	inc operatorCount
 	jsr parser_next
-	bcc .scanFail
+	bcs .advanced
+	lda #EXPR_BAD_PRIMARY
+	jmp expression_fail
+.advanced:
 	lda #$01
 	sta expressionNeedValue
 	lda #$00
 	sta expressionIndexable
 	sta expressionArrayOnly
 	sec
-	rts
-.scanFail:
-	lda #EXPR_BAD_PRIMARY
-	jmp expression_fail
-.failed:
-	clc
 	rts
 
 ;;; push_simple_operator
@@ -464,8 +511,8 @@ push_simple_operator:
 	rts
 
 ;;; spill_current_value
-;;; Save target A/X into the reusable slot for expressionSpillDepth. Allocate
-;;; that static word only the first time this function reaches the depth.
+;;; Save target A/X into the slot for expressionSpillDepth. Allocate that static
+;;; word only the first time this function reaches the depth.
 spill_current_value:
 	lda expressionSpillDepth
 	cmp #EXPR_STACK_CAPACITY
@@ -486,18 +533,21 @@ spill_current_value:
 .bssOk:
 	lda expressionSpillDepth
 	jsr emit_spill_definition
-	bcc .emitFail
+	bcs .definitionDone
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
+.definitionDone:
 	inc spillAllocatedCount
 .allocated:
 	lda expressionSpillDepth
 	jsr emit_store_spill
-	bcc .emitFail
+	bcs .stored
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
+.stored:
 	inc expressionSpillDepth
 	sec
 	rts
-.emitFail:
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
 
 push_pending_binary:
 	ldx operatorCount
@@ -518,9 +568,8 @@ push_pending_binary:
 	sec
 	rts
 
-;;; reduce_unary_operators
-;;; Unary minus is right-associative simply because consecutive '-' markers stay
-;;; stacked until a primary has been emitted, then reduce from the top.
+;;; Unary minus is right-associative because consecutive '-' markers remain
+;;; stacked until a primary arrives, then reduce from the top.
 reduce_unary_operators:
 .loop:
 	lda operatorCount
@@ -531,12 +580,13 @@ reduce_unary_operators:
 	cmp #OP_NEG
 	bne .done
 	jsr reduce_unary_minus
-	bcc .failed
+	bcs .reduced
+	rts
+.reduced:
 	dec operatorCount
 	jmp .loop
 .done:
 	sec
-.failed:
 	rts
 
 reduce_unary_minus:
@@ -547,7 +597,10 @@ reduce_unary_minus:
 	jmp expression_fail
 .integer:
 	jsr emit_unary_minus
-	bcc .emitFail
+	bcs .emitted
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
+.emitted:
 	lda expressionValueType
 	cmp #TYPE_UNSIGNED
 	beq .typeDone
@@ -558,9 +611,6 @@ reduce_unary_minus:
 	sta expressionIndexable
 	sec
 	rts
-.emitFail:
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
 
 ;;; binary_operator_for_token
 ;;; Carry set: A=OP_*, Y=precedence. Carry clear means expression terminator.
@@ -594,55 +644,68 @@ binary_operator_for_token:
 	beq .or
 	clc
 	rts
-.mul:	lda #OP_MUL
+.mul:
+	lda #OP_MUL
 	ldy #PREC_MUL
 	sec
 	rts
-.add:	lda #OP_ADD
+.add:
+	lda #OP_ADD
 	ldy #PREC_ADD
 	sec
 	rts
-.sub:	lda #OP_SUB
+.sub:
+	lda #OP_SUB
 	ldy #PREC_ADD
 	sec
 	rts
-.shl:	lda #OP_SHL
+.shl:
+	lda #OP_SHL
 	ldy #PREC_SHIFT
 	sec
 	rts
-.shr:	lda #OP_SHR
+.shr:
+	lda #OP_SHR
 	ldy #PREC_SHIFT
 	sec
 	rts
-.lt:	lda #OP_LT
+.lt:
+	lda #OP_LT
 	ldy #PREC_REL
 	sec
 	rts
-.le:	lda #OP_LE
+.le:
+	lda #OP_LE
 	ldy #PREC_REL
 	sec
 	rts
-.gt:	lda #OP_GT
+.gt:
+	lda #OP_GT
 	ldy #PREC_REL
 	sec
 	rts
-.ge:	lda #OP_GE
+.ge:
+	lda #OP_GE
 	ldy #PREC_REL
 	sec
 	rts
-.eq:	lda #OP_EQ
+.eq:
+	lda #OP_EQ
 	ldy #PREC_EQ
 	sec
 	rts
-.ne:	lda #OP_NE
+.ne:
+	lda #OP_NE
 	ldy #PREC_EQ
 	sec
 	rts
-.and:	lda #OP_AND
+.and:
+	lda #OP_AND
 	ldy #PREC_AND
 	sec
 	rts
-.or:	lda #OP_OR
+.or:
+	lda #OP_OR
 	ldy #PREC_OR
 	sec
 	rts
@@ -670,25 +733,33 @@ operator_precedence:
 	beq .and
 	cmp #OP_OR
 	beq .or
-.none:	ldy #$00
+.none:
+	ldy #$00
 	rts
-.mul:	ldy #PREC_MUL
+.mul:
+	ldy #PREC_MUL
 	rts
-.add:	ldy #PREC_ADD
+.add:
+	ldy #PREC_ADD
 	rts
-.shift:	ldy #PREC_SHIFT
+.shift:
+	ldy #PREC_SHIFT
 	rts
-.rel:	ldy #PREC_REL
+.rel:
+	ldy #PREC_REL
 	rts
-.eq:	ldy #PREC_EQ
+.eq:
+	ldy #PREC_EQ
 	rts
-.and:	ldy #PREC_AND
+.and:
+	ldy #PREC_AND
 	rts
-.or:	ldy #PREC_OR
+.or:
+	ldy #PREC_OR
 	rts
 
-;;; reduce_for_precedence
-;;; All binary Phase 1 operators are left associative.
+;;; All Phase 1 binary operators are left associative. Reduce an operator with
+;;; precedence >= the incoming one before pushing the incoming operator.
 reduce_for_precedence:
 .loop:
 	lda operatorCount
@@ -706,20 +777,23 @@ reduce_for_precedence:
 	cpy pendingPrecedence
 	bcc .done
 	jsr reduce_top_binary
-	bcc .failed
+	bcs .binaryDone
+	rts
+.binaryDone:
 	jmp .loop
 .unary:
 	jsr reduce_unary_operators
-	bcc .failed
+	bcs .unaryDone
+	rts
+.unaryDone:
 	jmp .loop
 .done:
 	sec
-.failed:
 	rts
 
-;;; reduce_to_marker
-;;; A=marker kind. Reduce binary operators above it. Carry clear means no such
-;;; marker belongs to this delimiter, so the delimiter is for the caller.
+;;; A=marker kind. Binary operators above the marker are reduced. Carry clear
+;;; with expressionError still zero means the delimiter belongs to the caller;
+;;; carry clear with an error means malformed nesting/evaluation.
 reduce_to_marker:
 	sta wantedMarker
 .loop:
@@ -737,11 +811,15 @@ reduce_to_marker:
 	cmp #OP_NEG
 	beq .unary
 	jsr reduce_top_binary
-	bcc .failed
+	bcs .binaryDone
+	rts
+.binaryDone:
 	jmp .loop
 .unary:
 	jsr reduce_unary_operators
-	bcc .failed
+	bcs .unaryDone
+	rts
+.unaryDone:
 	jmp .loop
 .mismatch:
 	lda #EXPR_UNMATCHED_DELIMITER
@@ -750,9 +828,6 @@ reduce_to_marker:
 	sec
 	rts
 .notFound:
-	clc
-	rts
-.failed:
 	clc
 	rts
 
@@ -784,7 +859,10 @@ pop_index_marker:
 	dec operatorCount
 	dec expressionSpillDepth
 	jsr emit_index_load
-	bcc .emitFail
+	bcs .emitted
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
+.emitted:
 	lda reduceLeftType
 	sta expressionValueType
 	lda #$00
@@ -797,9 +875,6 @@ pop_index_marker:
 	jmp expression_fail
 .bad:
 	lda #EXPR_UNMATCHED_DELIMITER
-	jmp expression_fail
-.emitFail:
-	lda #EXPR_EMIT_ERROR
 	jmp expression_fail
 
 reduce_all_operators:
@@ -816,18 +891,21 @@ reduce_all_operators:
 	cmp #OP_NEG
 	beq .unary
 	jsr reduce_top_binary
-	bcc .failed
+	bcs .binaryDone
+	rts
+.binaryDone:
 	jmp .loop
 .unary:
 	jsr reduce_unary_operators
-	bcc .failed
+	bcs .unaryDone
+	rts
+.unaryDone:
 	jmp .loop
 .marker:
 	lda #EXPR_UNMATCHED_DELIMITER
 	jmp expression_fail
 .done:
 	sec
-.failed:
 	rts
 
 reduce_top_binary:
@@ -843,11 +921,15 @@ reduce_top_binary:
 	sta reduceLeftType
 	lda expressionValueType
 	sta reduceRightType
-
 	jsr validate_binary_types
-	bcc .failed
+	bcs .typesOk
+	rts
+.typesOk:
 	jsr emit_binary_reduction
-	bcc .emitFail
+	bcs .emitted
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
+.emitted:
 	dec operatorCount
 	dec expressionSpillDepth
 	lda reduceResultType
@@ -868,14 +950,7 @@ reduce_top_binary:
 .bad:
 	lda #EXPR_EXPECTED_VALUE
 	jmp expression_fail
-.emitFail:
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
-.failed:
-	clc
-	rts
 
-;;; validate_binary_types
 ;;; Work only with the four Phase 1 scalar types. char promotes to int.
 validate_binary_types:
 	lda reduceOperator
@@ -1065,29 +1140,37 @@ emit_deferred_literals:
 	cmp literalCount
 	beq .done
 	jsr emit_one_literal
-	bcc .failed
+	bcs .emitted
+	rts
+.emitted:
 	inc literalEmitIndex
 	jmp .loop
 .done:
 	sec
-.failed:
 	rts
 
 emit_one_literal:
 	lda literalEmitIndex
 	jsr emit_literal_name
-	bcc .failed
+	bcs .colon
+	rts
+.colon:
 	lda #':'
 	jsr emit_output_byte
-	bcc .failed
+	bcs .labelDone
+	rts
+.labelDone:
 	jsr emit_newline
-	bcc .failed
+	bcs .byteDirective
+	rts
+.byteDirective:
 	lda #exprBytePrefixEnd-exprBytePrefix
 	ldx #<exprBytePrefix
 	ldy #>exprBytePrefix
 	jsr emit_text
-	bcc .failed
-
+	bcs .prepare
+	rts
+.prepare:
 	lda literalEmitIndex
 	asl
 	tax
@@ -1097,7 +1180,7 @@ emit_one_literal:
 	sta literalEmitOffset+1
 	lda literalLength,x
 	sta literalEmitRemaining
-	inc literalEmitRemaining		; include NUL; token length < 255
+	inc literalEmitRemaining		; include NUL; scanner text < 255 bytes
 	lda #$00
 	sta literalEmitColumn
 .bytes:
@@ -1107,11 +1190,14 @@ emit_one_literal:
 	beq .noComma
 	lda #','
 	jsr emit_output_byte
-	bcc .failed
+	bcs .noComma
+	rts
 .noComma:
 	lda #'$'
 	jsr emit_output_byte
-	bcc .failed
+	bcs .byteAddress
+	rts
+.byteAddress:
 	clc
 	lda #<literalBytes
 	adc literalEmitOffset
@@ -1122,7 +1208,9 @@ emit_one_literal:
 	ldy #$00
 	lda (EMIT_PTR),y
 	jsr emit_hex_byte
-	bcc .failed
+	bcs .byteDone
+	rts
+.byteDone:
 	inc literalEmitOffset
 	bne .offsetOk
 	inc literalEmitOffset+1
@@ -1132,1174 +1220,17 @@ emit_one_literal:
 	jmp .bytes
 .newline:
 	jmp emit_newline
-.failed:
-	clc
-	rts
+
+;;; The output side is kept in a separate readable slab. Calls are direct; there
+;;; is no intermediate representation or template-dispatch layer.
+	include "expression_codegen.asm"
 
 ;;; ---------------------------------------------------------------------------
-;;; Target assembly emission
+;;; Compiler state
 ;;; ---------------------------------------------------------------------------
 
-emit_load_literal:
-	lda #exprLdaImmEnd-exprLdaImm
-	ldx #<exprLdaImm
-	ldy #>exprLdaImm
-	jsr emit_text
-	bcc .failed
-	lda expressionLiteralValue
-	jsr emit_hex_byte
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda #exprLdxImmEnd-exprLdxImm
-	ldx #<exprLdxImm
-	ldy #>exprLdxImm
-	jsr emit_text
-	bcc .failed
-	lda expressionLiteralValue+1
-	jsr emit_hex_byte
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-emit_load_literal_address:
-	lda #exprLdaLowImmEnd-exprLdaLowImm
-	ldx #<exprLdaLowImm
-	ldy #>exprLdaLowImm
-	jsr emit_text
-	bcc .failed
-	lda currentLiteralIndex
-	jsr emit_literal_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda #exprLdxHighImmEnd-exprLdxHighImm
-	ldx #<exprLdxHighImm
-	ldy #>exprLdxHighImm
-	jsr emit_text
-	bcc .failed
-	lda currentLiteralIndex
-	jsr emit_literal_name
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-emit_load_primary_scalar:
-	lda primarySymbolArea
-	cmp #SYMBOL_AREA_CURRENT
-	beq .current
-	lda #exprLdaSpaceEnd-exprLdaSpace
-	ldx #<exprLdaSpace
-	ldy #>exprLdaSpace
-	jsr emit_text
-	bcc .failed
-	ldx primarySymbolIndex
-	jsr emit_persistent_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda primarySymbolType
-	cmp #TYPE_CHAR
-	beq emit_zero_high
-	lda #exprLdxSpaceEnd-exprLdxSpace
-	ldx #<exprLdxSpace
-	ldy #>exprLdxSpace
-	jsr emit_text
-	bcc .failed
-	ldx primarySymbolIndex
-	jsr emit_persistent_name
-	bcc .failed
-	jmp emit_plus_one_newline
-.current:
-	lda #exprLdaSpaceEnd-exprLdaSpace
-	ldx #<exprLdaSpace
-	ldy #>exprLdaSpace
-	jsr emit_text
-	bcc .failed
-	ldx primarySymbolIndex
-	jsr emit_current_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda primarySymbolType
-	cmp #TYPE_CHAR
-	beq emit_zero_high
-	lda #exprLdxSpaceEnd-exprLdxSpace
-	ldx #<exprLdxSpace
-	ldy #>exprLdxSpace
-	jsr emit_text
-	bcc .failed
-	ldx primarySymbolIndex
-	jsr emit_current_name
-	bcc .failed
-	jmp emit_plus_one_newline
-.failed:
-	clc
-	rts
-
-emit_zero_high:
-	lda #exprLdxZeroEnd-exprLdxZero
-	ldx #<exprLdxZero
-	ldy #>exprLdxZero
-	jmp emit_text
-
-emit_load_primary_address:
-	lda #exprLdaLowImmEnd-exprLdaLowImm
-	ldx #<exprLdaLowImm
-	ldy #>exprLdaLowImm
-	jsr emit_text
-	bcc .failed
-	ldx primarySymbolIndex
-	jsr emit_persistent_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda #exprLdxHighImmEnd-exprLdxHighImm
-	ldx #<exprLdxHighImm
-	ldy #>exprLdxHighImm
-	jsr emit_text
-	bcc .failed
-	ldx primarySymbolIndex
-	jsr emit_persistent_name
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-emit_plus_one_newline:
-	lda #exprPlusOneEnd-exprPlusOne
-	ldx #<exprPlusOne
-	ldy #>exprPlusOne
-	jsr emit_text
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-emit_spill_definition:
-	sta emitSpillIndex
-	jsr emit_spill_name
-	bcc .failed
-	lda #exprBssAssignEnd-exprBssAssign
-	ldx #<exprBssAssign
-	ldy #>exprBssAssign
-	jsr emit_text
-	bcc .failed
-	lda allocOffset
-	sta emitWord
-	lda allocOffset+1
-	sta emitWord+1
-	jsr emit_hex_word
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-emit_store_spill:
-	sta emitSpillIndex
-	lda #exprStaSpaceEnd-exprStaSpace
-	ldx #<exprStaSpace
-	ldy #>exprStaSpace
-	jsr emit_text
-	bcc .failed
-	lda emitSpillIndex
-	jsr emit_spill_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda #exprStxSpaceEnd-exprStxSpace
-	ldx #<exprStxSpace
-	ldy #>exprStxSpace
-	jsr emit_text
-	bcc .failed
-	lda emitSpillIndex
-	jsr emit_spill_name
-	bcc .failed
-	jmp emit_plus_one_newline
-.failed:
-	clc
-	rts
-
-;;; X=current-function symbol index; expressionValueType target value in A/X.
-emit_store_current_value:
-	stx emitSavedIndex
-	lda #exprStaSpaceEnd-exprStaSpace
-	ldx #<exprStaSpace
-	ldy #>exprStaSpace
-	jsr emit_text
-	bcc .failed
-	ldx emitSavedIndex
-	jsr emit_current_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	ldx emitSavedIndex
-	lda currentType,x
-	cmp #TYPE_CHAR
-	beq .done
-	lda #exprStxSpaceEnd-exprStxSpace
-	ldx #<exprStxSpace
-	ldy #>exprStxSpace
-	jsr emit_text
-	bcc .failed
-	ldx emitSavedIndex
-	jsr emit_current_name
-	bcc .failed
-	jsr emit_plus_one_newline
-	bcc .failed
-.done:
-	ldx emitSavedIndex
-	sec
-	rts
-.failed:
-	ldx emitSavedIndex
-	clc
-	rts
-
-emit_unary_minus:
-	lda #exprNegateEnd-exprNegate
-	ldx #<exprNegate
-	ldy #>exprNegate
-	jmp emit_text
-
-emit_binary_reduction:
-	lda reduceOperator
-	cmp #OP_ADD
-	beq emit_add_reduction
-	cmp #OP_SUB
-	beq emit_sub_reduction
-	cmp #OP_MUL
-	beq emit_mul_reduction
-	cmp #OP_AND
-	beq emit_and_reduction
-	cmp #OP_OR
-	beq emit_or_reduction
-	cmp #OP_SHL
-	beq emit_shl_reduction
-	cmp #OP_SHR
-	beq emit_shr_reduction
-	jmp emit_compare_reduction
-
-emit_save_right_tmp:
-	lda #exprSaveRightEnd-exprSaveRight
-	ldx #<exprSaveRight
-	ldy #>exprSaveRight
-	jmp emit_text
-
-emit_lda_reduce_spill:
-	lda #exprLdaSpaceEnd-exprLdaSpace
-	ldx #<exprLdaSpace
-	ldy #>exprLdaSpace
-	jsr emit_text
-	bcc .failed
-	lda reduceSpill
-	jsr emit_spill_name
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-emit_lda_reduce_spill_high:
-	lda #exprLdaSpaceEnd-exprLdaSpace
-	ldx #<exprLdaSpace
-	ldy #>exprLdaSpace
-	jsr emit_text
-	bcc .failed
-	lda reduceSpill
-	jsr emit_spill_name
-	bcc .failed
-	jmp emit_plus_one_newline
-.failed:
-	clc
-	rts
-
-emit_add_reduction:
-	jsr emit_save_right_tmp
-	bcc .failed
-	jsr emit_lda_reduce_spill
-	bcc .failed
-	lda #exprAddLowEnd-exprAddLow
-	ldx #<exprAddLow
-	ldy #>exprAddLow
-	jsr emit_text
-	bcc .failed
-	jsr emit_lda_reduce_spill_high
-	bcc .failed
-	lda #exprAddHighEnd-exprAddHigh
-	ldx #<exprAddHigh
-	ldy #>exprAddHigh
-	jmp emit_text
-.failed:
-	clc
-	rts
-
-emit_sub_reduction:
-	jsr emit_save_right_tmp
-	bcc .failed
-	jsr emit_lda_reduce_spill
-	bcc .failed
-	lda #exprSubLowEnd-exprSubLow
-	ldx #<exprSubLow
-	ldy #>exprSubLow
-	jsr emit_text
-	bcc .failed
-	jsr emit_lda_reduce_spill_high
-	bcc .failed
-	lda #exprSubHighEnd-exprSubHigh
-	ldx #<exprSubHigh
-	ldy #>exprSubHigh
-	jmp emit_text
-.failed:
-	clc
-	rts
-
-emit_and_reduction:
-	jsr emit_save_right_tmp
-	bcc .failed
-	jsr emit_lda_reduce_spill
-	bcc .failed
-	lda #exprAndLowEnd-exprAndLow
-	ldx #<exprAndLow
-	ldy #>exprAndLow
-	jsr emit_text
-	bcc .failed
-	jsr emit_lda_reduce_spill_high
-	bcc .failed
-	lda #exprAndHighEnd-exprAndHigh
-	ldx #<exprAndHigh
-	ldy #>exprAndHigh
-	jmp emit_text
-.failed:
-	clc
-	rts
-
-emit_or_reduction:
-	jsr emit_save_right_tmp
-	bcc .failed
-	jsr emit_lda_reduce_spill
-	bcc .failed
-	lda #exprOrLowEnd-exprOrLow
-	ldx #<exprOrLow
-	ldy #>exprOrLow
-	jsr emit_text
-	bcc .failed
-	jsr emit_lda_reduce_spill_high
-	bcc .failed
-	lda #exprOrHighEnd-exprOrHigh
-	ldx #<exprOrHigh
-	ldy #>exprOrHigh
-	jmp emit_text
-.failed:
-	clc
-	rts
-
-emit_mul_reduction:
-	lda #exprMulSaveLowEnd-exprMulSaveLow
-	ldx #<exprMulSaveLow
-	ldy #>exprMulSaveLow
-	jsr emit_text
-	bcc .failed
-	jsr emit_lda_reduce_spill
-	bcc .failed
-	lda #exprStaTmpEnd-exprStaTmp
-	ldx #<exprStaTmp
-	ldy #>exprStaTmp
-	jsr emit_text
-	bcc .failed
-	jsr emit_lda_reduce_spill_high
-	bcc .failed
-	lda #exprMulTailEnd-exprMulTail
-	ldx #<exprMulTail
-	ldy #>exprMulTail
-	jmp emit_text
-.failed:
-	clc
-	rts
-
-emit_shl_reduction:
-	lda #$01
-	sta shiftLeftFlag
-	jmp emit_shift_reduction
-emit_shr_reduction:
-	lda #$00
-	sta shiftLeftFlag
-
-emit_shift_reduction:
-	jsr reserve_generated_label
-	lda emitLabelValue
-	sta shiftLoopLabel
-	lda emitLabelValue+1
-	sta shiftLoopLabel+1
-	jsr reserve_generated_label
-	lda emitLabelValue
-	sta shiftDoneLabel
-	lda emitLabelValue+1
-	sta shiftDoneLabel+1
-
-	lda #exprShiftCountEnd-exprShiftCount
-	ldx #<exprShiftCount
-	ldy #>exprShiftCount
-	jsr emit_text
-	bcc .failed
-	jsr emit_lda_reduce_spill
-	bcc .failed
-	lda #exprStaTmpEnd-exprStaTmp
-	ldx #<exprStaTmp
-	ldy #>exprStaTmp
-	jsr emit_text
-	bcc .failed
-	jsr emit_lda_reduce_spill_high
-	bcc .failed
-	lda #exprStaTmpHighEnd-exprStaTmpHigh
-	ldx #<exprStaTmpHigh
-	ldy #>exprStaTmpHigh
-	jsr emit_text
-	bcc .failed
-	lda #exprCpyZeroEnd-exprCpyZero
-	ldx #<exprCpyZero
-	ldy #>exprCpyZero
-	jsr emit_text
-	bcc .failed
-	lda #exprBeqEnd-exprBeq
-	ldx #<exprBeq
-	ldy #>exprBeq
-	jsr emit_text
-	bcc .failed
-	lda shiftDoneLabel
-	sta emitLabelValue
-	lda shiftDoneLabel+1
-	sta emitLabelValue+1
-	jsr emit_generated_label_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-
-	lda shiftLoopLabel
-	sta emitLabelValue
-	lda shiftLoopLabel+1
-	sta emitLabelValue+1
-	jsr emit_generated_label_name
-	bcc .failed
-	lda #':'
-	jsr emit_output_byte
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda shiftLeftFlag
-	beq .right
-	lda #exprShiftLeftBodyEnd-exprShiftLeftBody
-	ldx #<exprShiftLeftBody
-	ldy #>exprShiftLeftBody
-	jmp .body
-.right:
-	lda #exprShiftRightBodyEnd-exprShiftRightBody
-	ldx #<exprShiftRightBody
-	ldy #>exprShiftRightBody
-.body:
-	jsr emit_text
-	bcc .failed
-	lda #exprBneEnd-exprBne
-	ldx #<exprBne
-	ldy #>exprBne
-	jsr emit_text
-	bcc .failed
-	lda shiftLoopLabel
-	sta emitLabelValue
-	lda shiftLoopLabel+1
-	sta emitLabelValue+1
-	jsr emit_generated_label_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda shiftDoneLabel
-	sta emitLabelValue
-	lda shiftDoneLabel+1
-	sta emitLabelValue+1
-	jsr emit_generated_label_name
-	bcc .failed
-	lda #':'
-	jsr emit_output_byte
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda #exprLoadTmpResultEnd-exprLoadTmpResult
-	ldx #<exprLoadTmpResult
-	ldy #>exprLoadTmpResult
-	jmp emit_text
-.failed:
-	clc
-	rts
-
-;;; Comparisons use three nearby internal labels. Equality ignores signedness;
-;;; relational operators choose signed or unsigned ordering from operand types.
-emit_compare_reduction:
-	jsr emit_save_right_tmp
-	bcc .failed
-	jsr reserve_compare_labels
-	lda reduceOperator
-	cmp #OP_EQ
-	beq .eq
-	cmp #OP_NE
-	beq .ne
-	jsr combined_integer_type
-	cmp #TYPE_UNSIGNED
-	beq .unsignedRel
-	jmp emit_signed_relational
-.unsignedRel:
-	jmp emit_unsigned_relational
-.eq:
-	lda #$00
-	sta compareInvert
-	jmp emit_equality
-.ne:
-	lda #$01
-	sta compareInvert
-	jmp emit_equality
-.failed:
-	clc
-	rts
-
-reserve_compare_labels:
-	jsr reserve_generated_label
-	lda emitLabelValue
-	sta compareTrueLabel
-	lda emitLabelValue+1
-	sta compareTrueLabel+1
-	jsr reserve_generated_label
-	lda emitLabelValue
-	sta compareFalseLabel
-	lda emitLabelValue+1
-	sta compareFalseLabel+1
-	jsr reserve_generated_label
-	lda emitLabelValue
-	sta compareDoneLabel
-	lda emitLabelValue+1
-	sta compareDoneLabel+1
-	rts
-
-emit_equality:
-	jsr emit_lda_reduce_spill
-	bcc .failed
-	lda #exprCmpTmpEnd-exprCmpTmp
-	ldx #<exprCmpTmp
-	ldy #>exprCmpTmp
-	jsr emit_text
-	bcc .failed
-	lda #exprBneEnd-exprBne
-	ldx #<exprBne
-	ldy #>exprBne
-	jsr emit_text
-	bcc .failed
-	lda compareInvert
-	beq .firstFalse
-	lda compareTrueLabel
-	sta emitLabelValue
-	lda compareTrueLabel+1
-	sta emitLabelValue+1
-	jmp .firstLabel
-.firstFalse:
-	lda compareFalseLabel
-	sta emitLabelValue
-	lda compareFalseLabel+1
-	sta emitLabelValue+1
-.firstLabel:
-	jsr emit_generated_label_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	jsr emit_lda_reduce_spill_high
-	bcc .failed
-	lda #exprCmpTmpHighEnd-exprCmpTmpHigh
-	ldx #<exprCmpTmpHigh
-	ldy #>exprCmpTmpHigh
-	jsr emit_text
-	bcc .failed
-	lda #exprBeqEnd-exprBeq
-	ldx #<exprBeq
-	ldy #>exprBeq
-	jsr emit_text
-	bcc .failed
-	lda compareInvert
-	beq .secondTrue
-	lda compareFalseLabel
-	sta emitLabelValue
-	lda compareFalseLabel+1
-	sta emitLabelValue+1
-	jmp .secondLabel
-.secondTrue:
-	lda compareTrueLabel
-	sta emitLabelValue
-	lda compareTrueLabel+1
-	sta emitLabelValue+1
-.secondLabel:
-	jsr emit_generated_label_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda compareInvert
-	beq .fallFalse
-	lda compareTrueLabel
-	sta emitLabelValue
-	lda compareTrueLabel+1
-	sta emitLabelValue+1
-	jmp .fallLabel
-.fallFalse:
-	lda compareFalseLabel
-	sta emitLabelValue
-	lda compareFalseLabel+1
-	sta emitLabelValue+1
-.fallLabel:
-	jsr emit_jump_label
-	bcc .failed
-	jmp emit_comparison_result_labels
-.failed:
-	clc
-	rts
-
-;;; Unsigned high-byte then low-byte comparison. The branch choices are kept
-;;; explicit rather than encoded in a clever table so the 6502 ordering is easy
-;;; to audit.
-emit_unsigned_relational:
-	jsr emit_lda_reduce_spill_high
-	bcc .failed
-	lda #exprCmpTmpHighEnd-exprCmpTmpHigh
-	ldx #<exprCmpTmpHigh
-	ldy #>exprCmpTmpHigh
-	jsr emit_text
-	bcc .failed
-	lda reduceOperator
-	cmp #OP_LT
-	beq .ltle
-	cmp #OP_LE
-	beq .ltle
-	jmp .gtge
-.ltle:
-	jsr emit_bcc_true
-	bcc .failed
-	jsr emit_bne_false
-	bcc .failed
-	jsr emit_lda_reduce_spill
-	bcc .failed
-	lda #exprCmpTmpEnd-exprCmpTmp
-	ldx #<exprCmpTmp
-	ldy #>exprCmpTmp
-	jsr emit_text
-	bcc .failed
-	lda reduceOperator
-	cmp #OP_LT
-	beq .lowLt
-	jsr emit_bcc_true
-	bcc .failed
-	jsr emit_beq_true
-	bcc .failed
-	jmp .fallFalse
-.lowLt:
-	jsr emit_bcc_true
-	bcc .failed
-	jmp .fallFalse
-.gtge:
-	jsr emit_bcc_false
-	bcc .failed
-	jsr emit_bne_true
-	bcc .failed
-	jsr emit_lda_reduce_spill
-	bcc .failed
-	lda #exprCmpTmpEnd-exprCmpTmp
-	ldx #<exprCmpTmp
-	ldy #>exprCmpTmp
-	jsr emit_text
-	bcc .failed
-	lda reduceOperator
-	cmp #OP_GT
-	beq .lowGt
-	jsr emit_bcc_false
-	bcc .failed
-	jmp .fallTrue
-.lowGt:
-	jsr emit_bcc_false
-	bcc .failed
-	jsr emit_beq_false
-	bcc .failed
-.fallTrue:
-	lda compareTrueLabel
-	sta emitLabelValue
-	lda compareTrueLabel+1
-	sta emitLabelValue+1
-	jsr emit_jump_label
-	bcc .failed
-	jmp emit_comparison_result_labels
-.fallFalse:
-	lda compareFalseLabel
-	sta emitLabelValue
-	lda compareFalseLabel+1
-	sta emitLabelValue+1
-	jsr emit_jump_label
-	bcc .failed
-	jmp emit_comparison_result_labels
-.failed:
-	clc
-	rts
-
-;;; Signed relational: if signs differ, the sign of the left operand decides;
-;;; with equal signs ordinary unsigned byte ordering is already correct.
-emit_signed_relational:
-	jsr emit_lda_reduce_spill_high
-	bcc .failed
-	lda #exprEorTmpHighEnd-exprEorTmpHigh
-	ldx #<exprEorTmpHigh
-	ldy #>exprEorTmpHigh
-	jsr emit_text
-	bcc .failed
-	jsr reserve_generated_label
-	lda emitLabelValue
-	sta compareSameSignLabel
-	lda emitLabelValue+1
-	sta compareSameSignLabel+1
-	lda #exprBplEnd-exprBpl
-	ldx #<exprBpl
-	ldy #>exprBpl
-	jsr emit_text
-	bcc .failed
-	lda compareSameSignLabel
-	sta emitLabelValue
-	lda compareSameSignLabel+1
-	sta emitLabelValue+1
-	jsr emit_generated_label_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	jsr emit_lda_reduce_spill_high
-	bcc .failed
-	lda reduceOperator
-	cmp #OP_LT
-	beq .negativeTrue
-	cmp #OP_LE
-	beq .negativeTrue
-	jsr emit_bmi_false
-	bcc .failed
-	jmp .signTrue
-.negativeTrue:
-	jsr emit_bmi_true
-	bcc .failed
-	jmp .signFalse
-.signTrue:
-	lda compareTrueLabel
-	sta emitLabelValue
-	lda compareTrueLabel+1
-	sta emitLabelValue+1
-	jsr emit_jump_label
-	bcc .failed
-	jmp .sameSign
-.signFalse:
-	lda compareFalseLabel
-	sta emitLabelValue
-	lda compareFalseLabel+1
-	sta emitLabelValue+1
-	jsr emit_jump_label
-	bcc .failed
-.sameSign:
-	lda compareSameSignLabel
-	sta emitLabelValue
-	lda compareSameSignLabel+1
-	sta emitLabelValue+1
-	jsr emit_label_definition
-	bcc .failed
-	jmp emit_unsigned_relational
-.failed:
-	clc
-	rts
-
-emit_bcc_true:
-	lda #exprBccEnd-exprBcc
-	ldx #<exprBcc
-	ldy #>exprBcc
-	jsr emit_text
-	bcc .failed
-	jmp emit_true_label_newline
-.failed:
-	clc
-	rts
-emit_bcc_false:
-	lda #exprBccEnd-exprBcc
-	ldx #<exprBcc
-	ldy #>exprBcc
-	jsr emit_text
-	bcc .failed
-	jmp emit_false_label_newline
-.failed:
-	clc
-	rts
-emit_bne_true:
-	lda #exprBneEnd-exprBne
-	ldx #<exprBne
-	ldy #>exprBne
-	jsr emit_text
-	bcc .failed
-	jmp emit_true_label_newline
-.failed:
-	clc
-	rts
-emit_bne_false:
-	lda #exprBneEnd-exprBne
-	ldx #<exprBne
-	ldy #>exprBne
-	jsr emit_text
-	bcc .failed
-	jmp emit_false_label_newline
-.failed:
-	clc
-	rts
-emit_beq_true:
-	lda #exprBeqEnd-exprBeq
-	ldx #<exprBeq
-	ldy #>exprBeq
-	jsr emit_text
-	bcc .failed
-	jmp emit_true_label_newline
-.failed:
-	clc
-	rts
-emit_beq_false:
-	lda #exprBeqEnd-exprBeq
-	ldx #<exprBeq
-	ldy #>exprBeq
-	jsr emit_text
-	bcc .failed
-	jmp emit_false_label_newline
-.failed:
-	clc
-	rts
-emit_bmi_true:
-	lda #exprBmiEnd-exprBmi
-	ldx #<exprBmi
-	ldy #>exprBmi
-	jsr emit_text
-	bcc .failed
-	jmp emit_true_label_newline
-.failed:
-	clc
-	rts
-emit_bmi_false:
-	lda #exprBmiEnd-exprBmi
-	ldx #<exprBmi
-	ldy #>exprBmi
-	jsr emit_text
-	bcc .failed
-	jmp emit_false_label_newline
-.failed:
-	clc
-	rts
-
-emit_true_label_newline:
-	lda compareTrueLabel
-	sta emitLabelValue
-	lda compareTrueLabel+1
-	sta emitLabelValue+1
-	jsr emit_generated_label_name
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-emit_false_label_newline:
-	lda compareFalseLabel
-	sta emitLabelValue
-	lda compareFalseLabel+1
-	sta emitLabelValue+1
-	jsr emit_generated_label_name
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-emit_jump_label:
-	lda #exprJmpEnd-exprJmp
-	ldx #<exprJmp
-	ldy #>exprJmp
-	jsr emit_text
-	bcc .failed
-	jsr emit_generated_label_name
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-emit_label_definition:
-	jsr emit_generated_label_name
-	bcc .failed
-	lda #':'
-	jsr emit_output_byte
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-emit_comparison_result_labels:
-	lda compareTrueLabel
-	sta emitLabelValue
-	lda compareTrueLabel+1
-	sta emitLabelValue+1
-	jsr emit_label_definition
-	bcc .failed
-	lda #exprTrueValueEnd-exprTrueValue
-	ldx #<exprTrueValue
-	ldy #>exprTrueValue
-	jsr emit_text
-	bcc .failed
-	lda compareDoneLabel
-	sta emitLabelValue
-	lda compareDoneLabel+1
-	sta emitLabelValue+1
-	jsr emit_jump_label
-	bcc .failed
-	lda compareFalseLabel
-	sta emitLabelValue
-	lda compareFalseLabel+1
-	sta emitLabelValue+1
-	jsr emit_label_definition
-	bcc .failed
-	lda #exprFalseValueEnd-exprFalseValue
-	ldx #<exprFalseValue
-	ldy #>exprFalseValue
-	jsr emit_text
-	bcc .failed
-	lda compareDoneLabel
-	sta emitLabelValue
-	lda compareDoneLabel+1
-	sta emitLabelValue+1
-	jmp emit_label_definition
-.failed:
-	clc
-	rts
-
-;;; Index value is in target A/X. reduceSpill holds the saved base address and
-;;; reduceLeftType is the array/pointer element type.
-emit_index_load:
-	jsr emit_save_right_tmp
-	bcc .failed
-	lda reduceLeftType
-	cmp #TYPE_CHAR
-	beq .scaled
-	lda #exprScaleIndexEnd-exprScaleIndex
-	ldx #<exprScaleIndex
-	ldy #>exprScaleIndex
-	jsr emit_text
-	bcc .failed
-.scaled:
-	jsr emit_lda_reduce_spill
-	bcc .failed
-	lda #exprIndexLowEnd-exprIndexLow
-	ldx #<exprIndexLow
-	ldy #>exprIndexLow
-	jsr emit_text
-	bcc .failed
-	jsr emit_lda_reduce_spill_high
-	bcc .failed
-	lda #exprIndexHighEnd-exprIndexHigh
-	ldx #<exprIndexHigh
-	ldy #>exprIndexHigh
-	jsr emit_text
-	bcc .failed
-	lda reduceLeftType
-	cmp #TYPE_CHAR
-	beq .charLoad
-	lda #exprWordIndirectEnd-exprWordIndirect
-	ldx #<exprWordIndirect
-	ldy #>exprWordIndirect
-	jmp emit_text
-.charLoad:
-	lda #exprCharIndirectEnd-exprCharIndirect
-	ldx #<exprCharIndirect
-	ldy #>exprCharIndirect
-	jmp emit_text
-.failed:
-	clc
-	rts
-
-;;; ---------------------------------------------------------------------------
-;;; Fixed target-source fragments. Keeping the actual 6502 sequences visible
-;;; here makes code generation auditable without decoding an opcode/template IR.
-;;; ---------------------------------------------------------------------------
-
-exprLdaImm:		byte $09,'l','d','a',' ','#','$'
-exprLdaImmEnd:
-exprLdxImm:		byte $09,'l','d','x',' ','#','$'
-exprLdxImmEnd:
-exprLdaLowImm:		byte $09,'l','d','a',' ','#','<'
-exprLdaLowImmEnd:
-exprLdxHighImm:		byte $09,'l','d','x',' ','#','>'
-exprLdxHighImmEnd:
-exprLdaSpace:		byte $09,'l','d','a',' '
-exprLdaSpaceEnd:
-exprLdxSpace:		byte $09,'l','d','x',' '
-exprLdxSpaceEnd:
-exprStaSpace:		byte $09,'s','t','a',' '
-exprStaSpaceEnd:
-exprStxSpace:		byte $09,'s','t','x',' '
-exprStxSpaceEnd:
-exprLdxZero:		byte $09,'l','d','x',' ','#','$','0','0',$0a
-exprLdxZeroEnd:
-exprPlusOne:		byte '+','1'
-exprPlusOneEnd:
-exprBssAssign:		byte ' ','=',' ','N','C','_','B','S','S','+','$'
-exprBssAssignEnd:
-exprBytePrefix:		byte $09,'b','y','t','e',' '
-exprBytePrefixEnd:
-
-exprNegate:
-	byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
-	byte $09,'s','t','x',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'l','d','a',' ','#','$','0','0',$0a
-	byte $09,'s','e','c',$0a
-	byte $09,'s','b','c',' ','N','C','_','T','M','P',$0a
-	byte $09,'t','a','y',$0a
-	byte $09,'l','d','a',' ','#','$','0','0',$0a
-	byte $09,'s','b','c',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'t','a','x',$0a
-	byte $09,'t','y','a',$0a
-exprNegateEnd:
-
-exprSaveRight:
-	byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
-	byte $09,'s','t','x',' ','N','C','_','T','M','P','+','1',$0a
-exprSaveRightEnd:
-exprAddLow:
-	byte $09,'c','l','c',$0a
-	byte $09,'a','d','c',' ','N','C','_','T','M','P',$0a
-	byte $09,'t','a','y',$0a
-exprAddLowEnd:
-exprAddHigh:
-	byte $09,'a','d','c',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'t','a','x',$0a
-	byte $09,'t','y','a',$0a
-exprAddHighEnd:
-exprSubLow:
-	byte $09,'s','e','c',$0a
-	byte $09,'s','b','c',' ','N','C','_','T','M','P',$0a
-	byte $09,'t','a','y',$0a
-exprSubLowEnd:
-exprSubHigh:
-	byte $09,'s','b','c',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'t','a','x',$0a
-	byte $09,'t','y','a',$0a
-exprSubHighEnd:
-exprAndLow:
-	byte $09,'a','n','d',' ','N','C','_','T','M','P',$0a
-	byte $09,'t','a','y',$0a
-exprAndLowEnd:
-exprAndHigh:
-	byte $09,'a','n','d',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'t','a','x',$0a
-	byte $09,'t','y','a',$0a
-exprAndHighEnd:
-exprOrLow:
-	byte $09,'o','r','a',' ','N','C','_','T','M','P',$0a
-	byte $09,'t','a','y',$0a
-exprOrLowEnd:
-exprOrHigh:
-	byte $09,'o','r','a',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'t','a','x',$0a
-	byte $09,'t','y','a',$0a
-exprOrHighEnd:
-
-exprMulSaveLow:		byte $09,'t','a','y',$0a
-exprMulSaveLowEnd:
-exprStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
-exprStaTmpEnd:
-exprStaTmpHigh:		byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',$0a
-exprStaTmpHighEnd:
-exprMulTail:
-	byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'t','y','a',$0a
-	byte $09,'j','s','r',' ','_','_','n','c','_','m','u','l','1','6',$0a
-exprMulTailEnd:
-
-exprShiftCount:		byte $09,'t','a','y',$0a
-exprShiftCountEnd:
-exprCpyZero:		byte $09,'c','p','y',' ','#','$','0','0',$0a
-exprCpyZeroEnd:
-exprShiftLeftBody:
-	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
-	byte $09,'r','o','l',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'d','e','y',$0a
-exprShiftLeftBodyEnd:
-exprShiftRightBody:
-	byte $09,'l','s','r',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'r','o','r',' ','N','C','_','T','M','P',$0a
-	byte $09,'d','e','y',$0a
-exprShiftRightBodyEnd:
-exprLoadTmpResult:
-	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a
-	byte $09,'l','d','x',' ','N','C','_','T','M','P','+','1',$0a
-exprLoadTmpResultEnd:
-
-exprCmpTmp:		byte $09,'c','m','p',' ','N','C','_','T','M','P',$0a
-exprCmpTmpEnd:
-exprCmpTmpHigh:		byte $09,'c','m','p',' ','N','C','_','T','M','P','+','1',$0a
-exprCmpTmpHighEnd:
-exprEorTmpHigh:		byte $09,'e','o','r',' ','N','C','_','T','M','P','+','1',$0a
-exprEorTmpHighEnd:
-exprBcc:		byte $09,'b','c','c',' '
-exprBccEnd:
-exprBne:		byte $09,'b','n','e',' '
-exprBneEnd:
-exprBeq:		byte $09,'b','e','q',' '
-exprBeqEnd:
-exprBmi:		byte $09,'b','m','i',' '
-exprBmiEnd:
-exprBpl:		byte $09,'b','p','l',' '
-exprBplEnd:
-exprJmp:		byte $09,'j','m','p',' '
-exprJmpEnd:
-exprTrueValue:
-	byte $09,'l','d','a',' ','#','$','0','1',$0a
-	byte $09,'l','d','x',' ','#','$','0','0',$0a
-exprTrueValueEnd:
-exprFalseValue:
-	byte $09,'l','d','a',' ','#','$','0','0',$0a
-	byte $09,'l','d','x',' ','#','$','0','0',$0a
-exprFalseValueEnd:
-
-exprScaleIndex:
-	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
-	byte $09,'r','o','l',' ','N','C','_','T','M','P','+','1',$0a
-exprScaleIndexEnd:
-exprIndexLow:
-	byte $09,'c','l','c',$0a
-	byte $09,'a','d','c',' ','N','C','_','T','M','P',$0a
-	byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a
-exprIndexLowEnd:
-exprIndexHigh:
-	byte $09,'a','d','c',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'s','t','a',' ','N','C','_','P','T','R','+','1',$0a
-exprIndexHighEnd:
-exprCharIndirect:
-	byte $09,'l','d','y',' ','#','$','0','0',$0a
-	byte $09,'l','d','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
-	byte $09,'l','d','x',' ','#','$','0','0',$0a
-exprCharIndirectEnd:
-exprWordIndirect:
-	byte $09,'l','d','y',' ','#','$','0','0',$0a
-	byte $09,'l','d','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
-	byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
-	byte $09,'i','n','y',$0a
-	byte $09,'l','d','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
-	byte $09,'t','a','x',$0a
-	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a
-exprWordIndirectEnd:
-
-;;; Compiler state: one bounded operator stack plus narrow transient fields.
+;;; One bounded operator stack. Marker entries use the same arrays as binary
+;;; operators so grouping and indexing need no recursive parser state.
 operatorCount:		byte 0
 operatorKind:		ds EXPR_STACK_CAPACITY
 operatorSpill:		ds EXPR_STACK_CAPACITY
@@ -2335,8 +1266,8 @@ compareDoneLabel:	word 0
 compareSameSignLabel:	word 0
 compareInvert:		byte 0
 
-;;; Narrow deferred literal pool. Offsets/lengths are 16-bit because the byte
-;;; pool is deliberately independent of scanner token length.
+;;; Narrow deferred literal pool. Offsets/lengths are 16-bit so this storage is
+;;; independent of the scanner's reusable token width.
 literalCount:		byte 0
 literalBytesUsed:	word 0
 literalOffset:		ds EXPR_LITERAL_CAPACITY*2
