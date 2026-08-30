@@ -1,149 +1,158 @@
-# Candidate Phase 1 language notes
+# Phase 1 evidence from `ass.c`
 
-`ass.c` is deliberately a language-discovery program.
+`ass.c` was deliberately written before the Nano C Phase 1 language was fixed. Its purpose was to make language pressure visible.
 
-The aim is not to prove that the assembler can be forced into an arbitrarily tiny C-like notation. The aim is to find the smallest subset that still leaves the assembler looking like normal, readable C.
+The frozen language is now defined in `docs/phase1.md`. This file records how the experiment led there.
 
-The host compiler is only a behaviour check. Its implementation model and data widths do not define Nano C.
+## What the assembler actually needed
 
-## Constructs used by `ass.c`
+The candidate assembler remained clear while using only:
 
-The candidate currently uses:
-
-- `char` and `int`;
-- `char *`;
-- one-dimensional arrays of `char` and `int`;
-- global variables;
-- scalar global initialisers;
-- numeric array initialisers;
-- string initialisers for character tables;
-- function definitions with typed parameters and integer return values;
-- function calls, including nested calls;
-- ordinary local variables;
-- `if` / `else`;
-- `while`;
-- `break`;
-- `return`;
-- assignment;
-- `+`, `-`, `*`;
-- `&`, `|`, `<<`, `>>`;
-- `==`, `!=`, `<`, `<=`, `>`, `>=`;
-- unary minus for small status/sentinel values;
-- array indexing;
-- pointer addition;
+- byte and 16-bit scalar values;
+- `char *` pointer-plus-length source views;
+- fixed one-dimensional arrays;
+- global variables and static data;
+- ordinary parameters and function locals;
+- functions and nested calls between different functions;
+- `if` / `else`, `while`, `break` and `return`;
+- simple assignment;
+- `+`, `-`, `*`, `&`, `|`, `<<`, `>>`;
+- equality and relational comparisons;
+- array indexing and byte-pointer addition;
 - integer, character and string literals;
-- `/* ... */` comments.
+- block comments;
+- a tiny three-function I/O boundary.
 
-The core intentionally does not use:
+The assembler did **not** become awkward without `struct`, `for`, `switch`, `++`, logical operators, local arrays, recursion, preprocessing, allocation or separate compilation. Those features therefore did not earn a place merely by being familiar C.
 
-- `struct`, `union`, `enum` or `typedef`;
-- `const` or `static`;
-- `for`, `switch`, `do`, `goto`, `continue`;
-- `++` or `--`;
-- `?:`;
-- `&&`, `||` or `!`;
-- casts;
-- `sizeof`;
-- function pointers;
-- recursion;
-- local arrays;
-- dynamic allocation;
-- standard-library types or calls;
-- preprocessing;
-- headers;
-- multiple source modules as a language feature.
-
-The host adapter uses ordinary host C facilities, but none of those facilities count as evidence for Phase 1.
-
-## What has clearly earned its place
+## Features that clearly earned their place
 
 ### Arrays and indexing
 
-The assembler naturally consists of source buffers, staging bytes, opcode metadata, symbol-table columns and bounded fixup records. Expressing those without arrays would turn the program back into assembly.
+Source buffers, staging bytes, opcode metadata, symbol-table columns and bounded fixup records are naturally arrays. Removing arrays would turn the source back into assembly.
 
-### Pointers and pointer addition
+### `char *` and pointer addition
 
-Source views are naturally `pointer + length`. Keeping this model preserves the zero-copy parser and avoids invented token objects.
+The parser naturally works on `pointer + length` views into a source line. This keeps the zero-copy design of the native assembler and avoids token objects or copied strings.
+
+Phase 1 only needs byte pointers. The experiment did not justify general pointer types, address-of or unary dereference.
 
 ### Static/global initialisation
 
-The opcode and addressing-mode tables make this disproportionately valuable. Requiring hundreds of procedural stores at startup merely to avoid initialisers would make both the source and generated program worse.
+Opcode and addressing-mode tables make static initialisation disproportionately valuable. Procedurally filling these tables at startup merely to simplify the compiler would make both source and generated program worse.
 
 ### `while`
 
-The assembler is mostly scans. `while` is sufficient; the current program does not demonstrate a need for `for`.
+The assembler is mostly scans. `while` expresses them directly; `for` does not buy enough to justify another statement form in `nanoc0`.
 
 ### `break`
 
-Without `break`, scanners need artificial flags or duplicated tests simply to leave a loop when punctuation is found. This is a small language feature with a clear readability return.
+Without `break`, scanners need artificial flags or duplicated loop conditions. It is a small feature with a clear readability return.
 
 ### Multiplication
 
-Only small, obvious cases currently use it: decimal parsing and fixed-width table indexing. Replacing these with shift/add sequences would deliberately make the C source more machine-like. A tiny runtime multiply is likely a better trade, but Phase 1 should make that decision explicitly.
+The assembler uses multiplication for decimal parsing and fixed-width table indexing. Replacing those operations with source-level shift/add sequences would make the C more machine-like without meaningfully simplifying the language.
 
-## Features that have not earned their place yet
+## The 16-bit integer result
+
+The host validation compiler temporarily hid an important target fact: its `int` is wider than a 6502 Nano C `int`.
+
+The assembler needs both:
+
+- natural negative results such as `-1` and `-2` from searches and I/O;
+- the complete 16-bit range for addresses, parsed values, symbol payloads and fixup addends.
+
+Making the only integer type signed would make values above `$7fff` awkward. Making it unsigned would turn ordinary negative status returns into magic values.
+
+The experiment therefore justifies one deliberate addition to the literal candidate syntax:
+
+- `int`: signed 16-bit;
+- `unsigned`: unsigned 16-bit;
+- `char`: unsigned 8-bit.
+
+This is a better minimal language than forcing two distinct jobs through one type merely to save one keyword and one signedness bit in the compiler.
+
+Before `ass.c` becomes a `nanoc0` acceptance input, the declarations that genuinely hold full-range machine values should be normalised to `unsigned`. That is a mechanical target-width cleanup, not a change to the assembler design.
+
+## Hexadecimal literals
+
+The candidate tables happened to be expressible without C hexadecimal syntax, but the compiler and C64 runtime immediately need readable machine addresses and masks.
+
+`0xc000` is materially better systems C than `49152`. Hexadecimal literals therefore earn Phase 1 despite not being forced by the assembler source alone.
+
+## Storage pressure
+
+Compiling the candidate on the host and assembling the real production assembler closure measured:
+
+```text
+symbols:     643
+name bytes:  6935
+fixups:      575
+image bytes: 6905
+```
+
+The candidate fixed splits were then chosen so their **target representation**, assuming 16-bit Nano C integers, fits the same native assembler budgets:
+
+```text
+symbols/names: 12 KiB
+staging/fixups: 16 KiB
+```
+
+The host C object layout is irrelevant; these numbers are target-design evidence only.
+
+## Control-flow and declaration pressure
+
+`ass.c` also shows that the first compiler does not need several expensive generalities:
+
+- globals can appear before all functions;
+- C-defined functions can be ordered definition-before-use;
+- locals can be declared at function entry;
+- no block-local declarations are needed;
+- no recursive call is needed.
+
+Those restrictions are now part of Phase 1 because they substantially simplify a direct assembly-written compiler without degrading this real program.
+
+Phase 1 still supports nested calls to different functions. #35 must therefore preserve caller locals across ordinary nested calls even if it chooses fixed per-function storage rather than general stack frames.
+
+## Features that remain deferred
 
 ### `struct`
 
-Parallel arrays are still clear for the symbol table and fixups, and they make the bounded storage cost very explicit. The current assembler therefore does not provide evidence that structure layout/member access belongs in the assembly-written compiler.
-
-This should be revisited while writing the compiler itself: compiler symbols may create stronger pressure than assembler symbols do.
+Parallel arrays remain clear for the assembler and make bounded storage explicit. Compiler symbols may create stronger pressure later, so `struct` is an obvious Phase 2 question rather than a rejected idea.
 
 ### `for`
 
-The loops remain clear as `while` loops. Omitting `for` has not caused awkward control flow.
+`while` remains clear throughout the assembler.
 
 ### `switch`
 
-Statement and addressing-mode dispatch remain short enough as direct tests. There is no strong pressure for a jump-table/source-level `switch` construct.
+Dispatch remains short enough as direct tests. No source-level jump-table construct is justified yet.
 
 ### `++` / `--`
 
-They would shorten many scanner increments, but `x = x + 1` is still readable and does not distort the program. They remain a plausible small convenience, not a demonstrated Phase 1 requirement.
+They would shorten scanner increments, but `x = x + 1` is still clear. This is convenience, not demonstrated Phase 1 pressure.
 
 ### Logical operators
 
-The source is readable with direct nested tests and does not currently require short-circuit `&&` / `||` semantics. This avoids committing the bootstrap compiler to that expression machinery before it is useful.
+The candidate remains readable using nested tests, so the assembly bootstrap does not yet need short-circuit `&&` / `||` machinery.
 
-## Measured target workspace pressure
+### Recursion
 
-The production `ass/ass_4000.asm` closure is also a useful memory-pressure test. With artificial host ceilings removed, the candidate requires:
+The assembler does not use it. Phase 1 is deliberately non-recursive so #35 can first consider fixed parameter/local slots rather than a general software stack.
 
-- 643 symbol records;
-- 6,935 bytes of owned symbol names;
-- 575 exceptional fixup records;
-- 6,905 staged output bytes.
+## Architecture retained by the C experiment
 
-Those measurements fit the native assembler's existing memory budgets. The committed candidate therefore uses fixed splits that remain plausible on the C64 while keeping the C representation simple:
+The C rewrite kept the useful machine-oriented shape of `ass`:
 
-- 672 symbol records at seven target bytes each plus 7,584 name bytes = 12,288 bytes;
-- 640 fixup records at eight target bytes each plus 11,264 staged bytes = 16,384 bytes.
+- one source line resident at a time;
+- parsing in place;
+- symbol names copied only when they must survive the line buffer;
+- linear bounded symbol lookup;
+- final-width bytes staged immediately;
+- ordinary unresolved 16-bit label references chained through their own output bytes;
+- exceptional byte/expression/relative references kept in bounded fixup state;
+- labels patch waiting references when defined;
+- fixed include depth;
+- no heap, AST, generic IR, object format or linker.
 
-The assembly implementation is more adaptive: records and names share one region, and staged bytes and fixups share another. The C candidate deliberately does not recreate packed allocators merely to recover that flexibility. The fixed split has enough measured headroom for the production assembler and makes the Phase 1 storage model obvious in the source.
-
-## Deliberate host-validation differences
-
-The candidate source is compiled by the host with `-funsigned-char` so byte storage behaves like the intended 6502 byte model.
-
-A host `int` is wider than the likely Nano C `int`. The assembler masks values at the places where 16-bit machine arithmetic is observable. The later Phase 1 specification must define the real Nano C widths and wrap rules explicitly; GCC or Clang do not get to define them accidentally.
-
-There is one concrete language-design question still exposed by this difference. Assembly values naturally occupy all of `$0000..$ffff`, while several current helper functions also use negative integer sentinels such as `-1`, `-2` and `-3`. A 16-bit signed `int` cannot represent both domains. Phase 1 should not inherit the host's wider `int` accidentally. Either unsigned 16-bit values must earn a place in the language, or these APIs should be rewritten to return status separately from their 16-bit values. The compiler work should settle this deliberately.
-
-The host I/O functions are defined before the candidate source is included. That lets `ass.c` call a tiny runtime surface without requiring headers, prototypes or a preprocessor in the candidate language. Nano C will need an equally small explicit rule for such runtime calls.
-
-## Architecture retained
-
-The C version deliberately keeps the important shape of the native assembler:
-
-- one source line is resident at a time;
-- statement text is parsed in place;
-- symbol names are copied only when they must outlive the line buffer;
-- the symbol table is linear and bounded;
-- output bytes are staged at their final width as soon as they are known;
-- ordinary unresolved 16-bit label references use their own two staged bytes as a forward-reference chain;
-- exceptional byte/expression/relative references use a small bounded fixup table;
-- labels patch waiting references when they are defined;
-- includes use a fixed-depth open-file stack;
-- no heap, AST, generic IR, relocation framework, object file or linker appears.
-
-That is intentional: `ass.c` should discover the language needed to express the existing machine-oriented design, not quietly redesign the assembler around a modern host.
+That is the design Phase 1 must be able to express. The language is being fitted to the program, not the program redesigned around a modern compiler architecture.
