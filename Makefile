@@ -160,7 +160,7 @@ test-nanoc0-declarations: $(BUILD_DIR)/test_nanoc0_declarations.prg $(NANOC0_DEC
 	VICE_FS_DIR=$(CURDIR)/tests/nanoc0-src VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< nanoc0-declarations
 
 test-nanoc0-bootstrap: $(BUILD_DIR)/test_nanoc0_bootstrap.prg bootstrap/ass.c
-	VICE_TIMEOUT=30 VICE_FS_DIR=$(CURDIR) VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< nanoc0-bootstrap
+	VICE_TIMEOUT=30 VICE_FS_DIR=$(CURDIR)/bootstrap VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< nanoc0-bootstrap
 
 $(BUILD_DIR):
 	mkdir -p $@
