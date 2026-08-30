@@ -23,6 +23,7 @@ FAIL_INT_RANGE      = $13
 IDX_FLAG      = 5
 IDX_SOURCE    = 8
 IDX_C         = 9
+IDX_BYTES     = 12
 IDX_WIDTHS    = 15
 IDX_HELPER    = 18
 IDX_MAIN      = 19
@@ -31,7 +32,7 @@ IDX_MAIN      = 19
 ;;; Storage offsets are inspected when the emitter receives them, not retained
 ;;; in symbol tables merely so a test can look at them later. This mirrors the
 ;;; production contract: emit the assembler-visible identity, then forget the
-;;; numeric address.
+;;; numeric address and BSS/data placement.
 	* = $4000
 
 main:
@@ -132,7 +133,7 @@ test_valid_translation:
 	bcc .stateFail
 	jsr check_valid_current_layout
 	bcc .stateFail
-	jsr check_valid_initialized_symbols
+	jsr check_valid_symbol_kinds
 	bcc .stateFail
 	jsr check_valid_function_metadata
 	bcc .stateFail
@@ -210,9 +211,6 @@ check_valid_bss_layout:
 	inx
 	cpx #expectedBssOffsetsEnd-expectedBssOffsets
 	bne .loop
-	lda persistentKind+IDX_FLAG
-	cmp #SYMBOL_GLOBAL_BSS
-	bne .no
 	lda persistentType+IDX_FLAG
 	cmp #TYPE_CHAR
 	bne .no
@@ -245,13 +243,21 @@ check_valid_current_layout:
 	clc
 	rts
 
-;;; Initialized globals are loaded data and do not consume NC_BSS.
-check_valid_initialized_symbols:
+;;; Persistent kind records source meaning, not where storage happened to be
+;;; emitted. Initialized and uninitialized globals therefore have the same kind;
+;;; initialized and uninitialized arrays likewise share one array kind.
+check_valid_symbol_kinds:
+	lda persistentKind+IDX_FLAG
+	cmp #SYMBOL_GLOBAL
+	bne .no
 	lda persistentKind+IDX_C
-	cmp #SYMBOL_GLOBAL_DATA
+	cmp #SYMBOL_GLOBAL
+	bne .no
+	lda persistentKind+IDX_BYTES
+	cmp #SYMBOL_ARRAY
 	bne .no
 	lda persistentKind+IDX_WIDTHS
-	cmp #SYMBOL_ARRAY_DATA
+	cmp #SYMBOL_ARRAY
 	bne .no
 	sec
 	rts
@@ -340,8 +346,9 @@ test_bss_only:
 	clc
 	rts
 
-;;; Pending local name is invisible inside its own initializer, so `value + 1`
-;;; resolves the global. After the declaration, `return value` resolves local.
+;;; The not-yet-visible local slot does not participate in lookup inside its own
+;;; initializer, so `value + 1` resolves the global. After visibility advances,
+;;; `return value` resolves the local.
 test_shadowing:
 	jsr set_default_bss
 	lda #shadowNameEnd-shadowName
@@ -649,14 +656,12 @@ reset_emitter:
 	sta emittedOffsetHighNonzero
 	rts
 
+;;; A says where this declaration is being emitted right now. persistentKind
+;;; deliberately does not retain that historical placement.
 emit_persistent_symbol:
 	inc emittedPersistentCount
-	lda persistentKind,x
-	cmp #SYMBOL_GLOBAL_BSS
-	beq .capture
-	cmp #SYMBOL_ARRAY_BSS
+	cmp #EMIT_STORAGE_BSS
 	bne .done
-.capture:
 	ldy emittedBssCount
 	cpy #16
 	bcs .done
