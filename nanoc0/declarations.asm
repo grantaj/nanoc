@@ -330,7 +330,9 @@ parse_global_scalar:
 
 parse_global_array:
 	jsr parser_next
-	bcc .failed
+	bcs .haveSize
+	jmp .failed
+.haveSize:
 	lda currentTokenKind
 	cmp #TOKEN_INTEGER
 	beq .sizeToken
@@ -352,7 +354,9 @@ parse_global_array:
 	lda arrayLength+1
 	sta persistentArrayLengthHi,x
 	jsr parser_next
-	bcc .failed
+	bcs .haveClose
+	jmp .failed
+.haveClose:
 	lda currentTokenKind
 	cmp #']'
 	beq .closed
@@ -360,7 +364,9 @@ parse_global_array:
 	jmp parser_fail
 .closed:
 	jsr parser_next
-	bcc .failed
+	bcs .haveSuffix
+	jmp .failed
+.haveSuffix:
 	lda currentTokenKind
 	cmp #';'
 	beq .uninitialized
@@ -382,7 +388,9 @@ parse_global_array:
 	lda allocOffset+1
 	sta persistentStorageOffsetHi,x
 	jsr emit_persistent_checked
-	bcc .failed
+	bcs .uninitializedEmitted
+	jmp .failed
+.uninitializedEmitted:
 	jsr commit_persistent_symbol
 	jsr parser_next
 	rts
@@ -392,7 +400,9 @@ parse_global_array:
 
 .initialized:
 	jsr parser_next
-	bcc .failed
+	bcs .haveInitializer
+	jmp .failed
+.haveInitializer:
 	ldx pendingPersistentIndex
 	lda #SYMBOL_ARRAY_DATA
 	sta persistentKind,x
@@ -400,8 +410,9 @@ parse_global_array:
 	sta persistentStorageOffsetLo,x
 	sta persistentStorageOffsetHi,x
 	jsr emit_persistent_checked
-	bcc .failed
-
+	bcs .initializerSymbolEmitted
+	jmp .failed
+.initializerSymbolEmitted:
 	lda currentTokenKind
 	cmp #TOKEN_STRING
 	beq .string
@@ -417,11 +428,12 @@ parse_global_array:
 	jmp parser_fail
 .charString:
 	jsr emit_string_array_initializer
-	bcc .failed
-	jmp .initializerDone
+	bcs .initializerDone
+	jmp .failed
 .numeric:
 	jsr emit_numeric_array_initializer
-	bcc .failed
+	bcs .initializerDone
+	jmp .failed
 
 .initializerDone:
 	lda currentTokenKind
@@ -853,7 +865,9 @@ parse_function_locals:
 
 parse_one_local:
 	jsr parse_decl_type
-	bcc .failed
+	bcs .haveType
+	jmp .failed
+.haveType:
 	lda currentTokenKind
 	cmp #TOKEN_IDENTIFIER
 	beq .name
@@ -893,9 +907,13 @@ parse_one_local:
 	lda allocOffset+1
 	sta currentStorageOffsetHi,x
 	jsr emit_current_checked
-	bcc .failed
+	bcs .localEmitted
+	jmp .failed
+.localEmitted:
 	jsr parser_next
-	bcc .failed
+	bcs .haveDeclaratorSuffix
+	jmp .failed
+.haveDeclaratorSuffix:
 	lda currentTokenKind
 	cmp #'['
 	beq .localArray
@@ -910,9 +928,12 @@ parse_one_local:
 	jmp parser_fail
 .initializer:
 	jsr parser_next
-	bcc .failed
+	bcs .haveInitializer
+	jmp .failed
+.haveInitializer:
 	jsr validate_local_initializer
-	bcc .failed
+	bcs .commit
+	jmp .failed
 .commit:
 	jsr commit_current_symbol
 	jsr parser_next
