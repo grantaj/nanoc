@@ -6,6 +6,9 @@
  * validation adapter supplies io_open/io_read/io_close before including this
  * file.
  *
+ * The candidate now uses the frozen Phase 1 integer widths explicitly where a
+ * modern host's wider int would otherwise hide 16-bit machine semantics.
+ *
  * Deliberately not used here:
  *   struct, union, enum, typedef, const, static, sizeof
  *   for, switch, do, goto, continue
@@ -104,8 +107,8 @@ char opcode_mode[256] = {
 };
 
 /*
- * Fixed Phase 1 workspace splits.  With 16-bit Nano C ints these consume the
- * same budgets as the native assembler:
+ * Fixed Phase 1 workspace splits.  With 16-bit Nano C int/unsigned values
+ * these consume the same budgets as the native assembler:
  *
  *   staging: 11264 bytes + 640 eight-byte fixups = 16384 bytes
  *   symbols: 672 seven-byte records + 7584 name bytes = 12288 bytes
@@ -116,7 +119,7 @@ char opcode_mode[256] = {
  */
 char ass_image[11264];
 int ass_image_length;
-int ass_origin;
+unsigned ass_origin;
 
 char source_line[256];
 int source_line_length;
@@ -128,7 +131,7 @@ int source_directory_length;
 
 int symbol_name_offset[672];
 char symbol_name_length[672];
-int symbol_payload[672];
+unsigned symbol_payload[672];
 char symbol_scope[672];
 char symbol_kind[672];
 char symbol_name_bytes[7584];
@@ -139,7 +142,7 @@ int current_scope;
 char fixup_kind[640];
 int fixup_stage[640];
 int fixup_symbol[640];
-int fixup_addend[640];
+unsigned fixup_addend[640];
 char fixup_prefix[640];
 int fixup_count;
 
@@ -159,12 +162,12 @@ char VALUE_PREFIX_NONE = 0;
 char VALUE_PREFIX_LOW = 1;
 char VALUE_PREFIX_HIGH = 2;
 
-int value_result;
+unsigned value_result;
 int captured_symbol;
-int captured_addend;
+unsigned captured_addend;
 char captured_prefix;
 
-int atom_value;
+unsigned atom_value;
 int atom_symbol;
 int atom_used;
 char atom_kind;
@@ -208,16 +211,13 @@ int same_text(char *a, int a_length, char *b, int b_length)
     return 1;
 }
 
-int apply_prefix(int value, int prefix)
+int apply_byte_prefix(unsigned value, int prefix)
 {
     value = value & 65535;
     if (prefix == VALUE_PREFIX_LOW) {
         return value & 255;
     }
-    if (prefix == VALUE_PREFIX_HIGH) {
-        return (value >> 8) & 255;
-    }
-    return value;
+    return (value >> 8) & 255;
 }
 
 int hex_nibble(int c)
@@ -238,7 +238,7 @@ int hex_nibble(int c)
 
 /* ---------------- Exceptional forward fixups ---------------- */
 
-int append_fixup(int kind, int stage, int symbol, int addend, int prefix)
+int append_fixup(int kind, int stage, int symbol, unsigned addend, int prefix)
 {
     int n;
 
@@ -256,9 +256,9 @@ int append_fixup(int kind, int stage, int symbol, int addend, int prefix)
     return ASSEMBLE_OK;
 }
 
-int relative_byte(int target, int base)
+int relative_byte(unsigned target, unsigned base)
 {
-    int difference;
+    unsigned difference;
 
     difference = (target - base) & 65535;
     if (difference <= 127) {
@@ -274,7 +274,7 @@ int resolve_fixups_for_symbol(int symbol)
 {
     int i;
     int kind;
-    int value;
+    unsigned value;
     int stage;
     int relative;
 
@@ -283,8 +283,10 @@ int resolve_fixups_for_symbol(int symbol)
         kind = fixup_kind[i];
         if (kind != FIXUP_NONE) {
             if (fixup_symbol[i] == symbol) {
-                value = symbol_payload[symbol] + fixup_addend[i];
-                value = apply_prefix(value, fixup_prefix[i]);
+                value = (symbol_payload[symbol] + fixup_addend[i]) & 65535;
+                if (fixup_prefix[i] != VALUE_PREFIX_NONE) {
+                    value = apply_byte_prefix(value, fixup_prefix[i]);
+                }
                 stage = fixup_stage[i];
 
                 if (kind == FIXUP_WORD) {
@@ -370,7 +372,7 @@ int find_symbol(char *name, int length)
     return -1;
 }
 
-int allocate_symbol(char *name, int length, int kind, int payload)
+int allocate_symbol(char *name, int length, int kind, unsigned payload)
 {
     int scope;
     int n;
@@ -422,7 +424,7 @@ int intern_label(char *name, int length)
     return allocate_symbol(name, length, SYMBOL_LABEL_UNDEFINED, 0);
 }
 
-int define_constant(char *name, int length, int value)
+int define_constant(char *name, int length, unsigned value)
 {
     int symbol;
 
@@ -444,7 +446,7 @@ int define_constant(char *name, int length, int value)
     return ASSEMBLE_OK;
 }
 
-int patch_word_chain(int head, int value)
+int patch_word_chain(int head, unsigned value)
 {
     int stage;
     int next;
@@ -459,7 +461,7 @@ int patch_word_chain(int head, int value)
     return ASSEMBLE_OK;
 }
 
-int define_label(char *name, int length, int value)
+int define_label(char *name, int length, unsigned value)
 {
     int symbol;
     int old_head;
@@ -502,7 +504,7 @@ int parse_atom(char *text, int length)
 {
     int i;
     int digit;
-    int value;
+    unsigned value;
     int symbol;
 
     atom_used = 0;
@@ -634,7 +636,7 @@ int parse_value(char *text, int length)
     int position;
     int status;
     int first_kind;
-    int first_value;
+    unsigned first_value;
     int first_symbol;
     int operation;
     int second_kind;
@@ -718,7 +720,10 @@ int parse_value(char *text, int length)
         return VALUE_UNRESOLVED;
     }
 
-    value_result = apply_prefix(captured_addend, captured_prefix);
+    value_result = captured_addend;
+    if (captured_prefix != VALUE_PREFIX_NONE) {
+        value_result = apply_byte_prefix(captured_addend, captured_prefix);
+    }
     return VALUE_OK;
 }
 
@@ -798,7 +803,7 @@ int stage_plain_word_reference(int symbol)
     return ASSEMBLE_OK;
 }
 
-int stage_resolved_instruction(int opcode, int mode, int value)
+int stage_resolved_instruction(int opcode, int mode, unsigned value)
 {
     int width;
     int status;
@@ -828,9 +833,9 @@ int stage_resolved_instruction(int opcode, int mode, int value)
     return ASSEMBLE_OK;
 }
 
-int stage_resolved_relative(int opcode, int target)
+int stage_resolved_relative(int opcode, unsigned target)
 {
-    int base;
+    unsigned base;
     int relative;
     int status;
 
@@ -847,7 +852,13 @@ int stage_resolved_relative(int opcode, int target)
     return stage_byte(relative);
 }
 
-int stage_unresolved_instruction(int opcode, int mode, int symbol, int addend, int prefix)
+int stage_unresolved_instruction(
+    int opcode,
+    int mode,
+    int symbol,
+    unsigned addend,
+    int prefix
+)
 {
     int width;
     int stage;
@@ -1477,7 +1488,7 @@ int scan_argument(int start)
 int process_label(char *name, int length)
 {
     int status;
-    int value;
+    unsigned value;
 
     if (length == 0) {
         return ASSEMBLE_BAD_STATEMENT;
@@ -1670,7 +1681,7 @@ int process_source_line()
 
 /* ---------------- Whole assembly ---------------- */
 
-int reset_assembler(int default_origin, char *directory, int directory_length)
+int reset_assembler(unsigned default_origin, char *directory, int directory_length)
 {
     ass_image_length = 0;
     ass_origin = default_origin & 65535;
@@ -1718,7 +1729,7 @@ int ass_assemble(
     int root_name_length,
     char *directory,
     int directory_length,
-    int default_origin
+    unsigned default_origin
 )
 {
     int handle;
