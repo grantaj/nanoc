@@ -53,10 +53,12 @@ The following features materially contribute to clear source and therefore belon
 
 Several familiar C features did not earn a place: `struct`, `for`, `switch`, `++`, logical operators, a preprocessor, dynamic allocation and separate compilation are all absent without making `ass.c` pseudo-assembly.
 
-Two small additions are justified even though the #33 candidate does not yet use their final spelling everywhere:
+The experiment also exposed two small additions beyond the first host-validated spelling of the candidate:
 
 - `unsigned` is required to represent the complete 16-bit address/value range without replacing natural negative status results with magic sentinel values;
 - hexadecimal integer literals are justified by the machine-facing compiler/runtime work that immediately follows and are trivial compared with forcing 6502 addresses to be written in decimal.
+
+`bootstrap/ass.c` has now been normalised to use `unsigned` anywhere the real target value may occupy the full `$0000..$ffff` range. The host compiler remains only the independent behavioural oracle.
 
 Those are evidence-driven additions, not a move toward general C completeness.
 
@@ -329,7 +331,7 @@ There are no block-local declarations.
 
 A local has no source-level initializer in Phase 1. A well-formed program assigns a local before reading its value.
 
-This restriction deliberately makes the physical storage strategy unobservable: #35 may allocate one fixed parameter/local area per function rather than building general automatic stack frames.
+This restriction deliberately makes the physical storage strategy unobservable: the Phase 1 machine model allocates one fixed parameter/local area per function rather than building general automatic stack frames.
 
 ## 5.4 Recursion and reentrancy
 
@@ -339,7 +341,7 @@ A well-formed Phase 1 program has an acyclic call graph among its C-defined func
 
 `nanoc0` is not required to perform a general call-graph analysis to diagnose mutual recursion. Programs that violate this rule are outside Phase 1.
 
-This restriction is deliberate. `ass.c` does not need recursion, and removing it allows #35 to consider statically allocated per-function parameters and locals instead of immediately introducing a general software stack/frame ABI.
+This restriction is deliberate. `ass.c` does not need recursion, and removing it allows the machine model to use statically allocated per-function parameters and locals instead of a general software stack/frame ABI.
 
 Nested calls to different functions are fully supported and must preserve the caller's local values.
 
@@ -617,7 +619,7 @@ For the bootstrap runtime:
 - `io_read` returns a byte value 0 through 255, `-1` for end of file, and `-2` for I/O failure;
 - `io_close` closes a valid handle and returns 0.
 
-These are runtime services, not language keywords or a general file API. Their C64 implementation and concrete calling convention belong to #35.
+These are runtime services, not language keywords or a general file API. Their C64 implementation and concrete calling convention are defined by `docs/phase1-machine.md`.
 
 Additional runtime services should not be added to Phase 1 merely for convenience. They must be justified by the compiler or another bootstrap program.
 
@@ -661,10 +663,10 @@ This list is not a judgement that these features are undesirable. It records tha
 
 ## 12.1 Required by `ass.c`
 
-Directly exercised by the candidate assembler:
+Directly exercised by the normalised candidate assembler:
 
-- `char`, `int` and `char *`;
-- fixed global `char` and `int` arrays;
+- `char`, `int`, `unsigned` and `char *`;
+- fixed global `char`, `int` and `unsigned` arrays;
 - global scalar variables;
 - numeric and string static initializers;
 - function parameters and ordinary locals;
@@ -685,9 +687,11 @@ Not merely copied from conventional C:
 
 ### `unsigned`
 
-The #33 host compiler has a wider `int`, which temporarily allows the candidate to hold both `$0000..$ffff` values and negative sentinels in the same host type. A real 16-bit target cannot do that.
+The first #33 host-validated candidate used the host's wider `int` to hold both `$0000..$ffff` values and negative sentinels. A real 16-bit target cannot do that.
 
 The clear C solution is not to replace `-1` / `-2` with opaque 65535 / 65534 conventions. It is to use signed `int` for statuses and indices and `unsigned` for full-range machine values. That keeps both the source and target model straightforward.
+
+`bootstrap/ass.c` now uses that distinction directly, so `unsigned` is no longer only speculative language pressure: it is exercised by the acceptance source itself.
 
 ### Hexadecimal literals
 
@@ -699,29 +703,33 @@ Everything in section 11 remains deferred unless Phase 1 self-hosting provides c
 
 In particular, `struct`, `for`, `switch`, `++`, richer automatic storage and recursion should be judged after the compiler itself has been written in Phase 1, not added now by anticipation.
 
-# 13. Consequences for `ass.c`
+# 13. `ass.c` is now literal Phase 1 input
 
-The #33 candidate was intentionally compiled with a modern host compiler before this machine model was frozen. Host `int` is wider than Phase 1 `int`.
+The #33 candidate was intentionally compiled with a modern host compiler before the 16-bit machine model was frozen. The first version therefore used host-width `int` in several places where the target value can occupy the complete `$0000..$ffff` range.
 
-Before `ass.c` becomes a `nanoc0` acceptance input, values that genuinely use the complete 16-bit machine range must be spelled `unsigned` rather than relying on the host's wider signed `int`. Typical examples are assembler addresses, parsed 16-bit values, symbol payloads and fixup addends.
+That normalisation is now complete:
 
-That is a mechanical type-normalisation, not a redesign of the assembler. Negative search/status results remain `int`.
+- assembler origins and parsed 16-bit values use `unsigned`;
+- symbol payloads and fixup addends use `unsigned`;
+- helper parameters/locals that carry complete machine values use `unsigned`;
+- negative search/status results remain ordinary `int`.
 
-The host validation should continue to compile the normalised source and reproduce the production `ass.prg`; that keeps host C as an oracle while ensuring the source no longer depends on host integer width.
+The change does not alter the assembler architecture. The host validation continues to compile this exact source and must reproduce the production `ass.prg` byte-for-byte. That keeps host C as an independent behavioural oracle while making `bootstrap/ass.c` a genuine `nanoc0` acceptance input rather than an approximate one.
 
-# 14. What Phase 1 freezes, and what it does not
+# 14. Language and machine contracts are both frozen for `nanoc0`
 
 This document freezes the **source language contract** for `nanoc0`.
 
-It does not yet decide:
+`docs/phase1-machine.md` freezes the corresponding 6502 execution contract, including:
 
-- the registers used for expression results;
-- the location of parameter/local slots;
-- the temporary-expression strategy;
-- how 16-bit multiply is implemented;
-- the exact runtime/KERNAL adapter;
-- the emitted assembler conventions.
+- `A/X` expression and return values;
+- fixed per-function parameter/local/temporary storage;
+- no software C stack;
+- caller-owned nested argument staging;
+- the two zero-page scratch pairs;
+- explicit `NC_BSS` static workspace;
+- binary arithmetic mode;
+- safe branch-over-`JMP` control flow;
+- the tiny runtime/KERNAL boundary.
 
-Those are #35 execution-model decisions.
-
-The separation is deliberate: `nanoc0` should implement this fixed, small language against the smallest concrete 6502 machine model that makes it work.
+Issue #36 should therefore implement these two fixed contracts directly. New general machinery belongs only where the implementation demonstrates that the existing contracts are insufficient, not because a conventional C compiler would normally contain it.
