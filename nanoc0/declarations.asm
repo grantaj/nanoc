@@ -10,7 +10,7 @@
 ;;; Four tiny output hooks are supplied by the eventual compiler driver and by
 ;;; the native tests in this issue:
 ;;;
-;;;   emit_persistent_symbol   X = persistent symbol index
+;;;   emit_persistent_symbol   A = EMIT_STORAGE_*, X = persistent symbol index
 ;;;   emit_current_symbol      X = current-function symbol index
 ;;;   emit_static_byte         A = one initialized-data byte
 ;;;   emit_bss_boundaries      reads zeroRequiredEnd/bssOffset
@@ -20,9 +20,11 @@
 ;;;
 ;;; Storage facts are also streamed at the point they are known. For an
 ;;; uninitialized persistent/current symbol, allocOffset is the slot just
-;;; allocated. currentFunctionIndex + X gives a deterministic current-symbol
-;;; identity. Array length remains in arrayLength while its declaration is being
-;;; emitted. None of those transient facts are copied into persistent tables.
+;;; allocated. For a persistent declaration, EMIT_STORAGE_BSS/DATA is passed to
+;;; the emitter and then forgotten. currentFunctionIndex + X gives a
+;;; deterministic current-symbol identity. Array length remains in arrayLength
+;;; while its declaration is being emitted. None of those transient facts are
+;;; copied into persistent tables.
 ;;;
 ;;; Local initializers are intentionally not expression-parsed here. Until #55
 ;;; lands, validate_local_initializer consumes the expression tokens and checks
@@ -32,6 +34,10 @@
 
 	include "scanner.asm"
 	include "symbols.asm"
+
+EMIT_STORAGE_NONE = 0
+EMIT_STORAGE_BSS  = 1
+EMIT_STORAGE_DATA = 2
 
 PARSE_OK                    = 0
 PARSE_SCANNER_ERROR         = 1
@@ -195,8 +201,8 @@ parse_top_level_declaration:
 	lda #PARSE_DUPLICATE_SYMBOL
 	jmp parser_fail
 .unique:
-	jsr reserve_persistent_name
-	bcs .reserved
+	jsr store_persistent_name
+	bcs .stored
 	lda persistentCount
 	cmp #PERSISTENT_SYMBOL_CAPACITY
 	bcc .nameFull
@@ -205,8 +211,7 @@ parse_top_level_declaration:
 .nameFull:
 	lda #PARSE_NAME_CAPACITY
 	jmp parser_fail
-.reserved:
-	stx pendingPersistentIndex
+.stored:
 	lda declType
 	sta persistentType,x
 	jsr parser_next
@@ -278,12 +283,13 @@ parse_global_scalar:
 	lda #PARSE_BSS_OVERFLOW
 	jmp parser_fail
 .allocated:
-	ldx pendingPersistentIndex
-	lda #SYMBOL_GLOBAL_BSS
+	ldx persistentCount
+	lda #SYMBOL_GLOBAL
 	sta persistentKind,x
+	lda #EMIT_STORAGE_BSS
 	jsr emit_persistent_checked
 	bcc .failed
-	jsr commit_persistent_symbol
+	jsr make_persistent_visible
 	jsr parser_next
 	rts
 
@@ -300,9 +306,10 @@ parse_global_scalar:
 	bcc .failed
 	jsr constant_fits_decl_type
 	bcc .range
-	ldx pendingPersistentIndex
-	lda #SYMBOL_GLOBAL_DATA
+	ldx persistentCount
+	lda #SYMBOL_GLOBAL
 	sta persistentKind,x
+	lda #EMIT_STORAGE_DATA
 	jsr emit_persistent_checked
 	bcc .failed
 	jsr emit_constant_for_decl_type
@@ -313,7 +320,7 @@ parse_global_scalar:
 	lda #PARSE_BAD_INITIALIZER
 	jmp parser_fail
 .scalarDone:
-	jsr commit_persistent_symbol
+	jsr make_persistent_visible
 	jsr parser_next
 	rts
 .range:
@@ -370,14 +377,15 @@ parse_global_array:
 	bcc .bssOverflow
 	jsr allocate_bss
 	bcc .bssOverflow
-	ldx pendingPersistentIndex
-	lda #SYMBOL_ARRAY_BSS
+	ldx persistentCount
+	lda #SYMBOL_ARRAY
 	sta persistentKind,x
+	lda #EMIT_STORAGE_BSS
 	jsr emit_persistent_checked
 	bcs .uninitializedEmitted
 	jmp .failed
 .uninitializedEmitted:
-	jsr commit_persistent_symbol
+	jsr make_persistent_visible
 	jsr parser_next
 	rts
 .bssOverflow:
@@ -389,9 +397,10 @@ parse_global_array:
 	bcs .haveInitializer
 	jmp .failed
 .haveInitializer:
-	ldx pendingPersistentIndex
-	lda #SYMBOL_ARRAY_DATA
+	ldx persistentCount
+	lda #SYMBOL_ARRAY
 	sta persistentKind,x
+	lda #EMIT_STORAGE_DATA
 	jsr emit_persistent_checked
 	bcs .initializerSymbolEmitted
 	jmp .failed
@@ -425,7 +434,7 @@ parse_global_array:
 	lda #PARSE_BAD_INITIALIZER
 	jmp parser_fail
 .arrayDone:
-	jsr commit_persistent_symbol
+	jsr make_persistent_visible
 	jsr parser_next
 	rts
 .failed:
@@ -690,8 +699,10 @@ emit_zero_for_decl_type:
 	lda #PARSE_EMIT_ERROR
 	jmp parser_fail
 
+;;; A carries the transient storage class through to the output hook. X is always
+;;; the slot being constructed, which is exactly persistentCount until visible.
 emit_persistent_checked:
-	ldx pendingPersistentIndex
+	ldx persistentCount
 	jsr emit_persistent_symbol
 	bcs .ok
 	lda #PARSE_EMIT_ERROR
@@ -705,7 +716,7 @@ emit_persistent_checked:
 ;;; ---------------------------------------------------------------------------
 
 parse_function_definition:
-	ldx pendingPersistentIndex
+	ldx persistentCount
 	stx currentFunctionIndex
 	lda #SYMBOL_FUNCTION
 	sta persistentKind,x
@@ -726,7 +737,7 @@ parse_function_definition:
 .parameter:
 	jsr parse_function_parameter
 	bcc .failed
-	ldx pendingPersistentIndex
+	ldx persistentCount
 	inc persistentParamCount,x
 	lda currentTokenKind
 	cmp #')'
@@ -749,6 +760,7 @@ parse_function_definition:
 	lda #PARSE_BAD_FUNCTION
 	jmp parser_fail
 .body:
+	lda #EMIT_STORAGE_NONE
 	jsr emit_persistent_checked
 	bcc .failed
 	jsr parser_next
@@ -758,7 +770,7 @@ parse_function_definition:
 	jsr skip_function_statements
 	bcc .failed
 
-	jsr commit_persistent_symbol
+	jsr make_persistent_visible
 	inc userFunctionCount
 	jsr discard_current_symbols
 	sec
@@ -787,8 +799,8 @@ parse_function_parameter:
 	lda #PARSE_PARAMETER_CAPACITY
 	jmp parser_fail
 .paramSpace:
-	jsr reserve_current_name
-	bcs .reserved
+	jsr store_current_name
+	bcs .stored
 	lda currentCount
 	cmp #CURRENT_SYMBOL_CAPACITY
 	bcc .nameFull
@@ -797,8 +809,7 @@ parse_function_parameter:
 .nameFull:
 	lda #PARSE_NAME_CAPACITY
 	jmp parser_fail
-.reserved:
-	stx pendingCurrentIndex
+.stored:
 	lda declType
 	sta currentType,x
 	jsr set_alloc_size_for_type
@@ -811,7 +822,7 @@ parse_function_parameter:
 	bcc .paramFull
 	jsr emit_current_checked
 	bcc .failed
-	jsr commit_current_symbol
+	jsr make_current_visible
 	jsr parser_next
 	rts
 .paramFull:
@@ -850,8 +861,8 @@ parse_one_local:
 	lda #PARSE_DUPLICATE_SYMBOL
 	jmp parser_fail
 .unique:
-	jsr reserve_current_name
-	bcs .reserved
+	jsr store_current_name
+	bcs .stored
 	lda currentCount
 	cmp #CURRENT_SYMBOL_CAPACITY
 	bcc .nameFull
@@ -860,8 +871,7 @@ parse_one_local:
 .nameFull:
 	lda #PARSE_NAME_CAPACITY
 	jmp parser_fail
-.reserved:
-	stx pendingCurrentIndex
+.stored:
 	lda declType
 	sta currentType,x
 	jsr set_alloc_size_for_type
@@ -884,7 +894,7 @@ parse_one_local:
 	cmp #'='
 	beq .initializer
 	cmp #';'
-	beq .commit
+	beq .visible
 	lda #PARSE_BAD_DECLARATOR
 	jmp parser_fail
 .localArray:
@@ -896,10 +906,10 @@ parse_one_local:
 	jmp .failed
 .haveInitializer:
 	jsr validate_local_initializer
-	bcs .commit
+	bcs .visible
 	jmp .failed
-.commit:
-	jsr commit_current_symbol
+.visible:
+	jsr make_current_visible
 	jsr parser_next
 	rts
 .failed:
@@ -996,8 +1006,9 @@ skip_function_statements:
 	clc
 	rts
 
+;;; currentCount is the slot being constructed until make_current_visible.
 emit_current_checked:
-	ldx pendingCurrentIndex
+	ldx currentCount
 	jsr emit_current_symbol
 	bcs .ok
 	lda #PARSE_EMIT_ERROR
@@ -1009,7 +1020,6 @@ emit_current_checked:
 ;;; Parser state kept outside the reusable scanner token.
 parserError:		byte PARSE_OK
 translationInFunctions:	byte 0
-pendingPersistentIndex:	byte 0
 declType:		byte TYPE_INT
 arrayLength:		word 0
 initializerCount:	word 0
