@@ -157,7 +157,7 @@ This is deliberately smaller than a conventional ABI design. It answers only the
 - binary arithmetic mode (`D = 0`);
 - a tiny runtime/KERNAL-facing interface.
 
-Generated conditional control flow also stays deliberately simple. `nanoc0` does not calculate whether an arbitrary branch target is within the 6502 relative-branch range. It always uses a nearby conditional branch over an absolute `JMP` for non-local transfers. Spending the extra `JMP` is a good trade for eliminating branch-distance bookkeeping and relaxation from the assembly bootstrap compiler.
+Generated conditional control flow also stays deliberately simple. `nanoc0` does not calculate whether an arbitrary branch target is within the 6502 relative-branch range. It always uses a nearby conditional branch over an absolute `JMP` for generated conditional transfers. Spending the extra `JMP` is a good trade for eliminating branch-distance bookkeeping and relaxation from the assembly bootstrap compiler.
 
 The result is concrete enough that small C fragments can be shown beside predictable 6502 assembly.
 
@@ -185,7 +185,7 @@ Issue #36 covers the bootstrap compiler.
 
 The preferred architecture is as direct as the language permits: scan source, recognise the current declaration/statement/expression, and emit assembler as soon as possible. A persistent token stream, AST, generic IR, optimiser, register allocator, object format and linker are all absent unless a concrete Phase 1 requirement demonstrates that some smaller representation is actually simpler.
 
-The input is a character stream, not a sequence of semantically independent lines. The implementation may refill a small line/buffer-sized window, but whitespace, expressions and block comments may cross physical input lines.
+The input is a character stream, not a sequence of semantically independent lines. The implementation may refill a small bounded buffer, but whitespace, expressions and block comments may cross physical input lines.
 
 The output is ordinary `ass` source. `nanoc0` tracks generated size from the beginning because the native assembler has a finite 16 KiB staging region; compact obvious code matters, but not at the cost of introducing layout machinery such as branch relaxation.
 
