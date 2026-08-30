@@ -118,6 +118,15 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    fprintf(
+        stderr,
+        "assembly ok: symbols=%d names=%d fixups=%d image=%d\n",
+        symbol_count,
+        symbol_name_used,
+        fixup_count,
+        ass_image_length
+    );
+
     if (write_prg(argv[2]) != 0) {
         fprintf(stderr, "could not write %s\n", argv[2]);
         return 1;
