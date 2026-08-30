@@ -25,20 +25,17 @@ IDX_COUNT     = 6
 IDX_ADDRESS   = 7
 IDX_SOURCE    = 8
 IDX_C         = 9
-IDX_NEG       = 10
-IDX_U         = 11
 IDX_BYTES     = 12
 IDX_WORDS     = 13
 IDX_ADDRESSES = 14
 IDX_WIDTHS    = 15
-IDX_TABLE     = 16
 IDX_TEXT      = 17
 IDX_HELPER    = 18
 IDX_MAIN      = 19
 
-;;; Declarations plus scanner/symbol state are intentionally exercised as one
-;;; native image.  $4000 leaves a broad ordinary-RAM window for the bounded
-;;; symbol/name areas without approaching C64 I/O space.
+;;; Declarations plus scanner/symbol state are exercised as one native image.
+;;; The tests inspect the same bounded records that later compiler stages use;
+;;; the host runner only observes TEST_RESULT.
 	* = $4000
 
 main:
@@ -116,9 +113,8 @@ finish:
 .halt:
 	jmp .halt
 
-;;; Comprehensive valid translation.  This fixture proves exact BSS widths,
-;;; initialized-data streaming, function metadata, runtime-name lookup and local
-;;; initializer visibility without a host-side declaration parser.
+;;; Comprehensive valid translation.  Keep each representation invariant in a
+;;; small named check so the test doubles as a readable map of #54's state.
 test_valid_translation:
 	jsr set_default_bss
 	lda #declsNameEnd-declsName
@@ -134,138 +130,16 @@ test_valid_translation:
 	clc
 	rts
 .parsed:
-	lda parserError
-	bne .stateFail
-	lda persistentCount
-	cmp #20
-	bne .stateFail
-	lda userFunctionCount
-	cmp #2
-	bne .stateFail
-	lda currentCount
-	bne .stateFail
-	lda bssOffset
-	cmp #$24
-	bne .stateFail
-	lda bssOffset+1
-	bne .stateFail
-	lda zeroRequiredEnd
-	cmp #$13
-	bne .stateFail
-	lda zeroRequiredEnd+1
-	bne .stateFail
-	lda emittedPersistentCount
-	cmp #15
-	bne .stateFail
-	lda emittedCurrentCount
-	cmp #9
-	bne .stateFail
-	lda emittedBoundaryCount
-	cmp #1
-	bne .stateFail
-
-	;; Runtime functions are ordinary predefined persistent function entries.
-	lda persistentKind
-	cmp #SYMBOL_RUNTIME_FUNCTION
-	bne .stateFail
-	lda persistentParamCount
-	cmp #2
-	bne .stateFail
-	lda persistentParamCount+3
-	cmp #2
-	bne .stateFail
-
-	;; Exact uninitialized-global BSS layout: char=1, all 16-bit forms=2.
-	lda persistentKind+IDX_FLAG
-	cmp #SYMBOL_GLOBAL_BSS
-	bne .stateFail
-	lda persistentType+IDX_FLAG
-	cmp #TYPE_CHAR
-	bne .stateFail
-	lda persistentStorageOffsetLo+IDX_FLAG
-	bne .stateFail
-	lda persistentStorageOffsetLo+IDX_COUNT
-	cmp #1
-	bne .stateFail
-	lda persistentStorageOffsetLo+IDX_ADDRESS
-	cmp #3
-	bne .stateFail
-	lda persistentStorageOffsetLo+IDX_SOURCE
-	cmp #5
-	bne .stateFail
-	lda persistentType+IDX_SOURCE
-	cmp #TYPE_CHAR_PTR
-	bne .stateFail
-	lda persistentStorageOffsetLo+IDX_BYTES
-	cmp #7
-	bne .stateFail
-	lda persistentStorageOffsetLo+IDX_WORDS
-	cmp #11
-	bne .stateFail
-	lda persistentStorageOffsetLo+IDX_ADDRESSES
-	cmp #15
-	bne .stateFail
-	lda persistentArrayLengthLo+IDX_WORDS
-	cmp #2
-	bne .stateFail
-
-	;; Initialized globals live in loaded data rather than consuming NC_BSS.
-	lda persistentKind+IDX_C
-	cmp #SYMBOL_GLOBAL_DATA
-	bne .stateFail
-	lda persistentKind+IDX_WIDTHS
-	cmp #SYMBOL_ARRAY_DATA
-	bne .stateFail
-	lda persistentArrayLengthLo+IDX_TEXT
-	cmp #5
-	bne .stateFail
-
-	;; helper(char p,unsigned q,char *s): metadata survives current-table reuse.
-	lda persistentKind+IDX_HELPER
-	cmp #SYMBOL_FUNCTION
-	bne .stateFail
-	lda persistentParamStart+IDX_HELPER
-	cmp #8
-	bne .stateFail
-	lda persistentParamCount+IDX_HELPER
-	cmp #3
-	bne .stateFail
-	lda parameterType+8
-	cmp #TYPE_CHAR
-	bne .stateFail
-	lda parameterStorageOffsetLo+8
-	cmp #$13
-	bne .stateFail
-	lda parameterType+9
-	cmp #TYPE_UNSIGNED
-	bne .stateFail
-	lda parameterStorageOffsetLo+9
-	cmp #$14
-	bne .stateFail
-	lda parameterType+10
-	cmp #TYPE_CHAR_PTR
-	bne .stateFail
-	lda parameterStorageOffsetLo+10
-	cmp #$16
-	bne .stateFail
-	lda persistentParamStart+IDX_MAIN
-	cmp #11
-	bne .stateFail
-	lda persistentParamCount+IDX_MAIN
-	bne .stateFail
-
-	;; Only explicit static initializers emitted bytes. Uninitialized BSS did not.
-	lda emittedByteCount
-	cmp #20
-	bne .dataFail
-	ldx #$00
-.dataLoop:
-	lda emittedBytes,x
-	cmp expectedData,x
-	bne .dataFail
-	inx
-	cpx #expectedDataEnd-expectedData
-	bne .dataLoop
+	jsr check_valid_counts
+	bcc .stateFail
+	jsr check_valid_bss_layout
+	bcc .stateFail
+	jsr check_valid_initialized_symbols
+	bcc .stateFail
+	jsr check_valid_function_metadata
+	bcc .stateFail
+	jsr check_valid_data
+	bcc .dataFail
 	sec
 	rts
 .stateFail:
@@ -274,6 +148,167 @@ test_valid_translation:
 	rts
 .dataFail:
 	lda #FAIL_VALID_DATA
+	clc
+	rts
+
+check_valid_counts:
+	lda parserError
+	bne .no
+	lda persistentCount
+	cmp #20
+	bne .no
+	lda userFunctionCount
+	cmp #2
+	bne .no
+	lda currentCount
+	bne .no
+	lda bssOffset
+	cmp #$24
+	bne .no
+	lda bssOffset+1
+	bne .no
+	lda zeroRequiredEnd
+	cmp #$13
+	bne .no
+	lda zeroRequiredEnd+1
+	bne .no
+	lda emittedPersistentCount
+	cmp #15
+	bne .no
+	lda emittedCurrentCount
+	cmp #9
+	bne .no
+	lda emittedBoundaryCount
+	cmp #1
+	bne .no
+	lda persistentKind
+	cmp #SYMBOL_RUNTIME_FUNCTION
+	bne .no
+	lda persistentParamCount
+	cmp #2
+	bne .no
+	lda persistentParamCount+3
+	cmp #2
+	bne .no
+	sec
+	rts
+.no:
+	clc
+	rts
+
+;;; Exact uninitialized-global NC_BSS layout: char=1, 16-bit forms=2.
+check_valid_bss_layout:
+	lda persistentKind+IDX_FLAG
+	cmp #SYMBOL_GLOBAL_BSS
+	bne .no
+	lda persistentType+IDX_FLAG
+	cmp #TYPE_CHAR
+	bne .no
+	lda persistentStorageOffsetLo+IDX_FLAG
+	bne .no
+	lda persistentStorageOffsetLo+IDX_COUNT
+	cmp #1
+	bne .no
+	lda persistentStorageOffsetLo+IDX_ADDRESS
+	cmp #3
+	bne .no
+	lda persistentStorageOffsetLo+IDX_SOURCE
+	cmp #5
+	bne .no
+	lda persistentType+IDX_SOURCE
+	cmp #TYPE_CHAR_PTR
+	bne .no
+	lda persistentStorageOffsetLo+IDX_BYTES
+	cmp #7
+	bne .no
+	lda persistentStorageOffsetLo+IDX_WORDS
+	cmp #11
+	bne .no
+	lda persistentStorageOffsetLo+IDX_ADDRESSES
+	cmp #15
+	bne .no
+	lda persistentArrayLengthLo+IDX_WORDS
+	cmp #2
+	bne .no
+	sec
+	rts
+.no:
+	clc
+	rts
+
+;;; Initialized globals are loaded data and do not consume NC_BSS.
+check_valid_initialized_symbols:
+	lda persistentKind+IDX_C
+	cmp #SYMBOL_GLOBAL_DATA
+	bne .no
+	lda persistentKind+IDX_WIDTHS
+	cmp #SYMBOL_ARRAY_DATA
+	bne .no
+	lda persistentArrayLengthLo+IDX_TEXT
+	cmp #5
+	bne .no
+	sec
+	rts
+.no:
+	clc
+	rts
+
+;;; helper(char p,unsigned q,char *s) metadata survives current-table reuse.
+check_valid_function_metadata:
+	lda persistentKind+IDX_HELPER
+	cmp #SYMBOL_FUNCTION
+	bne .no
+	lda persistentParamStart+IDX_HELPER
+	cmp #8
+	bne .no
+	lda persistentParamCount+IDX_HELPER
+	cmp #3
+	bne .no
+	lda parameterType+8
+	cmp #TYPE_CHAR
+	bne .no
+	lda parameterStorageOffsetLo+8
+	cmp #$13
+	bne .no
+	lda parameterType+9
+	cmp #TYPE_UNSIGNED
+	bne .no
+	lda parameterStorageOffsetLo+9
+	cmp #$14
+	bne .no
+	lda parameterType+10
+	cmp #TYPE_CHAR_PTR
+	bne .no
+	lda parameterStorageOffsetLo+10
+	cmp #$16
+	bne .no
+	lda persistentParamStart+IDX_MAIN
+	cmp #11
+	bne .no
+	lda persistentParamCount+IDX_MAIN
+	bne .no
+	sec
+	rts
+.no:
+	clc
+	rts
+
+;;; Only explicit static initializers emit payload bytes.
+check_valid_data:
+	lda emittedByteCount
+	cmp #expectedDataEnd-expectedData
+	bne .no
+	ldx #$00
+.loop:
+	lda emittedBytes,x
+	cmp expectedData,x
+	bne .no
+	inx
+	cpx #expectedDataEnd-expectedData
+	bne .loop
+	sec
+	rts
+.no:
 	clc
 	rts
 
@@ -328,8 +363,8 @@ test_shadowing:
 	clc
 	rts
 
-;;; Error cases remain deliberately named rather than table-driven so a reader
-;;; can see exactly which source rule each native fixture exercises.
+;;; Error cases stay named rather than table-driven so the source rule under
+;;; test is visible without decoding a compact test-data format.
 test_duplicate_global:
 	lda #PARSE_DUPLICATE_SYMBOL
 	sta expectedParserError
