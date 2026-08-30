@@ -56,7 +56,9 @@ Phase 1 uses declaration-before-use as a universal source rule.
 
 This is intentionally stricter than historical C's old implicit-function
 behaviour. Nano C has **no implicit declarations**. If a source name has not
-already been declared or defined, using it is an error.
+already been declared or defined, any occurrence of that name is an error.
+Assignment does not create a variable: the target of `x = ...` must already be
+declared just like a value read from `x`.
 
 When the parser encounters a source identifier, its meaning is already known.
 The only predeclared names are the small runtime functions defined by the
@@ -73,7 +75,8 @@ Concretely:
 - all locals are declared at the start of the function before executable
   statements;
 - there are no block-local declarations;
-- a local or parameter therefore exists before every possible use;
+- assignment targets must already be declared;
+- a local or parameter therefore exists before every possible read or write;
 - runtime functions are the sole predefined exception.
 
 Global initialisers are deliberately restricted constant forms and therefore
@@ -84,9 +87,10 @@ This rule is central to the architecture, not merely a language style choice.
 source-level fixups. Lookup either succeeds immediately or the compiler reports
 an undeclared identifier.
 
-Generated assembly is different: forward synthetic labels for `if`, `while`
-and similar control flow are ordinary assembler references and are resolved by
-`ass`, which already provides that service.
+Phase 1 also has no source-level labels and no `goto`. The compiler therefore
+has no C label namespace or source-label fixups. Generated assembly still uses
+synthetic labels for structured control flow; those are compiler output and are
+resolved by `ass`.
 
 # 3. Source input: bytes, not lines
 
@@ -181,7 +185,8 @@ The parser owns one `current_token`. `next_token` advances it. There is no need
 for arbitrary token backtracking. Where grammar decisions require lookahead,
 the parser consumes the small prefix and chooses the corresponding construct.
 
-For example, an executable statement beginning with an identifier can become:
+An executable statement beginning with an identifier first performs symbol
+lookup. The following token then distinguishes only the forms Phase 1 permits:
 
 ```text
 identifier '=' ...        scalar assignment
@@ -189,7 +194,8 @@ identifier '[' ...        indexed assignment
 identifier '(' ...        function call statement
 ```
 
-Phase 1 deliberately excludes assignment expressions and arbitrary expression
+There is no `identifier ':'` case because C labels do not exist in Phase 1.
+Phase 1 also excludes assignment expressions and arbitrary expression
 statements, making this decision much simpler than general C.
 
 # 6. Symbol state
