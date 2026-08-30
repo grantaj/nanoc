@@ -54,10 +54,11 @@ NAME_POOL_CAPACITY         = 2304
 PARAM_META_CAPACITY        = 128
 
 ;;; Six bytes per persistent entry, three per current entry, one byte per saved
-;;; parameter type, plus the owned-name pool. Keep this literal beside the table
-;;; layout so `make nanoc0` can report large reserved workspace separately from
-;;; code and small parser/scanner state.
-SYMBOL_WORKSPACE_BYTES = 3488
+;;; parameter type, the owned-name pool, and five scalar bytes within the marked
+;;; workspace (parameterMetaCount, persistentNameUsed and namePoolNext). Keep
+;;; this literal beside the table layout so `make nanoc0` reports the exact
+;;; reserved symbol/name interval separately from code and other small state.
+SYMBOL_WORKSPACE_BYTES = 3493
 
 RUNTIME_SYMBOL_COUNT = 5
 RUNTIME_NAME_BYTES   = 44
