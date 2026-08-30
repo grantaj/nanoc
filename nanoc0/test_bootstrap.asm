@@ -7,6 +7,12 @@ FAIL_SHAPE  = $03
 ;;; Parse the actual bootstrap program, not a synthetic stress fixture. This is
 ;;; the executable proof that the bounded scanner/symbol capacities still cover
 ;;; the program Phase 1 exists to compile.
+;;;
+;;; A parse failure returns a compact diagnostic in TEST_RESULT:
+;;;   $20 | parserError
+;;;   $40 | scannerError when the parser failure came from the scanner
+;;; This keeps the native test self-describing while #54 is exercised against
+;;; the much larger real bootstrap source.
 	* = $4000
 
 main:
@@ -35,7 +41,15 @@ main:
 .opened:
 	jsr parse_translation_unit
 	bcs .parsed
-	lda #FAIL_PARSE
+	lda parserError
+	cmp #PARSE_SCANNER_ERROR
+	bne .parserFailure
+	lda scannerError
+	ora #$40
+	jmp finish
+.parserFailure:
+	lda parserError
+	ora #$20
 	jmp finish
 
 .parsed:
@@ -83,7 +97,7 @@ emit_bss_boundaries:
 	rts
 
 bootstrapName:
-	byte 'a','s','s','.','c'
+	byte 'A','S','S','.','C'
 bootstrapNameEnd:
 
 	include "declarations.asm"
