@@ -87,9 +87,8 @@ reset_expression_function_state:
 ;;; Carry set means the generated value is in target A/X and
 ;;; expressionValueType describes it.
 ;;;
-;;; Long failure paths use an adjacent branch followed by RTS/JMP rather than
-;;; relying on 6502 relative-branch reach. That keeps this state machine robust
-;;; as its individual cases grow.
+;;; Relative branches only select nearby cases. Transfers across this routine
+;;; are explicit JMPs so source growth cannot silently create branch-range bugs.
 parse_expression:
 	lda #EXPR_OK
 	sta expressionError
@@ -118,7 +117,9 @@ parse_expression:
 	rts
 .postfixDone:
 	lda expressionNeedValue
-	bne .value
+	beq .postfixOperator
+	jmp .value
+.postfixOperator:
 	jmp .operator
 
 .unaryMinus:
@@ -153,7 +154,9 @@ parse_expression:
 	beq .closeIndex
 
 	jsr binary_operator_for_token
-	bcc .finish
+	bcs .binaryOperator
+	jmp .finish
+.binaryOperator:
 	sta pendingOperator
 	sty pendingPrecedence
 	jsr reduce_for_precedence
@@ -181,7 +184,9 @@ parse_expression:
 	jsr reduce_to_marker
 	bcs .groupMarker
 	lda expressionError
-	beq .finish
+	bne .groupFailed
+	jmp .finish
+.groupFailed:
 	clc
 	rts
 .groupMarker:
@@ -202,7 +207,9 @@ parse_expression:
 	rts
 .groupPostfixDone:
 	lda expressionNeedValue
-	bne .value
+	beq .groupOperator
+	jmp .value
+.groupOperator:
 	jmp .operator
 
 .closeIndex:
@@ -210,7 +217,9 @@ parse_expression:
 	jsr reduce_to_marker
 	bcs .indexMarker
 	lda expressionError
-	beq .finish
+	bne .indexFailed
+	jmp .finish
+.indexFailed:
 	clc
 	rts
 .indexMarker:
@@ -231,7 +240,9 @@ parse_expression:
 	rts
 .indexPostfixDone:
 	lda expressionNeedValue
-	bne .value
+	beq .indexOperator
+	jmp .value
+.indexOperator:
 	jmp .operator
 
 .finish:
@@ -300,8 +311,10 @@ parse_expression_primary:
 	jmp expression_fail
 .integerEmitted:
 	jsr parser_next
-	bcs .primaryDone
+	bcs .integerAdvanced
 	jmp .scanFail
+.integerAdvanced:
+	jmp .primaryDone
 
 .character:
 	lda currentTokenValue
@@ -316,8 +329,10 @@ parse_expression_primary:
 	jmp expression_fail
 .characterEmitted:
 	jsr parser_next
-	bcs .primaryDone
+	bcs .characterAdvanced
 	jmp .scanFail
+.characterAdvanced:
+	jmp .primaryDone
 
 .string:
 	jsr capture_string_literal
@@ -336,8 +351,10 @@ parse_expression_primary:
 	lda #TYPE_CHAR
 	sta expressionElementType
 	jsr parser_next
-	bcs .primaryDone
+	bcs .stringAdvanced
 	jmp .scanFail
+.stringAdvanced:
+	jmp .primaryDone
 
 .identifier:
 	jsr lookup_symbol
@@ -389,9 +406,11 @@ parse_expression_primary:
 	sta expressionElementType
 .loadScalar:
 	jsr emit_load_primary_scalar
-	bcs .primaryDone
+	bcs .scalarLoaded
 	lda #EXPR_EMIT_ERROR
 	jmp expression_fail
+.scalarLoaded:
+	jmp .primaryDone
 
 .array:
 	lda primarySymbolType
@@ -407,9 +426,11 @@ parse_expression_primary:
 	sta expressionArrayOnly
 .arrayCanDecay:
 	jsr emit_load_primary_address
-	bcs .primaryDone
+	bcs .arrayLoaded
 	lda #EXPR_EMIT_ERROR
 	jmp expression_fail
+.arrayLoaded:
+	jmp .primaryDone
 
 .function:
 	lda currentTokenKind
@@ -420,8 +441,10 @@ parse_expression_primary:
 .call:
 	ldx primarySymbolIndex
 	jsr expression_call_primary
-	bcs .primaryDone
+	bcs .callDone
 	rts
+.callDone:
+	jmp .primaryDone
 
 .primaryDone:
 	lda #$00
