@@ -29,7 +29,6 @@
 ;;; tests/test_nanoc0_bootstrap parses bootstrap/ass.c natively, so these
 ;;; assumptions fail in CI if the bootstrap outgrows them.
 
-DECL_TMP = $fc
 DECL_PTR = $fe
 
 TYPE_CHAR       = 1
@@ -37,12 +36,12 @@ TYPE_INT        = 2
 TYPE_UNSIGNED   = 3
 TYPE_CHAR_PTR   = 4
 
-SYMBOL_GLOBAL_BSS       = 1
-SYMBOL_GLOBAL_DATA      = 2
-SYMBOL_ARRAY_BSS        = 3
-SYMBOL_ARRAY_DATA       = 4
-SYMBOL_FUNCTION         = 5
-SYMBOL_RUNTIME_FUNCTION = 6
+;;; Persistent kind records source meaning only. Whether a global was emitted as
+;;; BSS or initialized data matters only at its declaration and is not retained.
+SYMBOL_GLOBAL           = 1
+SYMBOL_ARRAY            = 2
+SYMBOL_FUNCTION         = 3
+SYMBOL_RUNTIME_FUNCTION = 4
 
 SYMBOL_AREA_NONE       = 0
 SYMBOL_AREA_CURRENT    = 1
@@ -86,27 +85,22 @@ reset_symbol_state:
 	lda #>RUNTIME_NAME_BYTES
 	sta persistentNameUsed+1
 	sta namePoolNext+1
-	lda bssBase
-	sta bssNextAddress
-	lda bssBase+1
-	sta bssNextAddress+1
 	rts
 
-;;; reserve_persistent_name
-;;; Copy currentTokenText into owned storage for persistentCount.
-;;; The entry is reserved but not visible until persistentCount is incremented.
-;;; Carry clear means symbol or name capacity is exhausted.
-reserve_persistent_name:
+;;; store_persistent_name
+;;; persistentCount is both the number of visible persistent symbols and the
+;;; slot being constructed. Copy currentTokenText into that slot's owned name.
+;;; Lookup still stops before this slot until make_persistent_visible increments
+;;; persistentCount. Carry clear means symbol or name capacity is exhausted.
+store_persistent_name:
 	ldx persistentCount
 	cpx #PERSISTENT_SYMBOL_CAPACITY
 	bcc .space
 	clc
 	rts
 .space:
-	stx reservedSymbolIndex
 	jsr copy_token_to_name_pool
 	bcc .full
-	ldx reservedSymbolIndex
 	lda nameCopyStart
 	sta persistentNameOffsetLo,x
 	lda nameCopyStart+1
@@ -121,21 +115,19 @@ reserve_persistent_name:
 	clc
 	rts
 
-;;; reserve_current_name
-;;; Copy currentTokenText for currentCount, but do not make the entry visible.
-;;; commit_current_symbol increments currentCount after any initializer has been
-;;; checked/compiled.
-reserve_current_name:
+;;; store_current_name
+;;; currentCount is both the number of visible current-function symbols and the
+;;; slot being constructed. A local initializer therefore cannot see its own
+;;; slot until make_current_visible increments currentCount.
+store_current_name:
 	ldx currentCount
 	cpx #CURRENT_SYMBOL_CAPACITY
 	bcc .space
 	clc
 	rts
 .space:
-	stx reservedCurrentIndex
 	jsr copy_token_to_name_pool
 	bcc .full
-	ldx reservedCurrentIndex
 	lda nameCopyStart
 	sta currentNameOffsetLo,x
 	lda nameCopyStart+1
@@ -147,8 +139,9 @@ reserve_current_name:
 	rts
 
 ;;; copy_token_to_name_pool
-;;; Store [length][currentTokenText...] at namePoolNext.
-;;; Carry clear means the bounded pool would overflow.
+;;; Store [length][currentTokenText...] at namePoolNext. X is preserved so a
+;;; caller may keep its symbol index there. Carry clear means the bounded pool
+;;; would overflow.
 copy_token_to_name_pool:
 	lda namePoolNext
 	sta nameCopyStart
@@ -188,14 +181,17 @@ copy_token_to_name_pool:
 	ldy #$00
 	lda currentTokenLength
 	sta (DECL_PTR),y
-	ldx #$00
+	inc DECL_PTR
+	bne .copyStart
+	inc DECL_PTR+1
+.copyStart:
+	ldy #$00
 .copy:
-	cpx currentTokenLength
+	cpy currentTokenLength
 	beq .done
-	iny
-	lda currentTokenText,x
+	lda currentTokenText,y
 	sta (DECL_PTR),y
-	inx
+	iny
 	jmp .copy
 .done:
 	lda nameCopyEnd
@@ -205,11 +201,13 @@ copy_token_to_name_pool:
 	sec
 	rts
 
-commit_persistent_symbol:
+;;; The counts are the visibility boundary. No separate pending-symbol state is
+;;; required: filling slot[count] is harmless until the count is incremented.
+make_persistent_visible:
 	inc persistentCount
 	rts
 
-commit_current_symbol:
+make_current_visible:
 	inc currentCount
 	rts
 
@@ -294,10 +292,9 @@ lookup_persistent_token:
 	rts
 
 ;;; token_equals_pool_name
-;;; X is preserved. Carry set means currentTokenText equals the length-prefixed
-;;; pool name at nameCompareOffset.
+;;; X is preserved naturally because Y performs the byte walk. Carry set means
+;;; currentTokenText equals the length-prefixed pool name at nameCompareOffset.
 token_equals_pool_name:
-	stx nameCompareSymbolIndex
 	clc
 	lda #<namePool
 	adc nameCompareOffset
@@ -310,47 +307,39 @@ token_equals_pool_name:
 	lda (DECL_PTR),y
 	cmp currentTokenLength
 	bne .different
-	ldx #$00
+	inc DECL_PTR
+	bne .compareStart
+	inc DECL_PTR+1
+.compareStart:
+	ldy #$00
 .compare:
-	cpx currentTokenLength
+	cpy currentTokenLength
 	beq .equal
-	iny
 	lda (DECL_PTR),y
-	cmp currentTokenText,x
+	cmp currentTokenText,y
 	bne .different
-	inx
+	iny
 	jmp .compare
 .equal:
-	ldx nameCompareSymbolIndex
 	sec
 	rts
 .different:
-	ldx nameCompareSymbolIndex
 	clc
 	rts
 
 ;;; allocate_bss
 ;;; allocSize is a 16-bit byte count.
 ;;; Carry set: allocOffset is the old BSS offset and allocation is committed.
-;;; Carry clear: NC_BSS+allocation would wrap the 16-bit target address space.
+;;; Carry clear: the offset itself or NC_BSS+new offset would wrap 16 bits.
 ;;;
-;;; allocOffset is deliberately transient. The declaration emitter sees it while
-;;; defining the assembler-visible storage label; later compiler phases refer to
-;;; that label by symbol identity and never need to retain the numeric address.
+;;; bssOffset is the single authoritative allocation position. Absolute target
+;;; addresses are derived from bssBase only when checking for wrap; they are not
+;;; retained as a second copy of the same position.
 allocate_bss:
 	lda bssOffset
 	sta allocOffset
 	lda bssOffset+1
 	sta allocOffset+1
-
-	clc
-	lda bssNextAddress
-	adc allocSize
-	sta allocNextAddress
-	lda bssNextAddress+1
-	adc allocSize+1
-	sta allocNextAddress+1
-	bcs .overflow
 
 	clc
 	lda bssOffset
@@ -361,10 +350,13 @@ allocate_bss:
 	sta allocNextOffset+1
 	bcs .overflow
 
-	lda allocNextAddress
-	sta bssNextAddress
-	lda allocNextAddress+1
-	sta bssNextAddress+1
+	clc
+	lda bssBase
+	adc allocNextOffset
+	lda bssBase+1
+	adc allocNextOffset+1
+	bcs .overflow
+
 	lda allocNextOffset
 	sta bssOffset
 	lda allocNextOffset+1
@@ -417,7 +409,7 @@ set_alloc_size_for_array:
 ;;; Retain only the parameter type needed by later callers. The parameter's
 ;;; storage label is deterministic from function symbol + argument ordinal, so
 ;;; retaining the numeric NC_BSS address would duplicate information already
-;;; emitted to assembly.
+;;; emitted to assembly. The parameter being constructed is slot currentCount.
 append_parameter_metadata:
 	ldx parameterMetaCount
 	cpx #PARAM_META_CAPACITY
@@ -425,7 +417,7 @@ append_parameter_metadata:
 	clc
 	rts
 .space:
-	ldy pendingCurrentIndex
+	ldy currentCount
 	lda currentType,y
 	sta parameterType,x
 	inc parameterMetaCount
@@ -441,9 +433,6 @@ currentCount:		byte 0
 userFunctionCount:	byte 0
 lookupArea:		byte SYMBOL_AREA_NONE
 currentFunctionIndex:	byte 0
-reservedSymbolIndex:	byte 0
-reservedCurrentIndex:	byte 0
-pendingCurrentIndex:	byte 0
 
 ;;; The large bounded workspace begins here. Everything outside this interval is
 ;;; executable code or small scalar parser/scanner state.
@@ -505,16 +494,13 @@ symbolWorkspaceEnd:
 
 ;;; Static BSS allocation state.
 bssBase:		word $5000
-bssNextAddress:	word $5000
 bssOffset:		word 0
 zeroRequiredEnd:	word 0
 allocSize:		word 0
 allocOffset:		word 0
-allocNextAddress:	word 0
 allocNextOffset:	word 0
 
 ;;; Shared symbol scratch.
 nameCopyStart:		word 0
 nameCopyEnd:		word 0
 nameCompareOffset:	word 0
-nameCompareSymbolIndex:	byte 0
