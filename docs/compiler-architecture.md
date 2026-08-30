@@ -74,6 +74,10 @@ Concretely:
 - parameters are declared in the function header before the body;
 - all locals are declared at the start of the function before executable
   statements;
+- local declarations may contain initializer expressions;
+- a local initializer may use parameters, globals and previously declared
+  locals, but not the local being declared or a later local;
+- the new local name becomes available after its initializer has been compiled;
 - there are no block-local declarations;
 - assignment targets must already be declared;
 - a local or parameter therefore exists before every possible read or write;
@@ -167,6 +171,8 @@ recognise global declaration
 
 recognise local declaration
     -> allocate its fixed NC_BSS slot
+    -> if initialised, compile expression to A/X and store it
+    -> then make the local name available to following source
 
 recognise expression
     -> emit code leaving its value in A/X
@@ -268,6 +274,37 @@ such storage is allocated. It does not need to know the function's maximum
 expression or call depth before compiling the function body.
 
 This avoids a preliminary function-analysis pass.
+
+## 7.1 Local initializers
+
+Local initialization uses no new machine mechanism.
+
+For:
+
+```c
+int a = x + 1;
+```
+
+`nanoc0` performs, in order:
+
+```text
+allocate __fn_a in the function's static NC_BSS area
+compile x + 1 -> A/X
+store A/X -> __fn_a
+make a visible to subsequent source
+```
+
+For a `char` local, only `A` is stored. For `int`, `unsigned` and `char *`, both
+bytes are stored.
+
+Initializers therefore execute in declaration order each time the function is
+called. Since the local being declared is not entered into the current-function
+symbol table until its initializer has been emitted, self-reference is rejected
+by the ordinary undeclared-name rule. Later locals are naturally unavailable for
+the same reason.
+
+Once the first ordinary statement is seen, the declaration phase of the
+function is over and no further local declarations are accepted.
 
 # 8. Expressions: explicit operator stack, no recursion
 
