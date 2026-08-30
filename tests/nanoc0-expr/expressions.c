@@ -29,10 +29,10 @@ int main()
     int r21 = 32767 < 32768;
     int r22 = 32768 < 65535;
     int r23 = 65535 > 32768;
-    char *p = 65534;
+    char *p = bytes + 63233;
     char *q = p + 3;
     int r26 = bytes[4];
     int r27 = words[1];
-    int r28 = 5 == 5;
+    int r28 = 'A' == 65;
     int r29 = 5 != 5;
 }
