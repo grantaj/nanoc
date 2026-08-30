@@ -28,7 +28,10 @@ ASS_TARGETS = \
 	$(BUILD_DIR)/test_selfhost.prg
 
 NANOC0_TARGETS = \
-	$(BUILD_DIR)/test_nanoc0_scanner.prg
+	$(BUILD_DIR)/nanoc0-core.prg \
+	$(BUILD_DIR)/test_nanoc0_scanner.prg \
+	$(BUILD_DIR)/test_nanoc0_declarations.prg \
+	$(BUILD_DIR)/test_nanoc0_bootstrap.prg
 
 ASSEMBLER_DEPS = \
 	ass/assembler.asm ass/representation.asm ass/source.asm ass/data.asm \
@@ -58,6 +61,24 @@ NANOC0_SCANNER_FIXTURES = \
 	tests/nanoc0-src/bad.c \
 	tests/nanoc0-src/slash.c
 
+NANOC0_DECLARATION_FIXTURES = \
+	tests/nanoc0-src/decls.c \
+	tests/nanoc0-src/bss.c \
+	tests/nanoc0-src/dupglobal.c \
+	tests/nanoc0-src/dupfunc.c \
+	tests/nanoc0-src/dupparam.c \
+	tests/nanoc0-src/duplocal.c \
+	tests/nanoc0-src/lateglobal.c \
+	tests/nanoc0-src/latelocal.c \
+	tests/nanoc0-src/selflocal.c \
+	tests/nanoc0-src/forwardlocal.c \
+	tests/nanoc0-src/laterfunc.c \
+	tests/nanoc0-src/shadow.c \
+	tests/nanoc0-src/toomany.c \
+	tests/nanoc0-src/stringfit.c \
+	tests/nanoc0-src/charrange.c \
+	tests/nanoc0-src/intrange.c
+
 SELFHOST_FIXTURES = \
 	ass/ass_0800.asm \
 	ass/ass.asm \
@@ -67,7 +88,7 @@ EXAMPLE_TARGETS = \
 	$(BUILD_DIR)/border-demo.prg \
 	$(BUILD_DIR)/border-c.prg
 
-.PHONY: all setup dis ass nanoc0 examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner clean
+.PHONY: all setup dis ass nanoc0 examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap clean
 
 all: dis ass nanoc0 examples
 
@@ -79,10 +100,19 @@ dis: $(DIS_TARGETS)
 ass: $(ASS_TARGETS)
 
 nanoc0: $(NANOC0_TARGETS)
+	@bytes=$$(wc -c < $(BUILD_DIR)/nanoc0-core.prg); \
+	bytes=$$((bytes - 2)); \
+	workspace=$$(awk '$$1 == "SYMBOL_WORKSPACE_BYTES" { print $$3 }' nanoc0/symbols.asm); \
+	token=$$(awk '$$1 == "TOKEN_TEXT_CAPACITY" { print $$3 }' nanoc0/scanner.asm); \
+	small=$$((bytes - workspace - token)); \
+	echo "nanoc0 resident core:          $$bytes bytes"; \
+	echo "  symbol/name workspace:      $$workspace bytes"; \
+	echo "  reusable token text:        $$token bytes"; \
+	echo "  code + other small state:   $$small bytes"
 
 examples: $(EXAMPLE_TARGETS)
 
-test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner
+test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap
 
 test-skipws: $(BUILD_DIR)/test_skipws.prg
 	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< skipws
@@ -123,8 +153,14 @@ test-streaming: $(BUILD_DIR)/test_streaming.prg $(STREAM_FIXTURES)
 test-selfhost: $(BUILD_DIR)/test_selfhost.prg $(SELFHOST_FIXTURES)
 	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR) VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< selfhost
 
-test-nanoc0-scanner: $(NANOC0_TARGETS) $(NANOC0_SCANNER_FIXTURES)
-	VICE_FS_DIR=$(CURDIR)/tests/nanoc0-src VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_scanner.prg nanoc0-scanner
+test-nanoc0-scanner: $(BUILD_DIR)/test_nanoc0_scanner.prg $(NANOC0_SCANNER_FIXTURES)
+	VICE_FS_DIR=$(CURDIR)/tests/nanoc0-src VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< nanoc0-scanner
+
+test-nanoc0-declarations: $(BUILD_DIR)/test_nanoc0_declarations.prg $(NANOC0_DECLARATION_FIXTURES)
+	VICE_FS_DIR=$(CURDIR)/tests/nanoc0-src VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< nanoc0-declarations
+
+test-nanoc0-bootstrap: $(BUILD_DIR)/test_nanoc0_bootstrap.prg bootstrap/ass.c
+	VICE_TIMEOUT=30 VICE_FS_DIR=$(CURDIR)/bootstrap VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< nanoc0-bootstrap
 
 $(BUILD_DIR):
 	mkdir -p $@
@@ -183,8 +219,17 @@ $(BUILD_DIR)/test_streaming.prg: ass/test_streaming.asm $(ASSEMBLER_DEPS) | $(BU
 $(BUILD_DIR)/test_selfhost.prg: ass/test_selfhost.asm ass/ass.asm $(ASSEMBLER_DEPS) | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_selfhost.asm
 
+$(BUILD_DIR)/nanoc0-core.prg: nanoc0/core.asm nanoc0/declarations.asm nanoc0/symbols.asm nanoc0/scanner.asm nanoc0/source.asm dis/kernal.inc | $(BUILD_DIR)
+	cd nanoc0 && $(VASM) $(VASMFLAGS) -o ../$@ core.asm
+
 $(BUILD_DIR)/test_nanoc0_scanner.prg: nanoc0/test_scanner.asm nanoc0/scanner.asm nanoc0/source.asm dis/kernal.inc test.inc | $(BUILD_DIR)
 	cd nanoc0 && $(VASM) $(VASMFLAGS) -o ../$@ test_scanner.asm
+
+$(BUILD_DIR)/test_nanoc0_declarations.prg: nanoc0/test_declarations.asm nanoc0/declarations.asm nanoc0/symbols.asm nanoc0/scanner.asm nanoc0/source.asm dis/kernal.inc test.inc | $(BUILD_DIR)
+	cd nanoc0 && $(VASM) $(VASMFLAGS) -o ../$@ test_declarations.asm
+
+$(BUILD_DIR)/test_nanoc0_bootstrap.prg: nanoc0/test_bootstrap.asm nanoc0/declarations.asm nanoc0/symbols.asm nanoc0/scanner.asm nanoc0/source.asm dis/kernal.inc test.inc | $(BUILD_DIR)
+	cd nanoc0 && $(VASM) $(VASMFLAGS) -o ../$@ test_bootstrap.asm
 
 $(BUILD_DIR)/border-demo.prg: examples/border/demo.asm | $(BUILD_DIR)
 	cd examples/border && $(VASM) $(VASMFLAGS) -o ../../$@ demo.asm
