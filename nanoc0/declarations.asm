@@ -4,36 +4,31 @@
 ;;;
 ;;; This is deliberately only the declaration/storage half of the parser. It
 ;;; consumes the translation unit from top to bottom, emits static initializer
-;;; bytes immediately, records symbols that later source may use, and skips the
-;;; executable statement bodies that #55/#56 will compile.
+;;; bytes immediately, records symbols that later source may use, compiles
+;;; function-entry local initializers through the one expression engine, and
+;;; skips executable statement bodies that #56 will compile.
 ;;;
-;;; Four tiny output hooks are supplied by the eventual compiler driver and by
-;;; the native tests in this issue:
+;;; Four tiny declaration output hooks are supplied by the eventual compiler
+;;; driver and by the native tests:
 ;;;
 ;;;   emit_persistent_symbol   A = EMIT_STORAGE_*, X = persistent symbol index
 ;;;   emit_current_symbol      X = current-function symbol index
 ;;;   emit_static_byte         A = one initialized-data byte
 ;;;   emit_bss_boundaries      reads zeroRequiredEnd/bssOffset
 ;;;
-;;; Each hook returns carry set on success. They exist so initialized global
-;;; data can remain streaming: nanoc0 does not retain a second data image in RAM.
+;;; expression.asm additionally writes ordinary target assembly through the
+;;; one-byte emit_output_byte hook. Each hook returns carry set on success.
 ;;;
-;;; Storage facts are also streamed at the point they are known. For an
-;;; uninitialized persistent/current symbol, allocOffset is the slot just
-;;; allocated. For a persistent declaration, EMIT_STORAGE_BSS/DATA is passed to
-;;; the emitter and then forgotten. currentFunctionIndex + X gives a
-;;; deterministic current-symbol identity. Array length remains in arrayLength
-;;; while its declaration is being emitted. None of those transient facts are
-;;; copied into persistent tables.
-;;;
-;;; Local initializers are intentionally not expression-parsed here. Until #55
-;;; lands, validate_local_initializer consumes the expression tokens and checks
-;;; only declaration-before-use. The new local stays invisible until that scan
-;;; reaches ';'. #55 replaces this single hook point with real expression code
-;;; generation rather than inheriting a second expression implementation.
+;;; Storage facts are streamed at the point they are known. For an uninitialized
+;;; persistent/current symbol, allocOffset is the slot just allocated. For a
+;;; persistent declaration, EMIT_STORAGE_BSS/DATA is passed to the emitter and
+;;; then forgotten. currentFunctionIndex + X gives a deterministic current-symbol
+;;; identity. Array length remains in arrayLength while its declaration is being
+;;; emitted. None of those transient facts are copied into persistent tables.
 
 	include "scanner.asm"
 	include "symbols.asm"
+	include "expression.asm"
 
 EMIT_STORAGE_NONE = 0
 EMIT_STORAGE_BSS  = 1
@@ -63,6 +58,7 @@ PARSE_VALUE_RANGE           = 20
 PARSE_LOCAL_ARRAY           = 21
 PARSE_EXPECTED_FUNCTION     = 22
 PARSE_NAME_CAPACITY         = 23
+PARSE_EXPRESSION_ERROR      = 24
 
 ;;; parse_translation_unit
 ;;; Source must already be open. bssBase must already contain the wrapper's
@@ -74,6 +70,7 @@ parse_translation_unit:
 	lda #$00
 	sta translationInFunctions
 	jsr reset_symbol_state
+	jsr reset_expression_translation_state
 	jsr parser_next
 	bcc .failed
 
@@ -90,6 +87,8 @@ parse_translation_unit:
 .end:
 	lda userFunctionCount
 	beq .expectedFunction
+	jsr emit_deferred_literals
+	bcc .emitFail
 	jsr emit_bss_boundaries
 	bcc .emitFail
 	sec
@@ -727,6 +726,7 @@ parse_function_definition:
 	lda #$00
 	sta persistentParamCount,x
 	jsr discard_current_symbols
+	jsr reset_expression_function_state
 
 	jsr parser_next
 	bcc .failed
@@ -905,7 +905,7 @@ parse_one_local:
 	bcs .haveInitializer
 	jmp .failed
 .haveInitializer:
-	jsr validate_local_initializer
+	jsr compile_local_initializer
 	bcs .visible
 	jmp .failed
 .visible:
@@ -916,44 +916,35 @@ parse_one_local:
 	clc
 	rts
 
-;;; Temporary #54 hook: consume a non-empty expression up to ';' and apply only
-;;; declaration-before-use to identifier tokens. #55 replaces this call site
-;;; with the real non-recursive expression engine and store.
-validate_local_initializer:
+;;; The local under construction is slot currentCount but is not visible to
+;;; lookup until make_current_visible below. The ordinary expression engine thus
+;;; enforces self-reference/forward-reference rules without a special case.
+compile_local_initializer:
 	lda currentTokenKind
 	cmp #';'
-	bne .loop
+	bne .expression
 	lda #PARSE_BAD_INITIALIZER
 	jmp parser_fail
-.loop:
+.expression:
+	jsr parse_expression
+	bcc .expressionFail
 	lda currentTokenKind
-	cmp #TOKEN_EOF
-	beq .bad
-	cmp #'{' 
-	beq .bad
-	cmp #'}'
-	beq .bad
 	cmp #';'
-	beq .done
-	cmp #TOKEN_IDENTIFIER
-	bne .advance
-	jsr lookup_symbol
-	bcs .advance
-	lda #PARSE_UNDECLARED
+	beq .store
+	lda #PARSE_BAD_INITIALIZER
 	jmp parser_fail
-.advance:
-	jsr parser_next
-	bcc .failed
-	jmp .loop
+.store:
+	ldx currentCount
+	jsr emit_store_current_value
+	bcs .done
+	lda #PARSE_EMIT_ERROR
+	jmp parser_fail
 .done:
 	sec
 	rts
-.bad:
-	lda #PARSE_BAD_INITIALIZER
+.expressionFail:
+	lda #PARSE_EXPRESSION_ERROR
 	jmp parser_fail
-.failed:
-	clc
-	rts
 
 ;;; This is not a statement parser. It only finds the matching function brace so
 ;;; later definitions can be seen, while enforcing rules already owned by #54:
