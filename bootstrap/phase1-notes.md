@@ -102,6 +102,8 @@ staging/fixups: 16 KiB
 
 The host C object layout is irrelevant; these numbers are target-design evidence only.
 
+The 16 KiB staging region is also a real constraint on the compiler output. `nanoc0` should measure generated assembly/program size from its earliest integration tests. It may emit deliberately conservative code such as branch-over-`JMP`, but it should not wait until the final `ass.c` compile to discover that baseline code generation has exceeded the assembler's staging budget.
+
 ## Control-flow and declaration pressure
 
 `ass.c` also shows that the first compiler does not need several expensive generalities:
