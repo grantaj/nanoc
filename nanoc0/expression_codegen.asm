@@ -300,23 +300,40 @@ emit_unary_minus:
 	ldy #>exprNegate
 	jmp emit_text
 
+;;; Keep relative branches in this selector local. The operation emitters are
+;;; intentionally ordinary separate routines and may grow without changing the
+;;; dispatcher's branch reach.
 emit_binary_reduction:
 	lda reduceOperator
 	cmp #OP_ADD
-	beq emit_add_reduction
+	beq .add
 	cmp #OP_SUB
-	beq emit_sub_reduction
+	beq .sub
 	cmp #OP_MUL
-	beq emit_mul_reduction
+	beq .mul
 	cmp #OP_AND
-	beq emit_and_reduction
+	beq .and
 	cmp #OP_OR
-	beq emit_or_reduction
+	beq .or
 	cmp #OP_SHL
-	beq emit_shl_reduction
+	beq .shl
 	cmp #OP_SHR
-	beq emit_shr_reduction
+	beq .shr
 	jmp emit_compare_reduction
+.add:
+	jmp emit_add_reduction
+.sub:
+	jmp emit_sub_reduction
+.mul:
+	jmp emit_mul_reduction
+.and:
+	jmp emit_and_reduction
+.or:
+	jmp emit_or_reduction
+.shl:
+	jmp emit_shl_reduction
+.shr:
+	jmp emit_shr_reduction
 
 ;;; A/X is the right operand. Preserve it in the machine-contract scratch pair
 ;;; while the left spill is loaded.
