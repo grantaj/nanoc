@@ -8,6 +8,7 @@ FAIL_BYTE_RANGE   = $04
 FAIL_BAD_LIST     = $05
 FAIL_BAD_ORIGIN   = $06
 FAIL_LATE_ORIGIN  = $07
+FAIL_LABEL_ORIGIN = $08
 
 OUTPUT      = $2100
 PAGE_OUTPUT = $20ff
@@ -31,6 +32,8 @@ main:
 	jsr testBadOrigin
 	bcc finish
 	jsr testLateOrigin
+	bcc finish
+	jsr testLabelThenOrigin
 	bcc finish
 	lda #TEST_PASS
 finish:
@@ -233,6 +236,31 @@ testLateOrigin:
 	sec
 	rts
 
+;;; A label fixes an address just as code/data does, so it also closes the one
+;;; origin position before any later `* = value` can move assemblyPtr.
+testLabelThenOrigin:
+	lda #<labelOriginSource
+	sta ZP_PTR1
+	lda #>labelOriginSource
+	sta ZP_PTR1+1
+	lda #<labelOriginSourceEnd
+	sta sourceEnd
+	lda #>labelOriginSourceEnd
+	sta sourceEnd+1
+	lda #<OUTPUT
+	sta assemblyPtr
+	lda #>OUTPUT
+	sta assemblyPtr+1
+	jsr assemble
+	cmp #ASSEMBLE_BAD_ORIGIN
+	beq .ok
+	lda #FAIL_LABEL_ORIGIN
+	clc
+	rts
+.ok:
+	sec
+	rts
+
 	include "parser.asm"
 	include "instruction.asm"
 	include "emitter.asm"
@@ -277,3 +305,8 @@ lateOriginSource:
 	string "target:"
 	string "RTS"
 lateOriginSourceEnd:
+
+labelOriginSource:
+	string "oldPlace:"
+	string "* = $2000"
+labelOriginSourceEnd:

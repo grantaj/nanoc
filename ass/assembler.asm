@@ -118,6 +118,8 @@ finishAssembly:
 processStatement:
 	cmp #STATEMENT_LABEL
 	bne .notLabel
+	lda #$00
+	sta originAllowed
 	jmp assembleLabel
 .notLabel:
 	cmp #STATEMENT_SYMBOL
