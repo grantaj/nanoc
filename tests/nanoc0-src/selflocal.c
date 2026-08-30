@@ -1,1 +1,1 @@
-int f() { int a = a; return 0; }
+int f() { int a = missing; return 0; }
