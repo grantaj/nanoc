@@ -85,6 +85,10 @@ This ordering rule is intentional. It allows `nanoc0` to compile directly from t
 
 # 2. Lexical rules
 
+The source is a character stream. Physical line boundaries have no syntactic significance beyond being whitespace.
+
+An implementation may refill a bounded input buffer line-by-line or in other small chunks, but it must preserve lexical state across refills. In particular, expressions, declarations and block comments may continue across physical source lines.
+
 ## 2.1 Identifiers
 
 An identifier begins with an ASCII letter or `_` and continues with ASCII letters, decimal digits or `_`.
