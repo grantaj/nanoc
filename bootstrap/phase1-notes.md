@@ -64,7 +64,7 @@ The assembler needs both:
 
 Making the only integer type signed would make values above `$7fff` awkward. Making it unsigned would turn ordinary negative status returns into magic values.
 
-The experiment therefore justifies one deliberate addition to the literal candidate syntax:
+The experiment therefore justified one deliberate addition to the first candidate spelling:
 
 - `int`: signed 16-bit;
 - `unsigned`: unsigned 16-bit;
@@ -72,7 +72,9 @@ The experiment therefore justifies one deliberate addition to the literal candid
 
 This is a better minimal language than forcing two distinct jobs through one type merely to save one keyword and one signedness bit in the compiler.
 
-Before `ass.c` becomes a `nanoc0` acceptance input, the declarations that genuinely hold full-range machine values should be normalised to `unsigned`. That is a mechanical target-width cleanup, not a change to the assembler design.
+That target-width cleanup is now complete in `ass.c`: origins, parsed machine values, symbol payloads, fixup addends and the helper parameters/locals that carry them are explicitly `unsigned`; search/status values remain signed `int`.
+
+The important point is that no wider host integer is now required to express the assembler's logic. The modern host compiler remains only the independent behaviour check.
 
 ## Hexadecimal literals
 
@@ -91,7 +93,7 @@ fixups:      575
 image bytes: 6905
 ```
 
-The candidate fixed splits were then chosen so their **target representation**, assuming 16-bit Nano C integers, fits the same native assembler budgets:
+The candidate fixed splits were then chosen so their **target representation**, assuming 16-bit Nano C integer values, fits the same native assembler budgets:
 
 ```text
 symbols/names: 12 KiB
@@ -99,6 +101,8 @@ staging/fixups: 16 KiB
 ```
 
 The host C object layout is irrelevant; these numbers are target-design evidence only.
+
+The 16 KiB staging region is also a real constraint on the compiler output. `nanoc0` should measure generated assembly/program size from its earliest integration tests. It may emit deliberately conservative code such as branch-over-`JMP`, but it should not wait until the final `ass.c` compile to discover that baseline code generation has exceeded the assembler's staging budget.
 
 ## Control-flow and declaration pressure
 
@@ -112,7 +116,11 @@ The host C object layout is irrelevant; these numbers are target-design evidence
 
 Those restrictions are now part of Phase 1 because they substantially simplify a direct assembly-written compiler without degrading this real program.
 
-Phase 1 still supports nested calls to different functions. #35 must therefore preserve caller locals across ordinary nested calls even if it chooses fixed per-function storage rather than general stack frames.
+Phase 1 still supports nested calls to different functions. The frozen machine model therefore uses fixed per-function parameter/local/temp storage and caller-owned call staging rather than software stack frames.
+
+Generated control flow follows the same philosophy. `nanoc0` will not retain enough layout state to ask whether a conditional target fits a 6502 relative branch. It always emits a nearby conditional branch over an absolute `JMP`, deliberately spending a few bytes to remove branch-distance bookkeeping and relaxation from the bootstrap compiler.
+
+The C language itself remains a character stream. `nanoc0` may use a small refill buffer, but physical source lines are only whitespace boundaries: declarations, expressions and block comments may cross them. This keeps the language ordinary C-like syntax without requiring the compiler to retain the whole source file.
 
 ## Features that remain deferred
 
@@ -138,7 +146,7 @@ The candidate remains readable using nested tests, so the assembly bootstrap doe
 
 ### Recursion
 
-The assembler does not use it. Phase 1 is deliberately non-recursive so #35 can first consider fixed parameter/local slots rather than a general software stack.
+The assembler does not use it. Phase 1 is deliberately non-recursive, and the machine model takes advantage of that with fixed static function storage rather than a general software stack.
 
 ## Architecture retained by the C experiment
 

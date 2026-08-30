@@ -47,7 +47,22 @@ Both are caller-clobbered. Neither may hold a value that must survive `JSR`.
 
 This is intentionally a tiny fixed machine convention. Phase 1 C source cannot name zero-page objects directly, so reserving these four bytes costs no source-language generality.
 
-# 3. Expression value convention
+# 3. Binary arithmetic mode is an invariant
+
+Nano C integer arithmetic always uses ordinary binary 6502 `ADC`/`SBC` semantics.
+
+The decimal flag is therefore part of the machine contract rather than ambient machine state:
+
+- generated Nano C code assumes `D = 0`;
+- `__nc_init` executes `CLD` before any C code runs;
+- Nano C generated code never executes `SED`;
+- compiler support and runtime/KERNAL-facing routines must return with `D = 0`.
+
+A runtime helper may call code whose decimal-flag behaviour is not part of the Nano C contract, but it must execute `CLD` before returning to generated C.
+
+This avoids every generated add/subtract having to defend itself against arbitrary processor state while still making the requirement explicit and visible.
+
+# 4. Expression value convention
 
 Every scalar expression finishes in the same visible machine value pair:
 
@@ -71,7 +86,7 @@ A Phase 1 C-defined function returns `int`, so its return value is also in `A/X`
 
 `A`, `X`, `Y`, processor flags, `NC_TMP`, and `NC_PTR` are all caller-clobbered by a function call. Source locals do not need register preservation because they live in static memory.
 
-## 3.1 Loading ordinary objects
+## 4.1 Loading ordinary objects
 
 A `char` object naturally loads as:
 
@@ -96,7 +111,7 @@ ldx #>text
 
 Stores reverse the same convention. A `char` destination stores only `A`; a 16-bit destination stores both bytes.
 
-# 4. Static storage instead of stack frames
+# 5. Static storage instead of stack frames
 
 Every function owns one fixed set of storage for:
 
@@ -140,7 +155,7 @@ No stack frame is created or destroyed.
 
 A caller's locals survive a nested call simply because the callee owns different addresses.
 
-# 5. `NC_BSS`: explicit static RAM workspace
+# 6. `NC_BSS`: explicit static RAM workspace
 
 The existing native assembler can stage at most 16 KiB of output, while the candidate `ass.c` needs roughly 29 KiB of uninitialised arrays before function storage is counted. Emitting every zero-initialised C object as bytes in the PRG would therefore make the bootstrap impossible for the wrong reason.
 
@@ -155,7 +170,7 @@ NC_BSS = $5000       ; example only; the wrapper chooses the real address
 `nanoc0` allocates zero-initialised globals and function-owned storage as offsets from that base:
 
 ```asm
-ass_image       = NC_BSS+0
+ass_image        = NC_BSS+0
 ass_image_length = NC_BSS+11264
 ```
 
@@ -171,7 +186,7 @@ __nc_bss_end = NC_BSS+<total bytes>
 
 so the chosen memory geometry remains visible to the build and to a human reader.
 
-## 5.1 What lives in loaded image bytes
+## 6.1 What lives in loaded image bytes
 
 Objects with explicit source initialisers remain ordinary loaded data because their bytes must exist before C code runs:
 
@@ -190,16 +205,17 @@ Likewise, explicitly initialised 16-bit tables use `word`, and string literals/s
 
 C64 RAM is writable, so an explicitly initialised global remains mutable even though its initial bytes arrived in the loaded image.
 
-## 5.2 Zero-initialised globals
+## 6.2 Zero-initialised globals
 
 Source-level uninitialised globals must begin as zero according to Phase 1 semantics.
 
 They are allocated first in `NC_BSS`. Because all globals precede all functions in Phase 1, `nanoc0` knows the end of the zero-required region before function storage begins.
 
-The generated unit provides a tiny routine:
+The generated unit provides a tiny routine whose first instruction also establishes the binary-arithmetic invariant:
 
 ```asm
 __nc_init:
+    cld
     ; clear [NC_BSS, __nc_zero_end)
     rts
 ```
@@ -210,7 +226,7 @@ Function parameter/local/temporary storage lies after `__nc_zero_end` and does n
 
 This keeps the loaded image small while retaining the source language's zero-initialisation rule.
 
-# 6. Function calls
+# 7. Function calls
 
 Calls use **callee-owned parameter slots** and the 6502's natural `JSR`/`RTS` pair.
 
@@ -240,7 +256,7 @@ jsr add
 
 The return value arrives in `A/X`.
 
-## 6.1 Why arguments are staged by the caller first
+## 7.1 Why arguments are staged by the caller first
 
 Arguments are evaluated left to right, as required by Phase 1.
 
@@ -293,11 +309,11 @@ In assembly shape:
 
 A `char` parameter copies only the low staged byte. `int`, `unsigned`, and `char *` parameters copy both bytes.
 
-Call-staging storage is static per caller and may be reused by later non-overlapping calls. Nested pending calls receive distinct staging slots as required by their nesting depth.
+Call-staging storage is static per caller and may be reused by later non-overlapping calls. Nested pending calls receive distinct staging slots as required by their nesting depth. For example, while compiling `f(x, f(y, z))`, the saved outer `x` and the inner call's arguments occupy different compile-time slots.
 
 This is still much smaller than a software call stack: the compiler resolves every slot at compile time.
 
-# 7. Function return and call clobbers
+# 8. Function return and call clobbers
 
 A Phase 1 C function returns an `int` in:
 
@@ -324,9 +340,11 @@ Every C call may clobber:
 
 Nothing else owned by the caller is implicitly changed.
 
+The decimal flag is the one exception to the otherwise caller-clobbered flag rule: every generated/runtime return re-enters Nano C with `D = 0`.
+
 This rule is deliberately severe and simple: generated code never saves registers merely because an ABI says it should. If a value must survive a call, the compiler spills it to the caller's static storage before `JSR`.
 
-# 8. Expression evaluation
+# 9. Expression evaluation
 
 Expressions are evaluated directly from left to right.
 
@@ -348,7 +366,7 @@ There is no runtime expression stack.
 
 This strategy is intentionally more obvious than clever. Later peephole work may omit unnecessary spills for literals or simple loads, but the semantic machine model does not depend on that optimisation.
 
-## 8.1 Example: 16-bit addition
+## 9.1 Example: 16-bit addition
 
 For:
 
@@ -388,22 +406,37 @@ a straightforward baseline shape is:
 
 This is not claimed to be the final shortest sequence. It is the deliberately simple baseline that `nanoc0` can generate reliably.
 
-## 8.2 Conditions
+## 9.2 Conditions and branch reach
 
 An arbitrary 16-bit expression is false only when both bytes are zero.
 
-A baseline false-branch can therefore use:
+A baseline false test can therefore reduce `A/X` to flags with:
 
 ```asm
     sta NC_TMP
     txa
     ora NC_TMP
-    beq .false
 ```
 
-Comparisons already produce canonical `0` or `1`, so later code generation may use their branch result more directly without changing semantics.
+`nanoc0` does **not** keep track of conditional-branch distance and does not perform branch relaxation. It always represents a generated conditional transfer as a short branch to a nearby label plus an absolute `JMP` for the potentially distant path.
 
-## 8.3 Multiplication
+For example, a false transfer is shaped as:
+
+```asm
+    bne .condition_true
+    jmp .false_target
+.condition_true:
+```
+
+The branch target is deliberately adjacent and therefore always in range; the `JMP` carries the arbitrary-distance control transfer.
+
+This is the normal Phase 1 form even when the final target would happen to be within relative-branch range. `nanoc0` never asks that question, so it never needs to retain or calculate branch extent.
+
+This deliberately spends one `JMP` to remove an entire class of layout bookkeeping from the bootstrap compiler.
+
+Comparisons may feed this control-flow form directly instead of first materialising canonical `0`/`1` when their value is consumed only by a branch.
+
+## 9.3 Multiplication
 
 Phase 1 multiplication is 16-bit modulo 65536. Signedness does not change the low 16-bit product representation.
 
@@ -416,11 +449,11 @@ JSR __nc_mul16
 result        -> A/X
 ```
 
-`__nc_mul16` is compiler support, not a C library function. It may clobber `Y` and `NC_PTR` as well as ordinary call-clobbered state.
+`__nc_mul16` is compiler support, not a C library function. It may clobber `Y` and `NC_PTR` as well as ordinary call-clobbered state. It returns with `D = 0` like every other Nano C support routine.
 
 An assembly programmer would normally factor repeated 16-bit multiplication into a small subroutine; Nano C does the same.
 
-## 8.4 Shifts
+## 9.4 Shifts
 
 A variable shift count is 0 through 15 by Phase 1 rule.
 
@@ -428,7 +461,7 @@ The baseline compiler may place the value in `NC_TMP`, use `Y` as the count, and
 
 No general shift runtime helper is required.
 
-# 9. Arrays and pointers
+# 10. Arrays and pointers
 
 There is no bounds checking.
 
@@ -436,7 +469,7 @@ Array and pointer accesses compute the effective address explicitly into `NC_PTR
 
 This gives one uniform implementation for full 16-bit indices and avoids pretending an 8-bit `,X` or `,Y` index is a general C array mechanism.
 
-## 9.1 `char` arrays and `char *`
+## 10.1 `char` arrays and `char *`
 
 For `base[index]`, where the element size is one byte:
 
@@ -448,7 +481,7 @@ The compiler writes that address to `NC_PTR`, then loads or stores with `Y = 0`.
 
 A `char` load is zero-extended into `A/X`.
 
-## 9.2 `int` and `unsigned` arrays
+## 10.2 `int` and `unsigned` arrays
 
 For a named 16-bit array:
 
@@ -472,7 +505,7 @@ A baseline load is conceptually:
 
 The result is again in `A/X`.
 
-## 9.3 Indexed assignment
+## 10.3 Indexed assignment
 
 For an indexed lvalue, the compiler evaluates the index/address first and saves the resulting 16-bit effective address in function-owned static storage before evaluating the right-hand expression.
 
@@ -482,7 +515,7 @@ After the right-hand result is available, the saved address is restored to `NC_P
 
 Again, no machine stack is involved.
 
-# 10. Globals and data layout
+# 11. Globals and data layout
 
 Object widths are exactly the Phase 1 widths:
 
@@ -508,7 +541,7 @@ Function parameters, locals, spills, and call-staging slots also live in `NC_BSS
 
 This is not a general data-section system. It is one loaded image plus one explicitly based static RAM workspace.
 
-# 11. Runtime calls
+# 12. Runtime calls
 
 The Phase 1 source runtime remains exactly:
 
@@ -539,11 +572,11 @@ The C64 implementation may call the existing KERNAL file primitives directly. A 
 - `io_read`: byte, `-1` EOF, or `-2` error;
 - `io_close`: `0`.
 
-The runtime may clobber all ordinary call-clobbered machine state.
+The runtime may clobber all ordinary call-clobbered machine state. It must execute `CLD` before returning so generated arithmetic never depends on KERNAL/runtime decimal-mode behaviour.
 
 No additional standard library is implied.
 
-# 12. Assembly wrapper boundary
+# 13. Assembly wrapper boundary
 
 A compiled Phase 1 translation unit is not an object file and does not choose a universal C64 memory map.
 
@@ -560,7 +593,7 @@ include "nanoc_runtime.asm"
 The wrapper is also responsible for:
 
 1. selecting any C64 memory banking required by its chosen RAM geometry;
-2. calling `__nc_init` once;
+2. calling `__nc_init` once, which establishes `D = 0` and clears zero-initialised storage;
 3. calling whichever C function is the program entry point;
 4. interpreting the returned `A/X` value if needed.
 
@@ -568,11 +601,11 @@ This is deliberately analogous to the current `ass_4000.asm` / `ass_0800.asm` wr
 
 There is no required C `main` convention in Phase 1.
 
-# 13. Worked examples
+# 14. Worked examples
 
 These examples show the baseline mapping, not an optimisation target.
 
-## 13.1 Byte comparison
+## 14.1 Byte comparison
 
 ```c
 if (c == 'A') {
@@ -580,21 +613,23 @@ if (c == 'A') {
 }
 ```
 
-A natural generated form is:
+A natural generated form uses a local branch over the arbitrary-distance jump:
 
 ```asm
     lda c
     cmp #'A'
-    bne .not_equal
+    beq .equal
+    jmp .not_equal
+.equal:
 
     lda #1
     sta found
 .not_equal:
 ```
 
-The compiler is allowed to use the direct branch instead of materialising comparison `0/1` when the value is consumed immediately by control flow.
+`nanoc0` uses this safe form rather than asking whether `.not_equal` happens to be within relative-branch range.
 
-## 13.2 Static local survives a call
+## 14.2 Static local survives a call
 
 ```c
 int outer(int x)
@@ -611,7 +646,7 @@ int outer(int x)
 
 There is nothing to push before `JSR inner`.
 
-## 13.3 Pointer byte store
+## 14.3 Pointer byte store
 
 ```c
 p[i] = value;
@@ -629,24 +664,26 @@ The compiler:
 
 This is exactly the bookkeeping an assembly programmer would otherwise perform by hand.
 
-# 14. Compiler invariants
+# 15. Compiler invariants
 
 `nanoc0` can be implemented against a small set of hard invariants:
 
 1. **A/X is the current scalar result.**
 2. **A call destroys all registers and zero-page scratch.**
-3. **Anything that must survive a call is already in static memory.**
-4. **Every C function has one fixed parameter/local/temp area.**
-5. **No C value uses the hardware stack for storage.**
-6. **`NC_PTR` is only a transient effective address.**
-7. **`NC_TMP` is only transient operator scratch.**
-8. **All persistent storage has an assembler-visible absolute address.**
-9. **Zero-initialised globals occupy the initial part of `NC_BSS`; function scratch does not require clearing.**
-10. **Generated code may be verbose, but its machine behaviour should be unsurprising.**
+3. **Nano C arithmetic always runs with `D = 0`; runtime/support code restores that invariant before returning.**
+4. **Anything that must survive a call is already in static memory.**
+5. **Every C function has one fixed parameter/local/temp area.**
+6. **No C value uses the hardware stack for storage.**
+7. **`NC_PTR` is only a transient effective address.**
+8. **`NC_TMP` is only transient operator scratch.**
+9. **All persistent storage has an assembler-visible absolute address.**
+10. **Zero-initialised globals occupy the initial part of `NC_BSS`; function scratch does not require clearing.**
+11. **Conditional control flow always uses local branches over absolute `JMP`s; `nanoc0` never tracks branch reach.**
+12. **Generated code may be verbose, but its machine behaviour should be unsurprising.**
 
 These invariants are more valuable to the bootstrap compiler than a more general ABI would be.
 
-# 15. What may improve later without changing the model
+# 16. What may improve later without changing the model
 
 The first compiler should prefer obvious code over clever code.
 
@@ -655,7 +692,7 @@ Later versions may safely make local improvements such as:
 - retaining a simple byte value in `A` without writing a spill;
 - using absolute indexed addressing when an 8-bit index is provably sufficient;
 - folding literal arithmetic;
-- branching directly on comparisons;
+- shortening a branch-over-`JMP` sequence when a later compiler already knows the final layout;
 - omitting redundant reloads;
 - using shorter increment/decrement sequences.
 

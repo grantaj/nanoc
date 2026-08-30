@@ -10,8 +10,6 @@ The central idea is:
 
 ## The two language phases
 
-Nano C is expected to grow in two broad phases.
-
 **Phase 1** is the bootstrap language. It must be small enough that the first compiler can realistically be written in 6502 assembly, but not so small that programs written in it become pseudo-assembly. Its purpose is to get development out of assembly quickly.
 
 **Phase 2** is the first self-hosted language evolution. It is designed only after we have written both the assembler and compiler in Phase 1 and can see which restrictions actually hurt. The Phase 2 compiler is initially implemented in Phase 1 C; once that compiler understands the new features, its own source may be rewritten to use them.
@@ -124,7 +122,7 @@ Nano C Phase 1 specification
 
 Issue #34 records this work.
 
-The Phase 1 document should define exactly what the assembly-written bootstrap compiler must accept:
+The Phase 1 document defines exactly what the assembly-written bootstrap compiler must accept:
 
 - scalar types and their widths;
 - pointer forms and pointer arithmetic actually supported;
@@ -138,11 +136,9 @@ The Phase 1 document should define exactly what the assembly-written bootstrap c
 - the tiny external/runtime boundary;
 - important unsupported C features.
 
-Machine-visible semantics must be explicit. Nano C should not inherit them accidentally from the host compiler. The likely model is deliberately simple — for example 8-bit characters and 16-bit integers/pointers — but the contract is set from the needs of the real program and the 6502.
+Machine-visible semantics are explicit. Nano C does not inherit them accidentally from the host compiler.
 
-The most important storage question is also settled here: whether the bootstrap language requires true per-call automatic storage and recursion, or whether a much simpler non-recursive/static local model is enough for both `ass.c` and the first C implementation of Nano C.
-
-Phase 1 is allowed to make severe but useful restrictions if they buy a much smaller assembly compiler. The test is whether the resulting C remains clear.
+The bootstrap language deliberately uses fixed per-function storage and has no recursion or reentrancy. This is not an arbitrary restriction: it lets the 6502 implementation avoid general stack frames while keeping the real assembler clear.
 
 ## Milestone 3: define the Phase 1 machine model
 
@@ -150,22 +146,22 @@ Before writing the compiler, define the concrete 6502 contract it targets.
 
 Issue #35 covers this boundary.
 
-This is deliberately smaller than a conventional ABI design. It must answer only the questions required to generate Phase 1 programs:
+This is deliberately smaller than a conventional ABI design. It answers only the questions required to generate Phase 1 programs:
 
-- where 8- and 16-bit expression values live;
-- how expressions are evaluated;
-- where function arguments are placed;
-- where return values appear;
-- register/scratch ownership across calls;
-- how nested function calls work;
-- how locals and parameters are stored;
-- how globals, arrays and pointers map to memory;
-- how static data and strings are emitted;
-- how the tiny C64 runtime/KERNAL-facing interface is called.
+- `A/X` as the visible 16-bit scalar/result pair;
+- fixed per-function parameters, locals and compiler temporaries;
+- caller-owned nested call staging;
+- two fixed zero-page scratch pairs;
+- `JSR`/`RTS` calls without a software C stack;
+- an explicit `NC_BSS` static workspace;
+- binary arithmetic mode (`D = 0`);
+- a tiny runtime/KERNAL-facing interface.
 
-The result should be concrete enough that small C fragments can be shown beside predictable 6502 assembly.
+Generated conditional control flow also stays deliberately simple. `nanoc0` does not calculate whether an arbitrary branch target is within the 6502 relative-branch range. It always uses a nearby conditional branch over an absolute `JMP` for generated conditional transfers. Spending the extra `JMP` is a good trade for eliminating branch-distance bookkeeping and relaxation from the assembly bootstrap compiler.
 
-There is no reason to introduce a virtual-register architecture, object ABI, linker contract or backend framework unless the actual Phase 1 language forces one. A deliberately non-recursive Phase 1, for example, may make statically allocated parameter/local slots a better bootstrap choice than immediately inventing general software stack frames.
+The result is concrete enough that small C fragments can be shown beside predictable 6502 assembly.
+
+There is no virtual-register architecture, object ABI, linker contract or backend framework.
 
 ## Milestone 4: build `nanoc0` in assembly
 
@@ -185,15 +181,19 @@ C64 program
 
 Issue #36 covers the bootstrap compiler.
 
-`nanoc0` should implement **only** frozen Phase 1. It is not a general C compiler skeleton waiting to be filled in later.
+`nanoc0` implements **only** frozen Phase 1. It is not a general C compiler skeleton waiting to be filled in later.
 
-The preferred architecture should be as direct as the language permits: scan source, recognise the current declaration/statement/expression, and emit assembler as soon as possible. A persistent token stream, AST, generic IR, optimiser, register allocator, object format and linker are all absent unless a concrete Phase 1 requirement demonstrates that some smaller representation is actually simpler.
+The preferred architecture is as direct as the language permits: scan source, recognise the current declaration/statement/expression, and emit assembler as soon as possible. A persistent token stream, AST, generic IR, optimiser, register allocator, object format and linker are all absent unless a concrete Phase 1 requirement demonstrates that some smaller representation is actually simpler.
+
+The input is a character stream, not a sequence of semantically independent lines. The implementation may refill a small bounded buffer, but whitespace, expressions and block comments may cross physical input lines.
+
+The output is ordinary `ass` source. `nanoc0` must keep generated output comfortably inside the native assembler's 16 KiB staging region for the bootstrap programs. Measure that from the first integration programs rather than discovering it only at the final `ass.c` test. Compact obvious code matters, but not at the cost of introducing layout machinery such as branch relaxation.
 
 `nanoc0` is also allowed to be bootstrap-specific. Once Nano C is self-hosted, we do not need to keep extending the assembly compiler. It should be correct, compact and exceptionally readable, but it does not need speculative architecture for Phase 2.
 
 ### The first decisive `nanoc0` test
 
-The first serious program for the compiler is the same program that defined its language:
+The first serious program for the compiler is the same program that defined its language. `bootstrap/ass.c` is now literal Phase 1 source, with full-range machine values explicitly typed `unsigned` rather than relying on the host's wider `int`:
 
 ```text
 nanoc0.asm
@@ -218,7 +218,7 @@ This is a major project milestone.
 
 At that point Nano C has already replaced an important assembly-language component of its own toolchain.
 
-The modern host compiler is no longer relevant to the bootstrap proof; it remains only a convenient independent validation oracle for the original C rewrite.
+The modern host compiler remains only a convenient independent validation oracle: compiling the same `ass.c` must continue to reproduce the production assembler byte-for-byte.
 
 ## Milestone 5: rewrite Nano C in Phase 1 C
 
@@ -356,4 +356,4 @@ The first compiler tranche is intentionally ordered:
 5. **#37 — Rewrite Nano C compiler in Phase 1 C and prove self-hosting.**
 6. **#38 — Define Phase 2 from self-hosting pressure and evolve Nano C in Nano C.**
 
-The first issue should be treated as the immediate next step. Later issues deliberately become more concrete only as the earlier experiments provide evidence.
+The first three milestones are now complete. The immediate implementation target is #36.
