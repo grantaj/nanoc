@@ -105,11 +105,29 @@ They would shorten many scanner increments, but `x = x + 1` is still readable an
 
 The source is readable with direct nested tests and does not currently require short-circuit `&&` / `||` semantics. This avoids committing the bootstrap compiler to that expression machinery before it is useful.
 
+## Measured target workspace pressure
+
+The production `ass/ass_4000.asm` closure is also a useful memory-pressure test. With artificial host ceilings removed, the candidate requires:
+
+- 643 symbol records;
+- 6,935 bytes of owned symbol names;
+- 575 exceptional fixup records;
+- 6,905 staged output bytes.
+
+Those measurements fit the native assembler's existing memory budgets. The committed candidate therefore uses fixed splits that remain plausible on the C64 while keeping the C representation simple:
+
+- 672 symbol records at seven target bytes each plus 7,584 name bytes = 12,288 bytes;
+- 640 fixup records at eight target bytes each plus 11,264 staged bytes = 16,384 bytes.
+
+The assembly implementation is more adaptive: records and names share one region, and staged bytes and fixups share another. The C candidate deliberately does not recreate packed allocators merely to recover that flexibility. The fixed split has enough measured headroom for the production assembler and makes the Phase 1 storage model obvious in the source.
+
 ## Deliberate host-validation differences
 
 The candidate source is compiled by the host with `-funsigned-char` so byte storage behaves like the intended 6502 byte model.
 
 A host `int` is wider than the likely Nano C `int`. The assembler masks values at the places where 16-bit machine arithmetic is observable. The later Phase 1 specification must define the real Nano C widths and wrap rules explicitly; GCC or Clang do not get to define them accidentally.
+
+There is one concrete language-design question still exposed by this difference. Assembly values naturally occupy all of `$0000..$ffff`, while several current helper functions also use negative integer sentinels such as `-1`, `-2` and `-3`. A 16-bit signed `int` cannot represent both domains. Phase 1 should not inherit the host's wider `int` accidentally. Either unsigned 16-bit values must earn a place in the language, or these APIs should be rewritten to return status separately from their 16-bit values. The compiler work should settle this deliberately.
 
 The host I/O functions are defined before the candidate source is included. That lets `ass.c` call a tiny runtime surface without requiring headers, prototypes or a preprocessor in the candidate language. Nano C will need an equally small explicit rule for such runtime calls.
 
