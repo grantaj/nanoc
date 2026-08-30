@@ -162,7 +162,6 @@ The source buffer has an explicit `[start, end)` contract. `ZP_PTR1` is the curr
 ```
 STATEMENT_LABEL
 STATEMENT_SYMBOL
-STATEMENT_DIRECTIVE
 STATEMENT_INSTRUCTION
 STATEMENT_EOF
 ```
@@ -174,15 +173,18 @@ statementName + statementNameLength
 statementArgument + statementArgumentLength
 ```
 
-These views are overwritten by the next call. Mnemonics, directives, operands and punctuation therefore do not require allocated strings or persistent token objects. Later assembler state should retain a source reference only when textual identity genuinely has to survive, principally for symbols.
+These views are overwritten by the next call. Mnemonics, pseudo-operation names, operands and punctuation therefore do not require allocated strings or persistent token objects. Later assembler state should retain a source reference only when textual identity genuinely has to survive, principally for symbols.
 
-Supported statement forms are deliberately small:
+Supported statement forms are deliberately small. Pseudo-operations are bare names and travel through the same instruction-like parser path as mnemonics; the assembler decides what each name means:
 
 ```
 ; comment
 label:
 symbol = value
-.directive argument
+include "file.asm"
+byte 0, 1, 2
+word value
+string "text"
 LDA #$00
 RTS
 ```
@@ -199,8 +201,10 @@ nextStatement
      |
      +--> label
      +--> symbol definition
-     +--> directive
-     +--> instruction
+     +--> instruction-like statement
+              |
+              +--> mnemonic
+              `--> pseudo-operation
 ```
 
 Scanning and parsing remain different responsibilities, but there is no intermediate token data structure merely to preserve that conceptual boundary.
