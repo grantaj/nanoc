@@ -53,10 +53,11 @@ The following features materially contribute to clear source and therefore belon
 
 Several familiar C features did not earn a place: `struct`, `for`, `switch`, `++`, logical operators, a preprocessor, dynamic allocation and separate compilation are all absent without making `ass.c` pseudo-assembly.
 
-The experiment also exposed two small additions beyond the first host-validated spelling of the candidate:
+The experiment and the immediately following compiler-architecture work exposed three small additions beyond the first host-validated spelling of the candidate:
 
 - `unsigned` is required to represent the complete 16-bit address/value range without replacing natural negative status results with magic sentinel values;
-- hexadecimal integer literals are justified by the machine-facing compiler/runtime work that immediately follows and are trivial compared with forcing 6502 addresses to be written in decimal.
+- hexadecimal integer literals are justified by the machine-facing compiler/runtime work that immediately follows and are trivial compared with forcing 6502 addresses to be written in decimal;
+- optional local initializers remove a repetitive declaration-then-assignment pattern while reusing expression and store machinery that `nanoc0` already requires.
 
 `bootstrap/ass.c` has now been normalised to use `unsigned` anywhere the real target value may occupy the full `$0000..$ffff` range. The host compiler remains only the independent behavioural oracle.
 
@@ -161,7 +162,7 @@ Arithmetic wraps modulo 65536.
 - complete 6502 address/value bit patterns such as `$c000`;
 - natural signed results such as `-1` from searches or I/O.
 
-Forcing both roles through one signed 16-bit type makes ordinary range comparisons wrong above `$7fff`. Forcing both through one unsigned type turns natural error handling into magic-value code. `ass.c` demonstrated that the extra type is worth its small compiler cost.
+Forcing both roles through one signed 16-bit type makes ordinary range comparisons wrong above `$7fff`. Forcing both through one unsigned type turns natural error handling into magic values. `ass.c` demonstrated that the extra type is worth its small compiler cost.
 
 ## 3.4 Integer conversions
 
@@ -329,13 +330,22 @@ char *
 
 Local variables may have the same types except that no local array form is supported.
 
-All local declarations appear immediately after the opening brace of the function body, before the first executable statement.
+All local declarations appear immediately after the opening brace of the function body, before the first executable statement. There are no block-local declarations and no declarations after ordinary statements have begun.
 
-There are no block-local declarations.
+A local may optionally have an initializer expression:
 
-A local has no source-level initializer in Phase 1. A well-formed program assigns a local before reading its value.
+```c
+int a;
+int b = 0;
+unsigned p = address + 2;
+char *text = source;
+```
 
-This restriction deliberately makes the physical storage strategy unobservable: the Phase 1 machine model allocates one fixed parameter/local area per function rather than building general automatic stack frames.
+Initializers execute in declaration order on every function call. An initializer may use parameters, globals and previously declared locals. It may not use the local being declared or a later local. The new local name becomes available to subsequent source after its initializer has been compiled.
+
+An uninitialised local has no automatic value. A well-formed program assigns it before reading it.
+
+Local initialization does not change the storage model. The compiler allocates the same fixed per-function slot, evaluates the initializer to `A/X`, and stores the result exactly as if an assignment had appeared immediately after the declaration block.
 
 ## 5.4 Recursion and reentrancy
 
@@ -358,9 +368,8 @@ Examples:
 ```c
 int read_byte()
 {
-    int value;
+    int value = io_read(0);
 
-    value = io_read(0);
     return value;
 }
 
@@ -425,6 +434,8 @@ count = count + 1;
 bytes[i] = value;
 pointer[i] = c;
 ```
+
+The target identifier must already have been declared. Assignment never introduces a name.
 
 Compound assignment operators are not Phase 1.
 
@@ -582,8 +593,8 @@ function-body
     := '{' local-declaration* statement* '}'
 
 local-declaration
-    := scalar-type identifier ';'
-     | 'char' '*' identifier ';'
+    := scalar-type identifier ('=' expression)? ';'
+     | 'char' '*' identifier ('=' expression)? ';'
 
 statement
     := block
@@ -643,6 +654,7 @@ The following are explicitly outside Phase 1:
 - function pointers;
 - varargs;
 - `for`, `do`, `switch`, `case`, `goto`, `continue`;
+- source-level labels;
 - `++`, `--` and compound assignments;
 - division and remainder;
 - logical `!`, `&&`, `||`;
@@ -650,7 +662,6 @@ The following are explicitly outside Phase 1:
 - ternary `?:`;
 - casts and `sizeof`;
 - comma expressions;
-- local initializers;
 - general constant-expression machinery;
 - escape sequences;
 - a preprocessor;
@@ -701,6 +712,23 @@ The clear C solution is not to replace `-1` / `-2` with opaque 65535 / 65534 con
 
 The assembler tables happened not to require C hexadecimal syntax, but the compiler and C64 runtime immediately will. Hex literals are a tiny lexical feature with a large readability return on a 6502.
 
+### Local initializers
+
+`ass.c` remains clear without local initializers, but the compiler architecture makes their cost unusually small. `nanoc0` must already allocate a fixed local slot, compile an arbitrary expression to `A/X`, and store a value to that slot. Supporting:
+
+```c
+int a = expression;
+```
+
+therefore reuses machinery required for:
+
+```c
+int a;
+a = expression;
+```
+
+The initializer form removes repetitive boilerplate without hiding machine behaviour. It is exactly the kind of convenience Nano C should provide over assembly.
+
 ## 12.3 Deferred until Phase 2 evidence
 
 Everything in section 11 remains deferred unless Phase 1 self-hosting provides concrete evidence that the restriction damages the compiler substantially.
@@ -719,6 +747,8 @@ That normalisation is now complete:
 - negative search/status results remain ordinary `int`.
 
 The change does not alter the assembler architecture. The host validation continues to compile this exact source and must reproduce the production `ass.prg` byte-for-byte. That keeps host C as an independent behavioural oracle while making `bootstrap/ass.c` a genuine `nanoc0` acceptance input rather than an approximate one.
+
+`ass.c` does not need to be rewritten merely to exercise local initialization. Phase 1 is the accepted language, not a list of constructs every acceptance program must use.
 
 # 14. Language and machine contracts are both frozen for `nanoc0`
 

@@ -53,6 +53,33 @@ Without `break`, scanners need artificial flags or duplicated loop conditions. I
 
 The assembler uses multiplication for decimal parsing and fixed-width table indexing. Replacing those operations with source-level shift/add sequences would make the C more machine-like without meaningfully simplifying the language.
 
+### Local initialisation
+
+The candidate assembler itself does not require local initializers, but the compiler-architecture pass showed that forbidding them would be false minimalism.
+
+`nanoc0` must already be able to:
+
+- allocate a fixed slot for a local;
+- compile an arbitrary expression into `A/X`;
+- store `A/X` into that slot.
+
+Therefore:
+
+```c
+int a = expression;
+```
+
+costs essentially no new machine machinery beyond:
+
+```c
+int a;
+a = expression;
+```
+
+while removing repetitive source boilerplate. Initializers remain constrained by the one-pass design: all locals are declared before ordinary statements, initializers execute in declaration order, and an initializer may use only parameters, globals and previously declared locals.
+
+This is exactly the kind of convenience Nano C should provide over assembly: less clerical source without hiding the machine.
+
 ## The 16-bit integer result
 
 The host validation compiler temporarily hid an important target fact: its `int` is wider than a 6502 Nano C `int`.
