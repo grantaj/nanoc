@@ -251,8 +251,8 @@ $(BUILD_DIR)/test_nanoc0_bootstrap.prg: nanoc0/test_bootstrap.asm $(NANOC0_EXPRE
 $(BUILD_DIR)/test_nanoc0_expression_compile.prg: nanoc0/test_expression_compile.asm $(NANOC0_EXPRESSION_DEPS) test.inc | $(BUILD_DIR)
 	cd nanoc0 && $(VASM) $(VASMFLAGS) -o ../$@ test_expression_compile.asm
 
-$(BUILD_DIR)/test_nanoc0_expression_run.prg: nanoc0/test_expression_run.asm ass/ass.asm $(ASSEMBLER_DEPS) | $(BUILD_DIR)
-	cd nanoc0 && $(VASM) $(VASMFLAGS) -o ../$@ test_expression_run.asm
+$(BUILD_DIR)/test_nanoc0_expression_run.prg: ass/test_nanoc0_expressions.asm ass/ass.asm $(ASSEMBLER_DEPS) | $(BUILD_DIR)
+	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_nanoc0_expressions.asm
 
 $(BUILD_DIR)/border-demo.prg: examples/border/demo.asm | $(BUILD_DIR)
 	cd examples/border && $(VASM) $(VASMFLAGS) -o ../../$@ demo.asm
