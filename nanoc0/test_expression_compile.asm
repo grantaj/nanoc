@@ -357,16 +357,29 @@ emit_bss_boundaries:
 	bcc .failed
 	jsr xt_emit_checker
 	bcc .failed
-	lda #xtMul16End-xtMul16
-	ldx #<xtMul16
-	ldy #>xtMul16
-	jsr emit_text
+	jsr xt_emit_mul16
 	bcc .failed
 	sec
 	rts
 .failed:
 	clc
 	rts
+
+;;; emit_text has an 8-bit length by design. The helper is larger than one
+;;; fragment, so stream it as two natural source chunks instead of widening the
+;;; formatter for a test-only constant block.
+xt_emit_mul16:
+	lda #xtMul16Part2-xtMul16
+	ldx #<xtMul16
+	ldy #>xtMul16
+	jsr emit_text
+	bcs .part2
+	rts
+.part2:
+	lda #xtMul16End-xtMul16Part2
+	ldx #<xtMul16Part2
+	ldy #>xtMul16Part2
+	jmp emit_text
 
 xt_emit_bss_assignment:
 	lda #xtBssAssignEnd-xtBssAssign
@@ -496,37 +509,53 @@ xt_emit_check_high:
 	lda xtExpectedValues,y
 	sta xtExpectedByte
 
+;;; Failure from any formatter below can return immediately: carry is already
+;;; clear. That avoids one distant shared failure branch in this deliberately
+;;; repetitive checker generator.
 xt_emit_check_byte:
 	lda #xtLdaPrefixEnd-xtLdaPrefix
 	ldx #<xtLdaPrefix
 	ldy #>xtLdaPrefix
 	jsr emit_text
-	bcc .failed
+	bcs .loadName
+	rts
+.loadName:
 	ldx xtCheckIndex
 	jsr emit_current_name
-	bcc .failed
+	bcs .loadHigh
+	rts
+.loadHigh:
 	lda xtCheckHigh
 	beq .loadDone
 	lda #exprPlusOneEnd-exprPlusOne
 	ldx #<exprPlusOne
 	ldy #>exprPlusOne
 	jsr emit_text
-	bcc .failed
+	bcs .loadDone
+	rts
 .loadDone:
 	jsr emit_newline
-	bcc .failed
+	bcs .compare
+	rts
 
+.compare:
 	lda #xtCmpPrefixEnd-xtCmpPrefix
 	ldx #<xtCmpPrefix
 	ldy #>xtCmpPrefix
 	jsr emit_text
-	bcc .failed
+	bcs .expected
+	rts
+.expected:
 	lda xtExpectedByte
 	jsr emit_hex_byte
-	bcc .failed
+	bcs .compareDone
+	rts
+.compareDone:
 	jsr emit_newline
-	bcc .failed
+	bcs .reserve
+	rts
 
+.reserve:
 	jsr reserve_generated_label
 	lda emitLabelValue
 	sta xtCheckLabel
@@ -536,42 +565,53 @@ xt_emit_check_byte:
 	ldx #<xtBeqPrefix
 	ldy #>xtBeqPrefix
 	jsr emit_text
-	bcc .failed
+	bcs .branchName
+	rts
+.branchName:
 	lda xtCheckLabel
 	sta emitLabelValue
 	lda xtCheckLabel+1
 	sta emitLabelValue+1
 	jsr emit_generated_label_name
-	bcc .failed
+	bcs .branchDone
+	rts
+.branchDone:
 	jsr emit_newline
-	bcc .failed
+	bcs .failureValue
+	rts
 
+.failureValue:
 	lda #xtFailPrefixEnd-xtFailPrefix
 	ldx #<xtFailPrefix
 	ldy #>xtFailPrefix
 	jsr emit_text
-	bcc .failed
+	bcs .failureCode
+	rts
+.failureCode:
 	lda xtCheckIndex
 	clc
 	adc #$01
 	jsr emit_hex_byte
-	bcc .failed
+	bcs .failureLine
+	rts
+.failureLine:
 	jsr emit_newline
-	bcc .failed
+	bcs .failureReturn
+	rts
+.failureReturn:
 	lda #xtRtsEnd-xtRts
 	ldx #<xtRts
 	ldy #>xtRts
 	jsr emit_text
-	bcc .failed
+	bcs .successLabel
+	rts
 
+.successLabel:
 	lda xtCheckLabel
 	sta emitLabelValue
 	lda xtCheckLabel+1
 	sta emitLabelValue+1
 	jmp emit_label_definition
-.failed:
-	clc
-	rts
 
 ;;; ---------------------------------------------------------------------------
 ;;; Fixed test-output fragments
@@ -627,6 +667,7 @@ xtMul16:
 	byte $09,'l','d','a',' ','N','C','_','P','T','R',$0a
 	byte $09,'a','n','d',' ','#','$','0','1',$0a
 	byte $09,'b','e','q',' ','_','_','n','c','_','m','u','l','1','6','_','n','o','a','d','d',$0a
+xtMul16Part2:
 	byte $09,'t','y','a',$0a
 	byte $09,'c','l','c',$0a
 	byte $09,'a','d','c',' ','N','C','_','T','M','P',$0a
