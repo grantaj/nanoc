@@ -943,6 +943,12 @@ compile_local_initializer:
 	sec
 	rts
 .expressionFail:
+	lda expressionError
+	cmp #EXPR_UNDECLARED
+	bne .genericExpressionFail
+	lda #PARSE_UNDECLARED
+	jmp parser_fail
+.genericExpressionFail:
 	lda #PARSE_EXPRESSION_ERROR
 	jmp parser_fail
 
