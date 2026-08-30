@@ -116,6 +116,8 @@ Those restrictions are now part of Phase 1 because they substantially simplify a
 
 Phase 1 still supports nested calls to different functions. The frozen machine model therefore uses fixed per-function parameter/local/temp storage and caller-owned call staging rather than software stack frames.
 
+Generated control flow follows the same philosophy. `nanoc0` will not retain enough layout state to ask whether a conditional target fits a 6502 relative branch. It always emits a nearby conditional branch over an absolute `JMP`, deliberately spending a few bytes to remove branch-distance bookkeeping and relaxation from the bootstrap compiler.
+
 ## Features that remain deferred
 
 ### `struct`
