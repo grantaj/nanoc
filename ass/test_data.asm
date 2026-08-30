@@ -61,7 +61,8 @@ setupWorkspace:
 	rts
 
 ;;; Origin, byte, word, spaces around commas, character values, and forward
-;;; labels all reduce into the compact pass-1 representation.
+;;; labels all reduce directly to final-size staged bytes plus only the unresolved
+;;; reference state that is still needed.
 testDataBytes:
 	lda #<dataSource
 	sta ZP_PTR1
@@ -187,7 +188,7 @@ testBadList:
 	sec
 	rts
 
-;;; Origin must be known when encountered; it does not get hole machinery.
+;;; Origin must be known when encountered; there is no deferred-origin state.
 testBadOrigin:
 	lda #<badOriginSource
 	sta ZP_PTR1
@@ -211,8 +212,8 @@ testBadOrigin:
 	sec
 	rts
 
-;;; There is still exactly one origin position: constants may precede it, but an
-;;; origin after code/data is rejected rather than creating segmented layout.
+;;; There is exactly one origin position: constants may precede it, but an
+;;; origin after code/data is rejected rather than creating segmented output.
 testLateOrigin:
 	lda #<lateOriginSource
 	sta ZP_PTR1
