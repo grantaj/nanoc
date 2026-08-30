@@ -83,7 +83,7 @@ emit_bss_boundaries:
 	rts
 
 bootstrapName:
-	byte 'b','o','o','t','s','t','r','a','p','/','a','s','s','.','c'
+	byte 'a','s','s','.','c'
 bootstrapNameEnd:
 
 	include "declarations.asm"
