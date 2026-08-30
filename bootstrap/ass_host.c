@@ -106,7 +106,15 @@ int main(int argc, char **argv)
         0
     );
     if (status != ASSEMBLE_OK) {
-        fprintf(stderr, "assembly failed: status %d\n", status);
+        fprintf(
+            stderr,
+            "assembly failed: status %d symbols=%d names=%d fixups=%d image=%d\n",
+            status,
+            symbol_count,
+            symbol_name_used,
+            fixup_count,
+            ass_image_length
+        );
         return 1;
     }
 
