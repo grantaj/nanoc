@@ -2,7 +2,7 @@
 ;;;
 ;;; Nano C Phase 1 declaration parser.
 ;;;
-;;; This is deliberately only the declaration/storage half of the parser.  It
+;;; This is deliberately only the declaration/storage half of the parser. It
 ;;; consumes the translation unit from top to bottom, emits static initializer
 ;;; bytes immediately, records symbols that later source may use, and skips the
 ;;; executable statement bodies that #55/#56 will compile.
@@ -15,13 +15,19 @@
 ;;;   emit_static_byte         A = one initialized-data byte
 ;;;   emit_bss_boundaries      reads zeroRequiredEnd/bssOffset
 ;;;
-;;; Each hook returns carry set on success.  They exist so initialized global
+;;; Each hook returns carry set on success. They exist so initialized global
 ;;; data can remain streaming: nanoc0 does not retain a second data image in RAM.
 ;;;
-;;; Local initializers are intentionally not expression-parsed here.  Until #55
+;;; Storage facts are also streamed at the point they are known. For an
+;;; uninitialized persistent/current symbol, allocOffset is the slot just
+;;; allocated. currentFunctionIndex + X gives a deterministic current-symbol
+;;; identity. Array length remains in arrayLength while its declaration is being
+;;; emitted. None of those transient facts are copied into persistent tables.
+;;;
+;;; Local initializers are intentionally not expression-parsed here. Until #55
 ;;; lands, validate_local_initializer consumes the expression tokens and checks
-;;; only declaration-before-use.  The new local stays invisible until that scan
-;;; reaches ';'.  #55 replaces this single hook point with real expression code
+;;; only declaration-before-use. The new local stays invisible until that scan
+;;; reaches ';'. #55 replaces this single hook point with real expression code
 ;;; generation rather than inheriting a second expression implementation.
 
 	include "scanner.asm"
@@ -131,8 +137,8 @@ is_type_token:
 	rts
 
 ;;; parse_decl_type
-;;; currentToken is char/int/unsigned.  On success declType is set and current
-;;; token is the token after the complete type spelling.  Only char may be
+;;; currentToken is char/int/unsigned. On success declType is set and current
+;;; token is the token after the complete type spelling. Only char may be
 ;;; followed by '*'.
 parse_decl_type:
 	lda currentTokenKind
@@ -256,10 +262,6 @@ parse_global_declaration:
 	jmp parse_global_array
 
 parse_global_scalar:
-	ldx pendingPersistentIndex
-	lda #$00
-	sta persistentArrayLengthLo,x
-	sta persistentArrayLengthHi,x
 	lda currentTokenKind
 	cmp #';'
 	beq .uninitialized
@@ -279,10 +281,6 @@ parse_global_scalar:
 	ldx pendingPersistentIndex
 	lda #SYMBOL_GLOBAL_BSS
 	sta persistentKind,x
-	lda allocOffset
-	sta persistentStorageOffsetLo,x
-	lda allocOffset+1
-	sta persistentStorageOffsetHi,x
 	jsr emit_persistent_checked
 	bcc .failed
 	jsr commit_persistent_symbol
@@ -305,9 +303,6 @@ parse_global_scalar:
 	ldx pendingPersistentIndex
 	lda #SYMBOL_GLOBAL_DATA
 	sta persistentKind,x
-	lda #$00
-	sta persistentStorageOffsetLo,x
-	sta persistentStorageOffsetHi,x
 	jsr emit_persistent_checked
 	bcc .failed
 	jsr emit_constant_for_decl_type
@@ -348,11 +343,6 @@ parse_global_array:
 	lda #PARSE_BAD_ARRAY_SIZE
 	jmp parser_fail
 .positive:
-	ldx pendingPersistentIndex
-	lda arrayLength
-	sta persistentArrayLengthLo,x
-	lda arrayLength+1
-	sta persistentArrayLengthHi,x
 	jsr parser_next
 	bcs .haveClose
 	jmp .failed
@@ -383,10 +373,6 @@ parse_global_array:
 	ldx pendingPersistentIndex
 	lda #SYMBOL_ARRAY_BSS
 	sta persistentKind,x
-	lda allocOffset
-	sta persistentStorageOffsetLo,x
-	lda allocOffset+1
-	sta persistentStorageOffsetHi,x
 	jsr emit_persistent_checked
 	bcs .uninitializedEmitted
 	jmp .failed
@@ -406,9 +392,6 @@ parse_global_array:
 	ldx pendingPersistentIndex
 	lda #SYMBOL_ARRAY_DATA
 	sta persistentKind,x
-	lda #$00
-	sta persistentStorageOffsetLo,x
-	sta persistentStorageOffsetHi,x
 	jsr emit_persistent_checked
 	bcs .initializerSymbolEmitted
 	jmp .failed
@@ -586,9 +569,9 @@ emit_string_array_initializer:
 	clc
 	rts
 
-;;; Phase 1 deliberately has no general constant-expression evaluator.  Static
+;;; Phase 1 deliberately has no general constant-expression evaluator. Static
 ;;; initialization accepts one integer/character literal optionally preceded by
-;;; unary '-'.  Leaves current token after the constant.
+;;; unary '-'. Leaves current token after the constant.
 parse_static_constant:
 	lda #$00
 	sta constantNegative
@@ -728,11 +711,6 @@ parse_function_definition:
 	sta persistentKind,x
 	lda #TYPE_INT
 	sta persistentType,x
-	lda #$00
-	sta persistentStorageOffsetLo,x
-	sta persistentStorageOffsetHi,x
-	sta persistentArrayLengthLo,x
-	sta persistentArrayLengthHi,x
 	lda parameterMetaCount
 	sta persistentParamStart,x
 	lda #$00
@@ -821,8 +799,6 @@ parse_function_parameter:
 	jmp parser_fail
 .reserved:
 	stx pendingCurrentIndex
-	lda #CURRENT_PARAMETER
-	sta currentKind,x
 	lda declType
 	sta currentType,x
 	jsr set_alloc_size_for_type
@@ -831,11 +807,6 @@ parse_function_parameter:
 	lda #PARSE_BSS_OVERFLOW
 	jmp parser_fail
 .allocated:
-	ldx pendingCurrentIndex
-	lda allocOffset
-	sta currentStorageOffsetLo,x
-	lda allocOffset+1
-	sta currentStorageOffsetHi,x
 	jsr append_parameter_metadata
 	bcc .paramFull
 	jsr emit_current_checked
@@ -891,8 +862,6 @@ parse_one_local:
 	jmp parser_fail
 .reserved:
 	stx pendingCurrentIndex
-	lda #CURRENT_LOCAL
-	sta currentKind,x
 	lda declType
 	sta currentType,x
 	jsr set_alloc_size_for_type
@@ -901,11 +870,6 @@ parse_one_local:
 	lda #PARSE_BSS_OVERFLOW
 	jmp parser_fail
 .allocated:
-	ldx pendingCurrentIndex
-	lda allocOffset
-	sta currentStorageOffsetLo,x
-	lda allocOffset+1
-	sta currentStorageOffsetHi,x
 	jsr emit_current_checked
 	bcs .localEmitted
 	jmp .failed
@@ -943,7 +907,7 @@ parse_one_local:
 	rts
 
 ;;; Temporary #54 hook: consume a non-empty expression up to ';' and apply only
-;;; declaration-before-use to identifier tokens.  #55 replaces this call site
+;;; declaration-before-use to identifier tokens. #55 replaces this call site
 ;;; with the real non-recursive expression engine and store.
 validate_local_initializer:
 	lda currentTokenKind

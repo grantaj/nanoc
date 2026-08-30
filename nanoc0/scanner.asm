@@ -17,7 +17,10 @@ ASCII_SINGLE_QUOTE       = $27
 ASCII_DOUBLE_QUOTE       = $22
 ASCII_BACKSLASH          = $5c
 
-TOKEN_TEXT_CAPACITY      = 64
+;;; bootstrap/ass.c contains a 171-byte mnemonic-table string. A 192-byte
+;;; reusable token buffer covers that real source with modest headroom while
+;;; remaining tiny beside the compiler's symbol workspace.
+TOKEN_TEXT_CAPACITY      = 192
 
 TOKEN_EOF                = $80
 TOKEN_ERROR              = $81
@@ -989,15 +992,7 @@ currentTokenType:	byte TOKEN_TYPE_NONE
 currentTokenValue:	word 0
 currentTokenLength:	byte 0
 currentTokenLine:	word 1
-currentTokenText:
-	byte 0,0,0,0,0,0,0,0
-	byte 0,0,0,0,0,0,0,0
-	byte 0,0,0,0,0,0,0,0
-	byte 0,0,0,0,0,0,0,0
-	byte 0,0,0,0,0,0,0,0
-	byte 0,0,0,0,0,0,0,0
-	byte 0,0,0,0,0,0,0,0
-	byte 0,0,0,0,0,0,0,0
+currentTokenText:		ds TOKEN_TEXT_CAPACITY
 scannerError:		byte LEX_OK
 
 ;;; Small scanner scratch; none of it survives as token history.

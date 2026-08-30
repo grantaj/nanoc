@@ -21,21 +21,17 @@ FAIL_CHAR_RANGE     = $12
 FAIL_INT_RANGE      = $13
 
 IDX_FLAG      = 5
-IDX_COUNT     = 6
-IDX_ADDRESS   = 7
 IDX_SOURCE    = 8
 IDX_C         = 9
-IDX_BYTES     = 12
-IDX_WORDS     = 13
-IDX_ADDRESSES = 14
 IDX_WIDTHS    = 15
-IDX_TEXT      = 17
 IDX_HELPER    = 18
 IDX_MAIN      = 19
 
 ;;; Declarations plus scanner/symbol state are exercised as one native image.
-;;; The tests inspect the same bounded records that later compiler stages use;
-;;; the host runner only observes TEST_RESULT.
+;;; Storage offsets are inspected when the emitter receives them, not retained
+;;; in symbol tables merely so a test can look at them later. This mirrors the
+;;; production contract: emit the assembler-visible identity, then forget the
+;;; numeric address.
 	* = $4000
 
 main:
@@ -113,7 +109,7 @@ finish:
 .halt:
 	jmp .halt
 
-;;; Comprehensive valid translation.  Keep each representation invariant in a
+;;; Comprehensive valid translation. Keep each representation invariant in a
 ;;; small named check so the test doubles as a readable map of #54's state.
 test_valid_translation:
 	jsr set_default_bss
@@ -133,6 +129,8 @@ test_valid_translation:
 	jsr check_valid_counts
 	bcc .stateFail
 	jsr check_valid_bss_layout
+	bcc .stateFail
+	jsr check_valid_current_layout
 	bcc .stateFail
 	jsr check_valid_initialized_symbols
 	bcc .stateFail
@@ -196,40 +194,51 @@ check_valid_counts:
 	clc
 	rts
 
-;;; Exact uninitialized-global NC_BSS layout: char=1, 16-bit forms=2.
+;;; Exact uninitialized-global NC_BSS layout is observed at emission time.
+;;; char=1; every 16-bit scalar/element form=2.
 check_valid_bss_layout:
+	lda emittedOffsetHighNonzero
+	bne .no
+	lda emittedBssCount
+	cmp #expectedBssOffsetsEnd-expectedBssOffsets
+	bne .no
+	ldx #$00
+.loop:
+	lda emittedBssOffsets,x
+	cmp expectedBssOffsets,x
+	bne .no
+	inx
+	cpx #expectedBssOffsetsEnd-expectedBssOffsets
+	bne .loop
 	lda persistentKind+IDX_FLAG
 	cmp #SYMBOL_GLOBAL_BSS
 	bne .no
 	lda persistentType+IDX_FLAG
 	cmp #TYPE_CHAR
 	bne .no
-	lda persistentStorageOffsetLo+IDX_FLAG
-	bne .no
-	lda persistentStorageOffsetLo+IDX_COUNT
-	cmp #1
-	bne .no
-	lda persistentStorageOffsetLo+IDX_ADDRESS
-	cmp #3
-	bne .no
-	lda persistentStorageOffsetLo+IDX_SOURCE
-	cmp #5
-	bne .no
 	lda persistentType+IDX_SOURCE
 	cmp #TYPE_CHAR_PTR
 	bne .no
-	lda persistentStorageOffsetLo+IDX_BYTES
-	cmp #7
+	sec
+	rts
+.no:
+	clc
+	rts
+
+;;; Parameters/locals are likewise emitted with their just-allocated offset and
+;;; then represented only by name/type. The current table itself is reusable.
+check_valid_current_layout:
+	lda emittedCurrentOffsetCount
+	cmp #expectedCurrentOffsetsEnd-expectedCurrentOffsets
 	bne .no
-	lda persistentStorageOffsetLo+IDX_WORDS
-	cmp #11
+	ldx #$00
+.loop:
+	lda emittedCurrentOffsets,x
+	cmp expectedCurrentOffsets,x
 	bne .no
-	lda persistentStorageOffsetLo+IDX_ADDRESSES
-	cmp #15
-	bne .no
-	lda persistentArrayLengthLo+IDX_WORDS
-	cmp #2
-	bne .no
+	inx
+	cpx #expectedCurrentOffsetsEnd-expectedCurrentOffsets
+	bne .loop
 	sec
 	rts
 .no:
@@ -244,16 +253,15 @@ check_valid_initialized_symbols:
 	lda persistentKind+IDX_WIDTHS
 	cmp #SYMBOL_ARRAY_DATA
 	bne .no
-	lda persistentArrayLengthLo+IDX_TEXT
-	cmp #5
-	bne .no
 	sec
 	rts
 .no:
 	clc
 	rts
 
-;;; helper(char p,unsigned q,char *s) metadata survives current-table reuse.
+;;; helper(char p,unsigned q,char *s) retains only caller-relevant metadata:
+;;; parameter start/count and types. Numeric slot addresses are deliberately not
+;;; present; later calls regenerate the parameter labels from function+ordinal.
 check_valid_function_metadata:
 	lda persistentKind+IDX_HELPER
 	cmp #SYMBOL_FUNCTION
@@ -267,20 +275,11 @@ check_valid_function_metadata:
 	lda parameterType+8
 	cmp #TYPE_CHAR
 	bne .no
-	lda parameterStorageOffsetLo+8
-	cmp #$13
-	bne .no
 	lda parameterType+9
 	cmp #TYPE_UNSIGNED
 	bne .no
-	lda parameterStorageOffsetLo+9
-	cmp #$14
-	bne .no
 	lda parameterType+10
 	cmp #TYPE_CHAR_PTR
-	bne .no
-	lda parameterStorageOffsetLo+10
-	cmp #$16
 	bne .no
 	lda persistentParamStart+IDX_MAIN
 	cmp #11
@@ -637,22 +636,56 @@ expect_fixture_error:
 	rts
 
 ;;; Streaming emitter test double. Production declarations never retain these
-;;; bytes; this small buffer exists only for native inspection.
+;;; bytes/offsets; the buffers exist only so the native test can inspect what was
+;;; presented at the emission boundary.
 reset_emitter:
 	lda #$00
 	sta emittedByteCount
 	sta emittedPersistentCount
 	sta emittedCurrentCount
 	sta emittedBoundaryCount
+	sta emittedBssCount
+	sta emittedCurrentOffsetCount
+	sta emittedOffsetHighNonzero
 	rts
 
 emit_persistent_symbol:
 	inc emittedPersistentCount
+	lda persistentKind,x
+	cmp #SYMBOL_GLOBAL_BSS
+	beq .capture
+	cmp #SYMBOL_ARRAY_BSS
+	bne .done
+.capture:
+	ldy emittedBssCount
+	cpy #16
+	bcs .done
+	lda allocOffset
+	sta emittedBssOffsets,y
+	lda allocOffset+1
+	beq .lowOnly
+	lda #$01
+	sta emittedOffsetHighNonzero
+.lowOnly:
+	inc emittedBssCount
+.done:
 	sec
 	rts
 
 emit_current_symbol:
 	inc emittedCurrentCount
+	ldy emittedCurrentOffsetCount
+	cpy #16
+	bcs .done
+	lda allocOffset
+	sta emittedCurrentOffsets,y
+	lda allocOffset+1
+	beq .lowOnly
+	lda #$01
+	sta emittedOffsetHighNonzero
+.lowOnly:
+	inc emittedCurrentOffsetCount
+.done:
 	sec
 	rts
 
@@ -672,6 +705,13 @@ emit_bss_boundaries:
 	inc emittedBoundaryCount
 	sec
 	rts
+
+expectedBssOffsets:
+	byte 0,1,3,5,7,11,15
+expectedBssOffsetsEnd:
+expectedCurrentOffsets:
+	byte 19,20,22,24,26,28,30,32,34
+expectedCurrentOffsetsEnd:
 
 expectedData:
 	byte 'A'
@@ -721,6 +761,11 @@ emittedByteCount:	byte 0
 emittedPersistentCount:	byte 0
 emittedCurrentCount:	byte 0
 emittedBoundaryCount:	byte 0
+emittedBssCount:	byte 0
+emittedCurrentOffsetCount:	byte 0
+emittedOffsetHighNonzero:	byte 0
+emittedBssOffsets:	ds 16
+emittedCurrentOffsets:	ds 16
 emittedBytes:		ds 64
 
 	include "declarations.asm"

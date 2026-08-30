@@ -6,12 +6,28 @@
 ;;;   - persistent globals and already-defined functions;
 ;;;   - parameters/locals for the function currently being compiled.
 ;;;
-;;; Both are linear bounded arrays.  Names live in one owned byte pool.  The
-;;; current function allocates names after persistentNameUsed; ending a function
-;;; simply resets namePoolNext to persistentNameUsed and reuses those bytes.
+;;; Both are linear bounded arrays. Names live in one owned byte pool. Each
+;;; owned name is stored as [length][bytes...], so a symbol record needs only a
+;;; pool offset rather than a separate length byte.
+;;;
+;;; Current-function names are allocated after persistentNameUsed. Ending a
+;;; function resets namePoolNext to that boundary and reuses those bytes.
 ;;;
 ;;; lookup_symbol always checks current-function names first, so a local or
-;;; parameter may shadow a global.  No other scope machinery exists.
+;;; parameter may shadow a global. No other scope machinery exists.
+;;;
+;;; Capacity is based on the real bootstrap/ass.c rather than an arbitrary round
+;;; number. At this revision that source requires, including the five runtime
+;;; functions:
+;;;
+;;;   persistent symbols       129    capacity 160
+;;;   persistent name bytes   2044    capacity 2304
+;;;   parameter type entries   105    capacity 128
+;;;   max current symbols       11    capacity 32
+;;;   max current name bytes    95    uses the unused tail of the name pool
+;;;
+;;; tests/test_nanoc0_bootstrap parses bootstrap/ass.c natively, so these
+;;; assumptions fail in CI if the bootstrap outgrows them.
 
 DECL_TMP = $fc
 DECL_PTR = $fe
@@ -28,20 +44,23 @@ SYMBOL_ARRAY_DATA       = 4
 SYMBOL_FUNCTION         = 5
 SYMBOL_RUNTIME_FUNCTION = 6
 
-CURRENT_PARAMETER = 1
-CURRENT_LOCAL     = 2
-
 SYMBOL_AREA_NONE       = 0
 SYMBOL_AREA_CURRENT    = 1
 SYMBOL_AREA_PERSISTENT = 2
 
-PERSISTENT_SYMBOL_CAPACITY = 128
-CURRENT_SYMBOL_CAPACITY    = 64
-NAME_POOL_CAPACITY         = 2048
-PARAM_META_CAPACITY        = 192
+PERSISTENT_SYMBOL_CAPACITY = 160
+CURRENT_SYMBOL_CAPACITY    = 32
+NAME_POOL_CAPACITY         = 2304
+PARAM_META_CAPACITY        = 128
+
+;;; Six bytes per persistent entry, three per current entry, one byte per saved
+;;; parameter type, plus the owned-name pool. Keep this literal beside the table
+;;; layout so `make nanoc0` can report large reserved workspace separately from
+;;; code and small parser/scanner state.
+SYMBOL_WORKSPACE_BYTES = 3488
 
 RUNTIME_SYMBOL_COUNT = 5
-RUNTIME_NAME_BYTES   = 39
+RUNTIME_NAME_BYTES   = 44
 RUNTIME_PARAM_COUNT  = 8
 
 ;;; reset_symbol_state
@@ -91,8 +110,6 @@ reserve_persistent_name:
 	sta persistentNameOffsetLo,x
 	lda nameCopyStart+1
 	sta persistentNameOffsetHi,x
-	lda currentTokenLength
-	sta persistentNameLength,x
 	lda namePoolNext
 	sta persistentNameUsed
 	lda namePoolNext+1
@@ -122,8 +139,6 @@ reserve_current_name:
 	sta currentNameOffsetLo,x
 	lda nameCopyStart+1
 	sta currentNameOffsetHi,x
-	lda currentTokenLength
-	sta currentNameLength,x
 	sec
 	rts
 .full:
@@ -131,7 +146,7 @@ reserve_current_name:
 	rts
 
 ;;; copy_token_to_name_pool
-;;; Copy the reusable token text into the next owned-name bytes.
+;;; Store [length][currentTokenText...] at namePoolNext.
 ;;; Carry clear means the bounded pool would overflow.
 copy_token_to_name_pool:
 	lda namePoolNext
@@ -143,7 +158,11 @@ copy_token_to_name_pool:
 	sta nameCopyStart+1
 	adc #$00
 	sta nameCopyEnd+1
+	inc nameCopyEnd
+	bne .checkCapacity
+	inc nameCopyEnd+1
 
+.checkCapacity:
 	lda nameCopyEnd+1
 	cmp #>NAME_POOL_CAPACITY
 	bcc .fits
@@ -164,13 +183,18 @@ copy_token_to_name_pool:
 	lda #>namePool
 	adc nameCopyStart+1
 	sta DECL_PTR+1
+
 	ldy #$00
-.copy:
-	cpy currentTokenLength
-	beq .done
-	lda currentTokenText,y
+	lda currentTokenLength
 	sta (DECL_PTR),y
+	ldx #$00
+.copy:
+	cpx currentTokenLength
+	beq .done
 	iny
+	lda currentTokenText,x
+	sta (DECL_PTR),y
+	inx
 	jmp .copy
 .done:
 	lda nameCopyEnd
@@ -231,16 +255,12 @@ lookup_current_token:
 .loop:
 	cpx currentCount
 	beq .missing
-	lda currentNameLength,x
-	cmp currentTokenLength
-	bne .next
 	lda currentNameOffsetLo,x
 	sta nameCompareOffset
 	lda currentNameOffsetHi,x
 	sta nameCompareOffset+1
 	jsr token_equals_pool_name
 	bcs .found
-.next:
 	inx
 	jmp .loop
 .found:
@@ -257,16 +277,12 @@ lookup_persistent_token:
 .loop:
 	cpx persistentCount
 	beq .missing
-	lda persistentNameLength,x
-	cmp currentTokenLength
-	bne .next
 	lda persistentNameOffsetLo,x
 	sta nameCompareOffset
 	lda persistentNameOffsetHi,x
 	sta nameCompareOffset+1
 	jsr token_equals_pool_name
 	bcs .found
-.next:
 	inx
 	jmp .loop
 .found:
@@ -277,9 +293,10 @@ lookup_persistent_token:
 	rts
 
 ;;; token_equals_pool_name
-;;; X is preserved.  Carry set means currentTokenText equals the pool name at
-;;; nameCompareOffset.  Length equality has already been checked by the caller.
+;;; X is preserved. Carry set means currentTokenText equals the length-prefixed
+;;; pool name at nameCompareOffset.
 token_equals_pool_name:
+	stx nameCompareSymbolIndex
 	clc
 	lda #<namePool
 	adc nameCompareOffset
@@ -287,19 +304,27 @@ token_equals_pool_name:
 	lda #>namePool
 	adc nameCompareOffset+1
 	sta DECL_PTR+1
+
 	ldy #$00
-.compare:
-	cpy currentTokenLength
-	beq .equal
 	lda (DECL_PTR),y
-	cmp currentTokenText,y
+	cmp currentTokenLength
 	bne .different
+	ldx #$00
+.compare:
+	cpx currentTokenLength
+	beq .equal
 	iny
+	lda (DECL_PTR),y
+	cmp currentTokenText,x
+	bne .different
+	inx
 	jmp .compare
 .equal:
+	ldx nameCompareSymbolIndex
 	sec
 	rts
 .different:
+	ldx nameCompareSymbolIndex
 	clc
 	rts
 
@@ -307,6 +332,10 @@ token_equals_pool_name:
 ;;; allocSize is a 16-bit byte count.
 ;;; Carry set: allocOffset is the old BSS offset and allocation is committed.
 ;;; Carry clear: NC_BSS+allocation would wrap the 16-bit target address space.
+;;;
+;;; allocOffset is deliberately transient. The declaration emitter sees it while
+;;; defining the assembler-visible storage label; later compiler phases refer to
+;;; that label by symbol identity and never need to retain the numeric address.
 allocate_bss:
 	lda bssOffset
 	sta allocOffset
@@ -346,7 +375,7 @@ allocate_bss:
 	rts
 
 ;;; set_alloc_size_for_type
-;;; A=TYPE_*.  allocSize receives the exact target width.
+;;; A=TYPE_*. allocSize receives the exact target width.
 set_alloc_size_for_type:
 	cmp #TYPE_CHAR
 	bne .word
@@ -384,8 +413,10 @@ set_alloc_size_for_array:
 	rts
 
 ;;; append_parameter_metadata
-;;; pendingCurrentIndex identifies a committed parameter symbol.
-;;; Carry clear means the bounded parameter metadata area is full.
+;;; Retain only the parameter type needed by later callers. The parameter's
+;;; storage label is deterministic from function symbol + argument ordinal, so
+;;; retaining the numeric NC_BSS address would duplicate information already
+;;; emitted to assembly.
 append_parameter_metadata:
 	ldx parameterMetaCount
 	cpx #PARAM_META_CAPACITY
@@ -396,10 +427,6 @@ append_parameter_metadata:
 	ldy pendingCurrentIndex
 	lda currentType,y
 	sta parameterType,x
-	lda currentStorageOffsetLo,y
-	sta parameterStorageOffsetLo,x
-	lda currentStorageOffsetHi,y
-	sta parameterStorageOffsetHi,x
 	inc parameterMetaCount
 	sec
 	rts
@@ -417,15 +444,18 @@ reservedSymbolIndex:	byte 0
 reservedCurrentIndex:	byte 0
 pendingCurrentIndex:	byte 0
 
-;;; Persistent entries.  The first five are the fixed runtime functions.
+;;; The large bounded workspace begins here. Everything outside this interval is
+;;; executable code or small scalar parser/scanner state.
+symbolWorkspaceStart:
+
+;;; Persistent entries. The first five are the fixed runtime functions.
+;;; A record is six bytes across parallel arrays:
+;;;   name offset (2), kind, type, parameter metadata start, parameter count.
 persistentNameOffsetLo:
-	byte 0,7,14,23,31
+	byte 0,8,16,26,35
 	ds PERSISTENT_SYMBOL_CAPACITY-RUNTIME_SYMBOL_COUNT
 persistentNameOffsetHi:
 	byte 0,0,0,0,0
-	ds PERSISTENT_SYMBOL_CAPACITY-RUNTIME_SYMBOL_COUNT
-persistentNameLength:
-	byte 7,7,9,8,8
 	ds PERSISTENT_SYMBOL_CAPACITY-RUNTIME_SYMBOL_COUNT
 persistentKind:
 	byte SYMBOL_RUNTIME_FUNCTION,SYMBOL_RUNTIME_FUNCTION,SYMBOL_RUNTIME_FUNCTION
@@ -434,14 +464,6 @@ persistentKind:
 persistentType:
 	byte TYPE_INT,TYPE_INT,TYPE_INT,TYPE_INT,TYPE_INT
 	ds PERSISTENT_SYMBOL_CAPACITY-RUNTIME_SYMBOL_COUNT
-persistentStorageOffsetLo:
-	ds PERSISTENT_SYMBOL_CAPACITY
-persistentStorageOffsetHi:
-	ds PERSISTENT_SYMBOL_CAPACITY
-persistentArrayLengthLo:
-	ds PERSISTENT_SYMBOL_CAPACITY
-persistentArrayLengthHi:
-	ds PERSISTENT_SYMBOL_CAPACITY
 persistentParamStart:
 	byte 0,2,3,5,7
 	ds PERSISTENT_SYMBOL_CAPACITY-RUNTIME_SYMBOL_COUNT
@@ -449,18 +471,14 @@ persistentParamCount:
 	byte 2,1,2,2,1
 	ds PERSISTENT_SYMBOL_CAPACITY-RUNTIME_SYMBOL_COUNT
 
-;;; Current-function entries.  Old bytes are ignored after currentCount resets.
+;;; Current-function entries. A record is only name offset (2) + type.
+;;; Parameter/local role and numeric storage address are facts needed only while
+;;; declaring/emitting the slot, not by later source lookup.
 currentNameOffsetLo:	ds CURRENT_SYMBOL_CAPACITY
 currentNameOffsetHi:	ds CURRENT_SYMBOL_CAPACITY
-currentNameLength:	ds CURRENT_SYMBOL_CAPACITY
-currentKind:		ds CURRENT_SYMBOL_CAPACITY
 currentType:		ds CURRENT_SYMBOL_CAPACITY
-currentStorageOffsetLo:	ds CURRENT_SYMBOL_CAPACITY
-currentStorageOffsetHi:	ds CURRENT_SYMBOL_CAPACITY
 
-;;; Persistent call metadata.  Runtime functions occupy the first eight slots;
-;;; their storage offset is $ffff because #57 supplies their concrete runtime
-;;; boundary rather than allocating source-level BSS slots here.
+;;; Persistent call metadata is one byte per parameter: its Phase 1 type.
 parameterMetaCount:	byte RUNTIME_PARAM_COUNT
 parameterType:
 	byte TYPE_CHAR_PTR,TYPE_INT		; io_open(name,length)
@@ -469,23 +487,20 @@ parameterType:
 	byte TYPE_INT,TYPE_INT			; io_write(handle,value)
 	byte TYPE_INT				; io_close(handle)
 	ds PARAM_META_CAPACITY-RUNTIME_PARAM_COUNT
-parameterStorageOffsetLo:
-	byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff
-	ds PARAM_META_CAPACITY-RUNTIME_PARAM_COUNT
-parameterStorageOffsetHi:
-	byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff
-	ds PARAM_META_CAPACITY-RUNTIME_PARAM_COUNT
 
-;;; One shared owned-name pool.  Runtime names are permanent bytes at its start.
+;;; One shared length-prefixed owned-name pool. Runtime names are permanent bytes
+;;; at its start; source names follow and current-function names reuse its tail.
 persistentNameUsed:	word RUNTIME_NAME_BYTES
 namePoolNext:		word RUNTIME_NAME_BYTES
 namePool:
-	byte 'i','o','_','o','p','e','n'
-	byte 'i','o','_','r','e','a','d'
-	byte 'i','o','_','c','r','e','a','t','e'
-	byte 'i','o','_','w','r','i','t','e'
-	byte 'i','o','_','c','l','o','s','e'
+	byte 7,'i','o','_','o','p','e','n'
+	byte 7,'i','o','_','r','e','a','d'
+	byte 9,'i','o','_','c','r','e','a','t','e'
+	byte 8,'i','o','_','w','r','i','t','e'
+	byte 8,'i','o','_','c','l','o','s','e'
 	ds NAME_POOL_CAPACITY-RUNTIME_NAME_BYTES
+
+symbolWorkspaceEnd:
 
 ;;; Static BSS allocation state.
 bssBase:		word $5000
@@ -501,3 +516,4 @@ allocNextOffset:	word 0
 nameCopyStart:		word 0
 nameCopyEnd:		word 0
 nameCompareOffset:	word 0
+nameCompareSymbolIndex:	byte 0

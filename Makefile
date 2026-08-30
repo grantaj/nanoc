@@ -30,7 +30,8 @@ ASS_TARGETS = \
 NANOC0_TARGETS = \
 	$(BUILD_DIR)/nanoc0-core.prg \
 	$(BUILD_DIR)/test_nanoc0_scanner.prg \
-	$(BUILD_DIR)/test_nanoc0_declarations.prg
+	$(BUILD_DIR)/test_nanoc0_declarations.prg \
+	$(BUILD_DIR)/test_nanoc0_bootstrap.prg
 
 ASSEMBLER_DEPS = \
 	ass/assembler.asm ass/representation.asm ass/source.asm ass/data.asm \
@@ -87,7 +88,7 @@ EXAMPLE_TARGETS = \
 	$(BUILD_DIR)/border-demo.prg \
 	$(BUILD_DIR)/border-c.prg
 
-.PHONY: all setup dis ass nanoc0 examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations clean
+.PHONY: all setup dis ass nanoc0 examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap clean
 
 all: dis ass nanoc0 examples
 
@@ -99,11 +100,19 @@ dis: $(DIS_TARGETS)
 ass: $(ASS_TARGETS)
 
 nanoc0: $(NANOC0_TARGETS)
-	@bytes=$$(wc -c < $(BUILD_DIR)/nanoc0-core.prg); bytes=$$((bytes - 2)); echo "nanoc0 resident core: $$bytes bytes"
+	@bytes=$$(wc -c < $(BUILD_DIR)/nanoc0-core.prg); \
+	bytes=$$((bytes - 2)); \
+	workspace=$$(awk '$$1 == "SYMBOL_WORKSPACE_BYTES" { print $$3 }' nanoc0/symbols.asm); \
+	token=$$(awk '$$1 == "TOKEN_TEXT_CAPACITY" { print $$3 }' nanoc0/scanner.asm); \
+	small=$$((bytes - workspace - token)); \
+	echo "nanoc0 resident core:          $$bytes bytes"; \
+	echo "  symbol/name workspace:      $$workspace bytes"; \
+	echo "  reusable token text:        $$token bytes"; \
+	echo "  code + other small state:   $$small bytes"
 
 examples: $(EXAMPLE_TARGETS)
 
-test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations
+test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap
 
 test-skipws: $(BUILD_DIR)/test_skipws.prg
 	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< skipws
@@ -149,6 +158,9 @@ test-nanoc0-scanner: $(BUILD_DIR)/test_nanoc0_scanner.prg $(NANOC0_SCANNER_FIXTU
 
 test-nanoc0-declarations: $(BUILD_DIR)/test_nanoc0_declarations.prg $(NANOC0_DECLARATION_FIXTURES)
 	VICE_FS_DIR=$(CURDIR)/tests/nanoc0-src VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< nanoc0-declarations
+
+test-nanoc0-bootstrap: $(BUILD_DIR)/test_nanoc0_bootstrap.prg bootstrap/ass.c
+	VICE_TIMEOUT=30 VICE_FS_DIR=$(CURDIR) VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< nanoc0-bootstrap
 
 $(BUILD_DIR):
 	mkdir -p $@
@@ -215,6 +227,9 @@ $(BUILD_DIR)/test_nanoc0_scanner.prg: nanoc0/test_scanner.asm nanoc0/scanner.asm
 
 $(BUILD_DIR)/test_nanoc0_declarations.prg: nanoc0/test_declarations.asm nanoc0/declarations.asm nanoc0/symbols.asm nanoc0/scanner.asm nanoc0/source.asm dis/kernal.inc test.inc | $(BUILD_DIR)
 	cd nanoc0 && $(VASM) $(VASMFLAGS) -o ../$@ test_declarations.asm
+
+$(BUILD_DIR)/test_nanoc0_bootstrap.prg: nanoc0/test_bootstrap.asm nanoc0/declarations.asm nanoc0/symbols.asm nanoc0/scanner.asm nanoc0/source.asm dis/kernal.inc test.inc | $(BUILD_DIR)
+	cd nanoc0 && $(VASM) $(VASMFLAGS) -o ../$@ test_bootstrap.asm
 
 $(BUILD_DIR)/border-demo.prg: examples/border/demo.asm | $(BUILD_DIR)
 	cd examples/border && $(VASM) $(VASMFLAGS) -o ../../$@ demo.asm
