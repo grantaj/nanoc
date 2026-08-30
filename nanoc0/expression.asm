@@ -274,20 +274,30 @@ expression_fail:
 
 ;;; parse_expression_primary
 ;;; Emit one primary and advance currentToken beyond it. The routine records
-;;; whether the resulting address may be followed by indexing.
+;;; whether the resulting address may be followed by indexing. The primary-kind
+;;; selector follows the same nearby-branch/absolute-JMP rule as the main state
+;;; machine; the individual primary cases are intentionally allowed to grow.
 parse_expression_primary:
 	lda #$00
 	sta expressionIndexable
 	sta expressionArrayOnly
 	lda currentTokenKind
 	cmp #TOKEN_INTEGER
-	beq .integer
+	bne .notInteger
+	jmp .integer
+.notInteger:
 	cmp #TOKEN_CHARACTER
-	beq .character
+	bne .notCharacter
+	jmp .character
+.notCharacter:
 	cmp #TOKEN_STRING
-	beq .string
+	bne .notString
+	jmp .string
+.notString:
 	cmp #TOKEN_IDENTIFIER
-	beq .identifier
+	bne .badPrimary
+	jmp .identifier
+.badPrimary:
 	lda #EXPR_EXPECTED_VALUE
 	jmp expression_fail
 
