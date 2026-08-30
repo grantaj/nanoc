@@ -418,7 +418,7 @@ A baseline false test can therefore reduce `A/X` to flags with:
     ora NC_TMP
 ```
 
-`nanoc0` does **not** keep track of conditional-branch distance and does not perform branch relaxation. Whenever a conditional transfer may target generated code beyond the immediately adjacent sequence, it always emits a short branch over an absolute `JMP`.
+`nanoc0` does **not** keep track of conditional-branch distance and does not perform branch relaxation. It always represents a generated conditional transfer as a short branch to a nearby label plus an absolute `JMP` for the potentially distant path.
 
 For example, a false transfer is shaped as:
 
@@ -428,7 +428,9 @@ For example, a false transfer is shaped as:
 .condition_true:
 ```
 
-The branch target is deliberately local and therefore always in range; the `JMP` carries the arbitrary-distance control transfer. The compiler uses the same pattern even when the final target would happen to fit in a relative branch.
+The branch target is deliberately adjacent and therefore always in range; the `JMP` carries the arbitrary-distance control transfer.
+
+This is the normal Phase 1 form even when the final target would happen to be within relative-branch range. `nanoc0` never asks that question, so it never needs to retain or calculate branch extent.
 
 This deliberately spends one `JMP` to remove an entire class of layout bookkeeping from the bootstrap compiler.
 
@@ -676,7 +678,7 @@ This is exactly the bookkeeping an assembly programmer would otherwise perform b
 8. **`NC_TMP` is only transient operator scratch.**
 9. **All persistent storage has an assembler-visible absolute address.**
 10. **Zero-initialised globals occupy the initial part of `NC_BSS`; function scratch does not require clearing.**
-11. **Conditional control flow uses local branches over absolute `JMP`s; `nanoc0` does not track branch reach.**
+11. **Conditional control flow always uses local branches over absolute `JMP`s; `nanoc0` never tracks branch reach.**
 12. **Generated code may be verbose, but its machine behaviour should be unsurprising.**
 
 These invariants are more valuable to the bootstrap compiler than a more general ABI would be.
