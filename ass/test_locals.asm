@@ -95,7 +95,6 @@ testLocalScopeError:
 
 	include "parser.asm"
 	include "instruction.asm"
-	include "emitter.asm"
 	include "symbols.asm"
 	include "value.asm"
 	include "assembler.asm"

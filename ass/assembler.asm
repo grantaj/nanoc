@@ -26,6 +26,9 @@ ASSEMBLE_IO_ERROR        = $0c
 ASSEMBLE_LINE_TOO_LONG   = $0d
 ASSEMBLE_INCLUDE_DEPTH   = $0e
 
+;;; These are assembler backend data, not a separate direct-emission layer.
+	include "../dis/mode_widths.asm"
+
 ;;; Representation constants are needed by the orchestration below. Keeping
 ;;; representation.asm here also means ass never needs forward constant
 ;;; definitions merely because of source-file ordering.
@@ -662,6 +665,7 @@ mapSymbolStatus:
 
 sourceFileMode:	byte 0
 originAllowed:	byte 0
+assemblyPtr:	word 0
 assemblyStart:	word 0
 instructionWidth:	byte 0
 

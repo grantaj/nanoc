@@ -1,16 +1,27 @@
 	include "zp.inc"
 	include "../test.inc"
 
-FAIL_FORWARD       = $01
-FAIL_UNDEFINED     = $02
-FAIL_BRANCH_RANGE  = $03
-FAIL_ATOMIC_OUTPUT = $04
+FAIL_FORWARD          = $01
+FAIL_UNDEFINED        = $02
+FAIL_BRANCH_PLUS_127  = $03
+FAIL_BRANCH_MINUS_128 = $04
+FAIL_BRANCH_PLUS_128  = $05
+FAIL_BRANCH_MINUS_129 = $06
+FAIL_ATOMIC_OUTPUT    = $07
 
-OUTPUT       = $2000
-SYMBOLS      = $3000
-SYMBOLS_END  = $3600
-STAGING      = $3600
-STAGING_END  = $4000
+OUTPUT                 = $2000
+BRANCH_PLUS            = $2200
+BRANCH_PLUS_TARGET     = $2281
+BRANCH_MINUS           = $2300
+BRANCH_MINUS_TARGET    = $2282
+BRANCH_TOO_FAR         = $2400
+BRANCH_TOO_FAR_TARGET  = $2482
+BRANCH_TOO_BACK        = $2500
+BRANCH_TOO_BACK_TARGET = $2481
+SYMBOLS                = $3000
+SYMBOLS_END            = $3600
+STAGING                = $3600
+STAGING_END            = $4000
 
 	* = ASSEMBLER_TEST_ENTRY
 
@@ -21,7 +32,7 @@ main:
 	bcc finish
 	jsr testUndefinedSymbol
 	bcc finish
-	jsr testBranchRange
+	jsr testBranchLimits
 	bcc finish
 	lda #TEST_PASS
 finish:
@@ -130,47 +141,156 @@ testUndefinedSymbol:
 	clc
 	rts
 
-;;; A fixed branch target is range-checked immediately. A range error still
-;;; occurs while staging is private, before target memory is changed.
-testBranchRange:
-	lda #$69
-	sta OUTPUT
-	sta OUTPUT+1
-	lda #<branchRangeSource
+;;; Exercise the exact signed branch limits through source -> parser -> staged
+;;; assembler. The branch byte is target - (branch address + 2).
+testBranchLimits:
+	;; $2281 - ($2200 + 2) = +127.
+	lda #<branchPlus127Source
 	sta ZP_PTR1
-	lda #>branchRangeSource
+	lda #>branchPlus127Source
 	sta ZP_PTR1+1
-	lda #<branchRangeSourceEnd
+	lda #<branchPlus127SourceEnd
 	sta sourceEnd
-	lda #>branchRangeSourceEnd
+	lda #>branchPlus127SourceEnd
 	sta sourceEnd+1
-	lda #<OUTPUT
+	lda #<BRANCH_PLUS
 	sta assemblyPtr
-	lda #>OUTPUT
+	lda #>BRANCH_PLUS
+	sta assemblyPtr+1
+	jsr assemble
+	cmp #ASSEMBLE_OK
+	bne .failPlus127
+	lda BRANCH_PLUS
+	cmp #$d0
+	bne .failPlus127
+	lda BRANCH_PLUS+1
+	cmp #$7f
+	bne .failPlus127
+	lda assemblyPtr
+	cmp #<(BRANCH_PLUS+2)
+	bne .failPlus127
+	lda assemblyPtr+1
+	cmp #>(BRANCH_PLUS+2)
+	beq .minus128
+.failPlus127:
+	lda #FAIL_BRANCH_PLUS_127
+	clc
+	rts
+
+	;; $2282 - ($2300 + 2) = -128.
+.minus128:
+	lda #<branchMinus128Source
+	sta ZP_PTR1
+	lda #>branchMinus128Source
+	sta ZP_PTR1+1
+	lda #<branchMinus128SourceEnd
+	sta sourceEnd
+	lda #>branchMinus128SourceEnd
+	sta sourceEnd+1
+	lda #<BRANCH_MINUS
+	sta assemblyPtr
+	lda #>BRANCH_MINUS
+	sta assemblyPtr+1
+	jsr assemble
+	cmp #ASSEMBLE_OK
+	bne .failMinus128
+	lda BRANCH_MINUS
+	cmp #$d0
+	bne .failMinus128
+	lda BRANCH_MINUS+1
+	cmp #$80
+	bne .failMinus128
+	lda assemblyPtr
+	cmp #<(BRANCH_MINUS+2)
+	bne .failMinus128
+	lda assemblyPtr+1
+	cmp #>(BRANCH_MINUS+2)
+	beq .plus128
+.failMinus128:
+	lda #FAIL_BRANCH_MINUS_128
+	clc
+	rts
+
+	;; $2482 - ($2400 + 2) = +128: fail before committing anything.
+.plus128:
+	lda #$5a
+	sta BRANCH_TOO_FAR
+	lda #$a5
+	sta BRANCH_TOO_FAR+1
+	lda #<branchPlus128Source
+	sta ZP_PTR1
+	lda #>branchPlus128Source
+	sta ZP_PTR1+1
+	lda #<branchPlus128SourceEnd
+	sta sourceEnd
+	lda #>branchPlus128SourceEnd
+	sta sourceEnd+1
+	lda #<BRANCH_TOO_FAR
+	sta assemblyPtr
+	lda #>BRANCH_TOO_FAR
 	sta assemblyPtr+1
 	jsr assemble
 	cmp #ASSEMBLE_EMIT_ERROR
-	bne .fail
-	lda OUTPUT
-	cmp #$69
-	bne .atomic
-	lda OUTPUT+1
-	cmp #$69
-	bne .atomic
-	sec
-	rts
-.atomic:
-	lda #FAIL_ATOMIC_OUTPUT
+	bne .failPlus128
+	lda assemblyPtr
+	cmp #<BRANCH_TOO_FAR
+	bne .failPlus128
+	lda assemblyPtr+1
+	cmp #>BRANCH_TOO_FAR
+	bne .failPlus128
+	lda BRANCH_TOO_FAR
+	cmp #$5a
+	bne .failPlus128
+	lda BRANCH_TOO_FAR+1
+	cmp #$a5
+	beq .minus129
+.failPlus128:
+	lda #FAIL_BRANCH_PLUS_128
 	clc
 	rts
-.fail:
-	lda #FAIL_BRANCH_RANGE
+
+	;; $2481 - ($2500 + 2) = -129: likewise fail atomically.
+.minus129:
+	lda #$3c
+	sta BRANCH_TOO_BACK
+	lda #$c3
+	sta BRANCH_TOO_BACK+1
+	lda #<branchMinus129Source
+	sta ZP_PTR1
+	lda #>branchMinus129Source
+	sta ZP_PTR1+1
+	lda #<branchMinus129SourceEnd
+	sta sourceEnd
+	lda #>branchMinus129SourceEnd
+	sta sourceEnd+1
+	lda #<BRANCH_TOO_BACK
+	sta assemblyPtr
+	lda #>BRANCH_TOO_BACK
+	sta assemblyPtr+1
+	jsr assemble
+	cmp #ASSEMBLE_EMIT_ERROR
+	bne .failMinus129
+	lda assemblyPtr
+	cmp #<BRANCH_TOO_BACK
+	bne .failMinus129
+	lda assemblyPtr+1
+	cmp #>BRANCH_TOO_BACK
+	bne .failMinus129
+	lda BRANCH_TOO_BACK
+	cmp #$3c
+	bne .failMinus129
+	lda BRANCH_TOO_BACK+1
+	cmp #$c3
+	bne .failMinus129
+	sec
+	rts
+.failMinus129:
+	lda #FAIL_BRANCH_MINUS_129
 	clc
 	rts
 
 	include "parser.asm"
 	include "instruction.asm"
-	include "emitter.asm"
 	include "symbols.asm"
 	include "value.asm"
 	include "assembler.asm"
@@ -196,8 +316,22 @@ undefinedSource:
 	string "JMP missing"
 undefinedSourceEnd:
 
-branchRangeSource:
-	string "FAR = $3000"
-	string "entry:"
-	string "BNE FAR"
-branchRangeSourceEnd:
+branchPlus127Source:
+	string "TARGET = $2281"
+	string "BNE TARGET"
+branchPlus127SourceEnd:
+
+branchMinus128Source:
+	string "TARGET = $2282"
+	string "BNE TARGET"
+branchMinus128SourceEnd:
+
+branchPlus128Source:
+	string "TARGET = $2482"
+	string "BNE TARGET"
+branchPlus128SourceEnd:
+
+branchMinus129Source:
+	string "TARGET = $2481"
+	string "BNE TARGET"
+branchMinus129SourceEnd:

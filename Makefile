@@ -18,7 +18,6 @@ ASS_TARGETS = \
 	$(BUILD_DIR)/test_parser.prg \
 	$(BUILD_DIR)/test_parser_eof.prg \
 	$(BUILD_DIR)/test_instruction.prg \
-	$(BUILD_DIR)/test_emitter.prg \
 	$(BUILD_DIR)/test_values.prg \
 	$(BUILD_DIR)/test_globals.prg \
 	$(BUILD_DIR)/test_locals.prg \
@@ -30,7 +29,7 @@ ASS_TARGETS = \
 
 ASSEMBLER_DEPS = \
 	ass/assembler.asm ass/representation.asm ass/source.asm ass/data.asm \
-	ass/symbols.asm ass/value.asm ass/emitter.asm ass/instruction.asm ass/parser.asm \
+	ass/symbols.asm ass/value.asm ass/instruction.asm ass/parser.asm \
 	ass/scanner.asm ass/skipws.asm ass/zp.inc dis/kernal.inc dis/mode_ids.inc \
 	dis/mode_widths.asm dis/opcode_table.asm dis/mnemonic_table.asm test.inc
 
@@ -49,7 +48,7 @@ EXAMPLE_TARGETS = \
 	$(BUILD_DIR)/border-demo.prg \
 	$(BUILD_DIR)/border-c.prg
 
-.PHONY: all dis ass examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-emitter test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost clean
+.PHONY: all dis ass examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost clean
 
 all: dis ass examples
 
@@ -59,7 +58,7 @@ ass: $(ASS_TARGETS)
 
 examples: $(EXAMPLE_TARGETS)
 
-test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-emitter test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost
+test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost
 
 test-skipws: $(BUILD_DIR)/test_skipws.prg
 	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< skipws
@@ -75,9 +74,6 @@ test-parser-eof: $(BUILD_DIR)/test_parser_eof.prg
 
 test-instruction: $(BUILD_DIR)/test_instruction.prg
 	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< instruction
-
-test-emitter: $(BUILD_DIR)/test_emitter.prg
-	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< emitter
 
 test-values: $(BUILD_DIR)/test_values.prg
 	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< values
@@ -135,9 +131,6 @@ $(BUILD_DIR)/test_parser_eof.prg: ass/test_parser_eof.asm ass/parser.asm ass/sca
 
 $(BUILD_DIR)/test_instruction.prg: ass/test_instruction.asm ass/instruction.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc dis/mode_ids.inc dis/opcode_table.asm dis/mnemonic_table.asm test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_instruction.asm
-
-$(BUILD_DIR)/test_emitter.prg: ass/test_emitter.asm ass/emitter.asm ass/instruction.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc dis/mode_ids.inc dis/mode_widths.asm dis/opcode_table.asm dis/mnemonic_table.asm test.inc | $(BUILD_DIR)
-	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_emitter.asm
 
 $(BUILD_DIR)/test_values.prg: ass/test_values.asm $(ASSEMBLER_DEPS) | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_values.asm
