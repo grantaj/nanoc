@@ -28,7 +28,8 @@ ASS_TARGETS = \
 	$(BUILD_DIR)/test_selfhost.prg
 
 NANOC0_TARGETS = \
-	$(BUILD_DIR)/test_nanoc0_scanner.prg
+	$(BUILD_DIR)/test_nanoc0_scanner.prg \
+	$(BUILD_DIR)/test_nanoc0_empty_char.prg
 
 ASSEMBLER_DEPS = \
 	ass/assembler.asm ass/representation.asm ass/source.asm ass/data.asm \
@@ -48,6 +49,7 @@ NANOC0_SCANNER_FIXTURES = \
 	tests/nanoc0-src/odec.c \
 	tests/nanoc0-src/ohex.c \
 	tests/nanoc0-src/badchar.c \
+	tests/nanoc0-src/emptychar.c \
 	tests/nanoc0-src/uchar.c \
 	tests/nanoc0-src/ustr.c \
 	tests/nanoc0-src/ucom.c \
@@ -122,8 +124,9 @@ test-streaming: $(BUILD_DIR)/test_streaming.prg $(STREAM_FIXTURES)
 test-selfhost: $(BUILD_DIR)/test_selfhost.prg $(SELFHOST_FIXTURES)
 	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR) VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< selfhost
 
-test-nanoc0-scanner: $(BUILD_DIR)/test_nanoc0_scanner.prg $(NANOC0_SCANNER_FIXTURES)
-	VICE_FS_DIR=$(CURDIR)/tests/nanoc0-src VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< nanoc0-scanner
+test-nanoc0-scanner: $(NANOC0_TARGETS) $(NANOC0_SCANNER_FIXTURES)
+	VICE_FS_DIR=$(CURDIR)/tests/nanoc0-src VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_scanner.prg nanoc0-scanner
+	VICE_FS_DIR=$(CURDIR)/tests/nanoc0-src VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_empty_char.prg nanoc0-empty-char
 
 $(BUILD_DIR):
 	mkdir -p $@
@@ -184,6 +187,9 @@ $(BUILD_DIR)/test_selfhost.prg: ass/test_selfhost.asm ass/ass.asm $(ASSEMBLER_DE
 
 $(BUILD_DIR)/test_nanoc0_scanner.prg: nanoc0/test_scanner.asm nanoc0/scanner.asm dis/kernal.inc test.inc | $(BUILD_DIR)
 	cd nanoc0 && $(VASM) $(VASMFLAGS) -o ../$@ test_scanner.asm
+
+$(BUILD_DIR)/test_nanoc0_empty_char.prg: nanoc0/test_empty_char.asm nanoc0/scanner.asm dis/kernal.inc test.inc | $(BUILD_DIR)
+	cd nanoc0 && $(VASM) $(VASMFLAGS) -o ../$@ test_empty_char.asm
 
 $(BUILD_DIR)/border-demo.prg: examples/border/demo.asm | $(BUILD_DIR)
 	cd examples/border && $(VASM) $(VASMFLAGS) -o ../../$@ demo.asm
