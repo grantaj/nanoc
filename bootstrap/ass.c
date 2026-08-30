@@ -121,7 +121,8 @@ char symbol_name_length[512];
 int symbol_payload[512];
 char symbol_scope[512];
 char symbol_kind[512];
-char symbol_name_bytes[4096];
+/* 512 seven-byte records plus 8 KiB of names fit inside ass's 12 KiB symbol workspace. */
+char symbol_name_bytes[8192];
 int symbol_count;
 int symbol_name_used;
 int current_scope;
@@ -373,7 +374,7 @@ int allocate_symbol(char *name, int length, int kind, int payload)
     if (symbol_count >= 512) {
         return -3;
     }
-    if (symbol_name_used + length > 4096) {
+    if (symbol_name_used + length > 8192) {
         return -3;
     }
 
