@@ -54,6 +54,10 @@ calls, and string literals.
 
 Phase 1 uses declaration-before-use as a universal source rule.
 
+This is intentionally stricter than historical C's old implicit-function
+behaviour. Nano C has **no implicit declarations**. If a source name has not
+already been declared or defined, using it is an error.
+
 When the parser encounters a source identifier, its meaning is already known.
 The only predeclared names are the small runtime functions defined by the
 Phase 1 environment.
@@ -64,6 +68,7 @@ Concretely:
 - a global is known only after its declaration has been consumed;
 - functions are defined before any later function calls them;
 - there are no prototypes;
+- there are no implicit function declarations;
 - parameters are declared in the function header before the body;
 - all locals are declared at the start of the function before executable
   statements;
