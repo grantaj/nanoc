@@ -8,26 +8,27 @@
 ;;; slots before later source is consumed. The compiler retains no expression
 ;;; tree, RPN stream or runtime value stack.
 ;;;
-;;; `emit.asm` needs one external byte sink, emit_output_byte. Function calls are
-;;; the one deliberately unfinished primary: expression_call_primary is an
-;;; external hook for #57. It receives X=known persistent function index with
-;;; currentTokenKind='(' and must consume the call non-recursively, emit it, set
-;;; expressionValueType, and leave currentToken after ')'. #55 supplies no fake
-;;; call parser.
+;;; emit.asm streams generated source directly when its output flag is enabled.
+;;; Function calls are the one deliberately unfinished primary:
+;;; expression_call_primary receives X=known persistent function index with
+;;; currentTokenKind='(' and will become #57's non-recursive pending-call state
+;;; machine. The #55 stub fails explicitly rather than pretending to compile a
+;;; call with semantics that would later have to be replaced.
 
 	include "emit.asm"
 
-EXPR_OK                  = 0
-EXPR_EXPECTED_VALUE      = 1
-EXPR_STACK_OVERFLOW      = 2
-EXPR_UNMATCHED_DELIMITER = 3
-EXPR_UNDECLARED          = 4
-EXPR_BAD_PRIMARY         = 5
-EXPR_BAD_TYPE            = 6
-EXPR_BSS_OVERFLOW        = 7
-EXPR_EMIT_ERROR          = 8
-EXPR_LITERAL_CAPACITY    = 9
-EXPR_LITERAL_BYTES       = 10
+EXPR_OK                    = 0
+EXPR_EXPECTED_VALUE        = 1
+EXPR_STACK_OVERFLOW        = 2
+EXPR_UNMATCHED_DELIMITER   = 3
+EXPR_UNDECLARED            = 4
+EXPR_BAD_PRIMARY           = 5
+EXPR_BAD_TYPE              = 6
+EXPR_BSS_OVERFLOW          = 7
+EXPR_EMIT_ERROR            = 8
+EXPR_LITERAL_COUNT_OVERFLOW = 9
+EXPR_LITERAL_POOL_OVERFLOW  = 10
+EXPR_CALL_UNAVAILABLE       = 11
 
 EXPR_STACK_CAPACITY   = 16
 EXPR_LITERAL_CAPACITY = 16
@@ -235,7 +236,7 @@ parse_expression_primary:
 	cmp #TOKEN_TYPE_UNSIGNED
 	beq .integerUnsigned
 	lda #TYPE_INT
-	bne .integerTypeDone
+	jmp .integerTypeDone
 .integerUnsigned:
 	lda #TYPE_UNSIGNED
 .integerTypeDone:
@@ -382,6 +383,13 @@ parse_expression_primary:
 .failed:
 	clc
 	rts
+
+;;; #55 intentionally exposes the final call-primary shape but does not consume
+;;; call syntax. #57 replaces this routine with the pending-call stack without
+;;; changing the expression parser above.
+expression_call_primary:
+	lda #EXPR_CALL_UNAVAILABLE
+	jmp expression_fail
 
 ;;; Postfix indexing is represented by a marker on the same explicit operator
 ;;; stack. The base address is spilled before the index expression begins.
@@ -926,7 +934,7 @@ validate_binary_types:
 	cmp #TYPE_UNSIGNED
 	beq .shiftUnsigned
 	lda #TYPE_INT
-	bne .shiftStore
+	jmp .shiftStore
 .shiftUnsigned:
 	lda #TYPE_UNSIGNED
 .shiftStore:
@@ -983,7 +991,7 @@ capture_string_literal:
 	lda literalCount
 	cmp #EXPR_LITERAL_CAPACITY
 	bcc .countOk
-	lda #EXPR_LITERAL_CAPACITY
+	lda #EXPR_LITERAL_COUNT_OVERFLOW
 	jmp expression_fail
 .countOk:
 	sta currentLiteralIndex
@@ -1018,7 +1026,7 @@ capture_string_literal:
 	bcc .fits
 	beq .fits
 .tooMany:
-	lda #EXPR_LITERAL_BYTES
+	lda #EXPR_LITERAL_POOL_OVERFLOW
 	jmp expression_fail
 .fits:
 	clc
@@ -1590,7 +1598,7 @@ emit_shift_reduction:
 	lda #exprShiftLeftBodyEnd-exprShiftLeftBody
 	ldx #<exprShiftLeftBody
 	ldy #>exprShiftLeftBody
-	bne .body
+	jmp .body
 .right:
 	lda #exprShiftRightBodyEnd-exprShiftRightBody
 	ldx #<exprShiftRightBody
@@ -1695,13 +1703,14 @@ emit_equality:
 	lda compareTrueLabel
 	sta emitLabelValue
 	lda compareTrueLabel+1
-	bne .firstLabel
+	sta emitLabelValue+1
+	jmp .firstLabel
 .firstFalse:
 	lda compareFalseLabel
 	sta emitLabelValue
 	lda compareFalseLabel+1
-.firstLabel:
 	sta emitLabelValue+1
+.firstLabel:
 	jsr emit_generated_label_name
 	bcc .failed
 	jsr emit_newline
@@ -1723,13 +1732,14 @@ emit_equality:
 	lda compareFalseLabel
 	sta emitLabelValue
 	lda compareFalseLabel+1
-	bne .secondLabel
+	sta emitLabelValue+1
+	jmp .secondLabel
 .secondTrue:
 	lda compareTrueLabel
 	sta emitLabelValue
 	lda compareTrueLabel+1
-.secondLabel:
 	sta emitLabelValue+1
+.secondLabel:
 	jsr emit_generated_label_name
 	bcc .failed
 	jsr emit_newline
@@ -1739,13 +1749,14 @@ emit_equality:
 	lda compareTrueLabel
 	sta emitLabelValue
 	lda compareTrueLabel+1
-	bne .fallLabel
+	sta emitLabelValue+1
+	jmp .fallLabel
 .fallFalse:
 	lda compareFalseLabel
 	sta emitLabelValue
 	lda compareFalseLabel+1
-.fallLabel:
 	sta emitLabelValue+1
+.fallLabel:
 	jsr emit_jump_label
 	bcc .failed
 	jmp emit_comparison_result_labels
