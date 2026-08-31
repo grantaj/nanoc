@@ -17,6 +17,9 @@ ST_FAIL_BRACES     = $0b
 ST_FAIL_CALL       = $0c
 ST_FAIL_OPEN       = $0d
 ST_FAIL_OUTPUT     = $0e
+ST_FAIL_PTR_INT    = $0f
+ST_FAIL_INT_PTR    = $10
+ST_FAIL_INDEX_PTR  = $11
 
 	* = $4000
 
@@ -102,6 +105,18 @@ st_test_failures:
 	rts
 .call:
 	jsr st_test_call_hook
+	bcs .pointerFromInt
+	rts
+.pointerFromInt:
+	jsr st_test_pointer_from_int
+	bcs .intFromPointer
+	rts
+.intFromPointer:
+	jsr st_test_int_from_pointer
+	bcs .indexedPointer
+	rts
+.indexedPointer:
+	jsr st_test_indexed_pointer_value
 	rts
 
 st_test_undeclared:
@@ -318,6 +333,61 @@ st_test_call_hook:
 	jsr st_expect_failure
 	bcs .ok
 	lda #ST_FAIL_CALL
+	clc
+	rts
+.ok:
+	sec
+	rts
+
+;;; Pointer/integer assignment is deliberately not an implicit cast in Phase 1.
+st_test_pointer_from_int:
+	lda #PARSE_BAD_ASSIGNMENT
+	sta stExpectedParser
+	lda #$00
+	sta stExpectedScanner
+	sta stExpectedExpression
+	lda #pointerFromIntNameEnd-pointerFromIntName
+	ldx #<pointerFromIntName
+	ldy #>pointerFromIntName
+	jsr st_expect_failure
+	bcs .ok
+	lda #ST_FAIL_PTR_INT
+	clc
+	rts
+.ok:
+	sec
+	rts
+
+st_test_int_from_pointer:
+	lda #PARSE_BAD_ASSIGNMENT
+	sta stExpectedParser
+	lda #$00
+	sta stExpectedScanner
+	sta stExpectedExpression
+	lda #intFromPointerNameEnd-intFromPointerName
+	ldx #<intFromPointerName
+	ldy #>intFromPointerName
+	jsr st_expect_failure
+	bcs .ok
+	lda #ST_FAIL_INT_PTR
+	clc
+	rts
+.ok:
+	sec
+	rts
+
+st_test_indexed_pointer_value:
+	lda #PARSE_BAD_ASSIGNMENT
+	sta stExpectedParser
+	lda #$00
+	sta stExpectedScanner
+	sta stExpectedExpression
+	lda #indexedPointerNameEnd-indexedPointerName
+	ldx #<indexedPointerName
+	ldy #>indexedPointerName
+	jsr st_expect_failure
+	bcs .ok
+	lda #ST_FAIL_INDEX_PTR
 	clc
 	rts
 .ok:
@@ -614,6 +684,12 @@ noBracesName:	byte 'N','O','-','B','R','A','C','E','S','.','C'
 noBracesNameEnd:
 callName:	byte 'C','A','L','L','.','C'
 callNameEnd:
+pointerFromIntName:	byte 'P','O','I','N','T','E','R','-','F','R','O','M','-','I','N','T','.','C'
+pointerFromIntNameEnd:
+intFromPointerName:	byte 'I','N','T','-','F','R','O','M','-','P','O','I','N','T','E','R','.','C'
+intFromPointerNameEnd:
+indexedPointerName:	byte 'I','N','D','E','X','E','D','-','P','O','I','N','T','E','R','-','V','A','L','U','E','.','C'
+indexedPointerNameEnd:
 returnName:	byte 'R','E','T','U','R','N','8','.','C'
 returnNameEnd:
 statementName:	byte 'S','T','A','T','E','M','E','N','T','S','.','C'
