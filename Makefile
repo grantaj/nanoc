@@ -235,8 +235,8 @@ test-nanoc0-calls: $(BUILD_DIR)/test_nanoc0_calls.prg $(NANOC0_CALL_FIXTURES)
 
 test-nanoc0-runtime: $(BUILD_DIR)/test_nanoc0_runtime_compile.prg $(BUILD_DIR)/test_nanoc0_runtime_run.prg $(NANOC0_RUNTIME_FIXTURES)
 	rm -f tests/nanoc0-runtime/RTOUT.ASM tests/nanoc0-runtime/rtout.asm tests/nanoc0-runtime/SMOKE.ASM tests/nanoc0-runtime/smoke.asm tests/nanoc0-runtime/DTEST tests/nanoc0-runtime/dtest
-	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR)/tests/nanoc0-runtime VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_runtime_compile.prg nanoc0-runtime-compile
-	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR)/tests/nanoc0-runtime VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_runtime_run.prg nanoc0-runtime
+	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR) VICE_FS_DIR_9=$(CURDIR)/tests/nanoc0-runtime VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_runtime_compile.prg nanoc0-runtime-compile
+	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR) VICE_FS_DIR_9=$(CURDIR)/tests/nanoc0-runtime VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_runtime_run.prg nanoc0-runtime
 
 $(BUILD_DIR):
 	mkdir -p $@
