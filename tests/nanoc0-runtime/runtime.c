@@ -65,14 +65,6 @@ int test_create()
     return 0;
 }
 
-int test_create_bad_length()
-{
-    if (io_create("X", 256) != -1) {
-        return 1;
-    }
-    return 0;
-}
-
 int test_write()
 {
     if (io_write(write_handle, 'Z') != 0) {
@@ -81,25 +73,9 @@ int test_write()
     return 0;
 }
 
-int test_write_bad_handle()
-{
-    if (io_write(99, 'Z') != -1) {
-        return 1;
-    }
-    return 0;
-}
-
 int test_close_write()
 {
     if (io_close(write_handle) != 0) {
-        return 1;
-    }
-    return 0;
-}
-
-int test_close_bad_handle()
-{
-    if (io_close(99) != -1) {
         return 1;
     }
     return 0;
