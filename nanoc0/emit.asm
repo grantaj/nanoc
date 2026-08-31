@@ -56,17 +56,17 @@ emit_output_byte:
 	lda $ff
 	sta emitOutputSavedScratch+3
 
-	lda compilerIoDirection
+	lda compilerIecDirection
 	cmp #COMPILER_IO_OUTPUT
 	beq .selected
 	jsr CLRCHN
 	lda #COMPILER_IO_NONE
-	sta compilerIoDirection
+	sta compilerIecDirection
 	ldx #EMIT_OUTPUT_LFN
 	jsr CHKOUT
 	bcs .channelFailed
 	lda #COMPILER_IO_OUTPUT
-	sta compilerIoDirection
+	sta compilerIecDirection
 .selected:
 	lda emitOutputByte
 	jsr CHROUT
@@ -75,7 +75,7 @@ emit_output_byte:
 	jmp .restore
 .channelFailed:
 	lda #COMPILER_IO_NONE
-	sta compilerIoDirection
+	sta compilerIecDirection
 	lda #$ff
 	sta emitOutputStatus
 
