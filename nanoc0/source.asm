@@ -11,8 +11,9 @@
 ;;; device. CHKIN/CHKOUT switch the physical IEC TALK/LISTEN state, so one byte
 ;;; records which compiler channel is actually selected. A direction change is
 ;;; explicit: CLRCHN first sends UNTALK/UNLISTEN without closing either logical
-;;; file, then CHKIN or CHKOUT selects the still-open stream. Source-only scanning
-;;; therefore remains one ordinary CHKIN followed by a stream of CHRIN calls.
+;;; file, then CHKIN or CHKOUT selects the still-open stream. Opening a source
+;;; file does not select it; the first real read does that. This lets a driver
+;;; open both source and output before either stream owns the bus.
 ;;;
 ;;; read_source_byte contract:
 ;;;   carry set   A = next source byte
@@ -34,7 +35,8 @@ COMPILER_IO_OUTPUT       = 2
 
 ;;; open_source
 ;;; sourceName/sourceNameLength/sourceDevice identify the source file.
-;;; Carry set means the KERNAL input channel is ready.
+;;; Carry set means the logical file is open. Selection as the KERNAL input
+;;; channel is deliberately deferred until the first physical read.
 open_source:
 	jsr close_source
 	lda #SOURCE_STATE_OK
@@ -62,15 +64,10 @@ open_source:
 	bcs .error
 	lda #$01
 	sta sourceOpen
-	ldx sourceLfn
-	jsr CHKIN
-	bcs .error
-	lda #COMPILER_IO_SOURCE
-	sta compilerIoDirection
 	sec
 	rts
 .error:
-	;; CLOSE is harmless after a failed OPEN and also cleans up a CHKIN failure.
+	;; CLOSE is harmless after a failed OPEN.
 	jsr CLRCHN
 	lda #COMPILER_IO_NONE
 	sta compilerIoDirection
