@@ -53,11 +53,11 @@ NAME_POOL_CAPACITY         = 2304
 PARAM_META_CAPACITY        = 128
 
 ;;; Six bytes per persistent entry, three per current entry, one byte per saved
-;;; parameter type, the owned-name pool, and five scalar bytes within the marked
-;;; workspace (parameterMetaCount, persistentNameUsed and namePoolNext). Keep
-;;; this literal beside the table layout so `make nanoc0` reports the exact
-;;; reserved symbol/name interval separately from code and other small state.
-SYMBOL_WORKSPACE_BYTES = 3493
+;;; parameter type and the owned-name pool. Production nanoc0 places these 3488
+;;; mutable bytes at $8100 instead of serialising zero-filled workspace into the
+;;; program image. Focused native tests may still use the in-image form.
+SYMBOL_WORKSPACE_BYTES = 3488
+NANOC_SYMBOL_WORKSPACE = $8100
 
 RUNTIME_SYMBOL_COUNT = 5
 RUNTIME_NAME_BYTES   = 44
@@ -68,6 +68,9 @@ RUNTIME_PARAM_COUNT  = 8
 ;;; current-function entry and BSS allocation from the previous translation.
 ;;; bssBase is supplied by the wrapper/test before parsing begins.
 reset_symbol_state:
+	ifdef NANOC0_FIXED_WORKSPACE
+	jsr initialize_runtime_symbols
+	endif
 	lda #RUNTIME_SYMBOL_COUNT
 	sta persistentCount
 	lda #RUNTIME_PARAM_COUNT
@@ -86,6 +89,44 @@ reset_symbol_state:
 	sta persistentNameUsed+1
 	sta namePoolNext+1
 	rts
+
+;;; The production workspace starts as arbitrary RAM, so restore only the fixed
+;;; runtime prefixes that lookup/call parsing needs. All source-owned tails are
+;;; bounded by counts and are overwritten before becoming visible.
+	ifdef NANOC0_FIXED_WORKSPACE
+initialize_runtime_symbols:
+	ldx #RUNTIME_SYMBOL_COUNT-1
+.symbols:
+	lda runtimeNameOffsetLoInit,x
+	sta persistentNameOffsetLo,x
+	lda runtimeNameOffsetHiInit,x
+	sta persistentNameOffsetHi,x
+	lda runtimeKindInit,x
+	sta persistentKind,x
+	lda runtimeTypeInit,x
+	sta persistentType,x
+	lda runtimeParamStartInit,x
+	sta persistentParamStart,x
+	lda runtimeParamCountInit,x
+	sta persistentParamCount,x
+	dex
+	bpl .symbols
+
+	ldx #RUNTIME_PARAM_COUNT-1
+.params:
+	lda runtimeParamTypeInit,x
+	sta parameterType,x
+	dex
+	bpl .params
+
+	ldx #RUNTIME_NAME_BYTES-1
+.names:
+	lda runtimeNamesInit,x
+	sta namePool,x
+	dex
+	bpl .names
+	rts
+	endif
 
 ;;; store_persistent_name
 ;;; persistentCount is both the number of visible persistent symbols and the
@@ -433,14 +474,30 @@ currentCount:		byte 0
 userFunctionCount:	byte 0
 lookupArea:		byte SYMBOL_AREA_NONE
 currentFunctionIndex:	byte 0
+parameterMetaCount:	byte RUNTIME_PARAM_COUNT
+persistentNameUsed:	word RUNTIME_NAME_BYTES
+namePoolNext:		word RUNTIME_NAME_BYTES
 
-;;; The large bounded workspace begins here. Everything outside this interval is
-;;; executable code or small scalar parser/scanner state.
+;;; Production uses an explicit RAM workspace. There is no zero-filled payload in
+;;; nanoc0.prg for these arrays. The address arithmetic below is intentionally
+;;; literal and auditable; this is the whole symbol/name memory map.
+	ifdef NANOC0_FIXED_WORKSPACE
+symbolWorkspaceStart = NANOC_SYMBOL_WORKSPACE
+persistentNameOffsetLo = symbolWorkspaceStart
+persistentNameOffsetHi = persistentNameOffsetLo+PERSISTENT_SYMBOL_CAPACITY
+persistentKind         = persistentNameOffsetHi+PERSISTENT_SYMBOL_CAPACITY
+persistentType         = persistentKind+PERSISTENT_SYMBOL_CAPACITY
+persistentParamStart   = persistentType+PERSISTENT_SYMBOL_CAPACITY
+persistentParamCount   = persistentParamStart+PERSISTENT_SYMBOL_CAPACITY
+currentNameOffsetLo    = persistentParamCount+PERSISTENT_SYMBOL_CAPACITY
+currentNameOffsetHi    = currentNameOffsetLo+CURRENT_SYMBOL_CAPACITY
+currentType            = currentNameOffsetHi+CURRENT_SYMBOL_CAPACITY
+parameterType          = currentType+CURRENT_SYMBOL_CAPACITY
+namePool               = parameterType+PARAM_META_CAPACITY
+symbolWorkspaceEnd     = namePool+NAME_POOL_CAPACITY
+	else
 symbolWorkspaceStart:
 
-;;; Persistent entries. The first five are the fixed runtime functions.
-;;; A record is six bytes across parallel arrays:
-;;;   name offset (2), kind, type, parameter metadata start, parameter count.
 persistentNameOffsetLo:
 	byte 0,8,16,26,35
 	ds PERSISTENT_SYMBOL_CAPACITY-RUNTIME_SYMBOL_COUNT
@@ -461,27 +518,18 @@ persistentParamCount:
 	byte 2,1,2,2,1
 	ds PERSISTENT_SYMBOL_CAPACITY-RUNTIME_SYMBOL_COUNT
 
-;;; Current-function entries. A record is only name offset (2) + type.
-;;; Parameter/local role and numeric storage address are facts needed only while
-;;; declaring/emitting the slot, not by later source lookup.
 currentNameOffsetLo:	ds CURRENT_SYMBOL_CAPACITY
 currentNameOffsetHi:	ds CURRENT_SYMBOL_CAPACITY
 currentType:		ds CURRENT_SYMBOL_CAPACITY
 
-;;; Persistent call metadata is one byte per parameter: its Phase 1 type.
-parameterMetaCount:	byte RUNTIME_PARAM_COUNT
 parameterType:
-	byte TYPE_CHAR_PTR,TYPE_INT		; io_open(name,length)
-	byte TYPE_INT				; io_read(handle)
-	byte TYPE_CHAR_PTR,TYPE_INT		; io_create(name,length)
-	byte TYPE_INT,TYPE_INT			; io_write(handle,value)
-	byte TYPE_INT				; io_close(handle)
+	byte TYPE_CHAR_PTR,TYPE_INT
+	byte TYPE_INT
+	byte TYPE_CHAR_PTR,TYPE_INT
+	byte TYPE_INT,TYPE_INT
+	byte TYPE_INT
 	ds PARAM_META_CAPACITY-RUNTIME_PARAM_COUNT
 
-;;; One shared length-prefixed owned-name pool. Runtime names are permanent bytes
-;;; at its start; source names follow and current-function names reuse its tail.
-persistentNameUsed:	word RUNTIME_NAME_BYTES
-namePoolNext:		word RUNTIME_NAME_BYTES
 namePool:
 	byte 7,'i','o','_','o','p','e','n'
 	byte 7,'i','o','_','r','e','a','d'
@@ -489,8 +537,33 @@ namePool:
 	byte 8,'i','o','_','w','r','i','t','e'
 	byte 8,'i','o','_','c','l','o','s','e'
 	ds NAME_POOL_CAPACITY-RUNTIME_NAME_BYTES
-
 symbolWorkspaceEnd:
+	endif
+
+;;; Immutable bootstrap values copied into the fixed workspace on each real
+;;; compile. They are tiny; the large source-dependent tails stay RAM-only.
+	ifdef NANOC0_FIXED_WORKSPACE
+runtimeNameOffsetLoInit:	byte 0,8,16,26,35
+runtimeNameOffsetHiInit:	byte 0,0,0,0,0
+runtimeKindInit:
+	byte SYMBOL_RUNTIME_FUNCTION,SYMBOL_RUNTIME_FUNCTION,SYMBOL_RUNTIME_FUNCTION
+	byte SYMBOL_RUNTIME_FUNCTION,SYMBOL_RUNTIME_FUNCTION
+runtimeTypeInit:		byte TYPE_INT,TYPE_INT,TYPE_INT,TYPE_INT,TYPE_INT
+runtimeParamStartInit:	byte 0,2,3,5,7
+runtimeParamCountInit:	byte 2,1,2,2,1
+runtimeParamTypeInit:
+	byte TYPE_CHAR_PTR,TYPE_INT
+	byte TYPE_INT
+	byte TYPE_CHAR_PTR,TYPE_INT
+	byte TYPE_INT,TYPE_INT
+	byte TYPE_INT
+runtimeNamesInit:
+	byte 7,'i','o','_','o','p','e','n'
+	byte 7,'i','o','_','r','e','a','d'
+	byte 9,'i','o','_','c','r','e','a','t','e'
+	byte 8,'i','o','_','w','r','i','t','e'
+	byte 8,'i','o','_','c','l','o','s','e'
+	endif
 
 ;;; Static BSS allocation state.
 bssBase:		word $5000
