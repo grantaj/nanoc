@@ -33,7 +33,6 @@ int main()
     char *q = p + 3;
     int r26 = bytes[4];
     int r27 = words[1];
-    int r28 = 'A' == 65;
-    int r29 = 5 != 5;
-    int r30 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"[70];
+    int r28 = ('A' == 65) & (5 != 6);
+    int r29 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH"[70];
 }
