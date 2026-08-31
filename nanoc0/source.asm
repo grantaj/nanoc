@@ -50,7 +50,7 @@ open_source:
 
 	jsr CLRCHN
 	lda #COMPILER_IO_NONE
-	sta compilerIoDirection
+	sta compilerIecDirection
 	lda sourceNameLength
 	ldx sourceName
 	ldy sourceName+1
@@ -69,7 +69,7 @@ open_source:
 	;; CLOSE is harmless after a failed OPEN.
 	jsr CLRCHN
 	lda #COMPILER_IO_NONE
-	sta compilerIoDirection
+	sta compilerIecDirection
 	lda sourceLfn
 	jsr CLOSE
 	lda #$00
@@ -87,7 +87,7 @@ close_source:
 	beq .done
 	jsr CLRCHN
 	lda #COMPILER_IO_NONE
-	sta compilerIoDirection
+	sta compilerIecDirection
 	lda sourceLfn
 	jsr CLOSE
 	lda #$00
@@ -126,17 +126,17 @@ read_source_byte:
 .read:
 	;;; Generated output may own the shared IEC bus since the previous source
 	;;; byte. Return the bus to neutral before selecting source as talker again.
-	lda compilerIoDirection
+	lda compilerIecDirection
 	cmp #COMPILER_IO_SOURCE
 	beq .selected
 	jsr CLRCHN
 	lda #COMPILER_IO_NONE
-	sta compilerIoDirection
+	sta compilerIecDirection
 	ldx sourceLfn
 	jsr CHKIN
 	bcs .ioError
 	lda #COMPILER_IO_SOURCE
-	sta compilerIoDirection
+	sta compilerIecDirection
 .selected:
 	jsr CHRIN
 	sta sourceByte
@@ -220,7 +220,7 @@ sourcePushbackByte:	byte 0
 sourceEofPending:	byte 0
 sourceSkipLf:		byte 0
 sourceLine:		word 1
-compilerIoDirection:	byte COMPILER_IO_NONE
+compilerIecDirection:	byte COMPILER_IO_NONE
 
 ;;; KERNAL read scratch.
 sourceByte:		byte 0
