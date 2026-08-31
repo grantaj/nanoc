@@ -64,4 +64,18 @@ fi
 
 echo "FAIL $NAME: code $RESULT" >&2
 cat "$LOG_FILE" >&2
+
+# Generated-source tests are much easier to diagnose when the exact text that
+# the native assembler rejected is visible in the failing CI log. Keep this
+# failure-only and bounded to the test convention rather than adding a compiler
+# debug/output path.
+if [ -n "${VICE_FS_DIR:-}" ]; then
+    for GENERATED in "$VICE_FS_DIR"/*OUT.ASM; do
+        if [ -f "$GENERATED" ]; then
+            echo "--- $GENERATED ---" >&2
+            cat "$GENERATED" >&2
+        fi
+    done
+fi
+
 exit 1
