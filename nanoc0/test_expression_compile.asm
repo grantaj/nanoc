@@ -3,11 +3,10 @@
 XT_OUTPUT_LFN = 3
 XT_OUTPUT_DEVICE = 9
 
-XT_FAIL_DEPTH   = $01
-XT_FAIL_STRING  = $02
-XT_FAIL_OPEN    = $03
-XT_FAIL_COMPILE = $04
-XT_FAIL_OUTPUT  = $05
+XT_FAIL_DEPTH  = $01
+XT_FAIL_STRING = $02
+XT_FAIL_OPEN   = $03
+XT_FAIL_OUTPUT = $05
 
 XT_EXPECTED_COUNT = 30
 
@@ -188,6 +187,8 @@ xt_reset_hooks:
 ;;; Output file
 ;;; ---------------------------------------------------------------------------
 
+;;; Open the drive-9 logical file but do not CHKOUT it here. The production
+;;; byte emitter owns IEC TALK/LISTEN selection, exactly as it does in nanoc0.
 xt_open_output:
 	lda #outputNameEnd-outputName
 	ldx #<outputName
@@ -201,10 +202,6 @@ xt_open_output:
 	bcs .failed
 	lda #$01
 	sta xtOutputOpen
-	ldx #XT_OUTPUT_LFN
-	jsr CHKOUT
-	bcs .failed
-	lda #$01
 	sta emitOutputEnabled
 	sec
 	rts
@@ -216,6 +213,7 @@ xt_close_output:
 	lda #$00
 	sta emitOutputEnabled
 	jsr CLRCHN
+	sta compilerIecDirection
 	lda xtOutputOpen
 	beq .done
 	lda #XT_OUTPUT_LFN
@@ -361,17 +359,14 @@ emit_static_byte:
 	clc
 	rts
 
-;;; Source EOF closes its input channel with CLRCHN, which also clears CHKOUT.
-;;; Reselect drive 9 here before appending the checker after the generated code.
+;;; Source EOF leaves no IEC stream selected. The production emitter notices
+;;; that state and selects the still-open drive-9 output file on the first byte.
 emit_bss_boundaries:
 	lda xtRuntimeMode
 	bne .runtime
 	sec
 	rts
 .runtime:
-	ldx #XT_OUTPUT_LFN
-	jsr CHKOUT
-	bcs .failed
 	jsr xt_emit_bss_end
 	bcc .failed
 	jsr xt_emit_checker
