@@ -213,6 +213,7 @@ xt_close_output:
 	lda #$00
 	sta emitOutputEnabled
 	jsr CLRCHN
+	lda #COMPILER_IO_NONE
 	sta compilerIecDirection
 	lda xtOutputOpen
 	beq .done
