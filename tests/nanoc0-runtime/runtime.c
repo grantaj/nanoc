@@ -14,7 +14,7 @@ int test_mul()
 
 int test_open()
 {
-    read_handle = io_open("RUNTIME.IN", 10);
+    read_handle = io_open("TESTS/NANOC0-RUNTIME/RUNTIME.IN", 31);
     if (read_handle < 0) {
         return 1;
     }
@@ -89,7 +89,7 @@ int main()
     char *text;
     unsigned u;
 
-    handle = io_open("RUNTIME.IN", 10);
+    handle = io_open("TESTS/NANOC0-RUNTIME/RUNTIME.IN", 31);
     if (handle < 0) {
         return 1;
     }
