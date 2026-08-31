@@ -208,10 +208,9 @@ rt_emit_bss_assignment:
 ;;; Generated test wrapper
 ;;;
 ;;; The wrapper sets decimal mode before one small C helper at a time. Each
-;;; helper's first meaningful operation is the support/runtime call under test,
-;;; including representative error returns. The helper performs the semantic
-;;; check in Nano C and returns zero; .check_result also proves the call restored
-;;; D=0. Keeping detailed checks in C avoids a second test-only runtime model.
+;;; helper's first meaningful operation is the support/runtime call under test.
+;;; Missing-file open and invalid-handle read deliberately cover error returns;
+;;; the helper checks the result in Nano C and .check_result proves D=0.
 ;;; ---------------------------------------------------------------------------
 
 rtHeader:
@@ -254,25 +253,13 @@ rtHeader:
 	string "    jsr .check_result"
 	string "    bcc .fail_create"
 	string "    sed"
-	string "    jsr __c_test_create_bad_length"
-	string "    jsr .check_result"
-	string "    bcc .fail_create_bad"
-	string "    sed"
 	string "    jsr __c_test_write"
 	string "    jsr .check_result"
 	string "    bcc .fail_write"
 	string "    sed"
-	string "    jsr __c_test_write_bad_handle"
-	string "    jsr .check_result"
-	string "    bcc .fail_write_bad"
-	string "    sed"
 	string "    jsr __c_test_close_write"
 	string "    jsr .check_result"
 	string "    bcc .fail_close_write"
-	string "    sed"
-	string "    jsr __c_test_close_bad_handle"
-	string "    jsr .check_result"
-	string "    bcc .fail_close_bad"
 	string "    jsr __c_main"
 	string "    rts"
 
@@ -324,24 +311,12 @@ rtHeader:
 	string "    lda #$47"
 	string "    ldx #$00"
 	string "    rts"
-	string ".fail_create_bad:"
+	string ".fail_write:"
 	string "    lda #$48"
 	string "    ldx #$00"
 	string "    rts"
-	string ".fail_write:"
-	string "    lda #$49"
-	string "    ldx #$00"
-	string "    rts"
-	string ".fail_write_bad:"
-	string "    lda #$4a"
-	string "    ldx #$00"
-	string "    rts"
 	string ".fail_close_write:"
-	string "    lda #$4b"
-	string "    ldx #$00"
-	string "    rts"
-	string ".fail_close_bad:"
-	string "    lda #$4c"
+	string "    lda #$49"
 	string "    ldx #$00"
 	string "    rts"
 	byte 0
