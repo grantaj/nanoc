@@ -26,6 +26,8 @@
 ;;;   generic label         __nc_LNNNN
 ;;;   statement labels      __nc_if_false_NNNN, __nc_if_end_NNNN,
 ;;;                         __nc_while_top_NNNN, __nc_while_end_NNNN
+;;;   comparison labels     __nc_cmp_true_NNNN, __nc_cmp_false_NNNN,
+;;;                         __nc_cmp_done_NNNN, __nc_cmp_same_sign_NNNN
 ;;;   branch trampoline     __nc_near_NNNN
 ;;;
 ;;; Every generated label still comes from one monotonically increasing counter.
@@ -43,12 +45,16 @@
 EMIT_PTR        = $fc
 EMIT_OUTPUT_LFN = 3
 
-EMIT_LABEL_GENERIC    = 0
-EMIT_LABEL_IF_FALSE   = 1
-EMIT_LABEL_IF_END     = 2
-EMIT_LABEL_WHILE_TOP  = 3
-EMIT_LABEL_WHILE_END  = 4
-EMIT_LABEL_NEAR       = 5
+EMIT_LABEL_GENERIC       = 0
+EMIT_LABEL_IF_FALSE      = 1
+EMIT_LABEL_IF_END        = 2
+EMIT_LABEL_WHILE_TOP     = 3
+EMIT_LABEL_WHILE_END     = 4
+EMIT_LABEL_NEAR          = 5
+EMIT_LABEL_CMP_TRUE      = 6
+EMIT_LABEL_CMP_FALSE     = 7
+EMIT_LABEL_CMP_DONE      = 8
+EMIT_LABEL_CMP_SAME_SIGN = 9
 
 ;;; emit_output_byte
 ;;; A=byte. Carry set success. X/Y and $fc-$ff preserved.
@@ -312,6 +318,14 @@ emit_generated_label_name:
 	beq .whileEnd
 	cmp #EMIT_LABEL_NEAR
 	beq .near
+	cmp #EMIT_LABEL_CMP_TRUE
+	beq .cmpTrue
+	cmp #EMIT_LABEL_CMP_FALSE
+	beq .cmpFalse
+	cmp #EMIT_LABEL_CMP_DONE
+	beq .cmpDone
+	cmp #EMIT_LABEL_CMP_SAME_SIGN
+	beq .cmpSameSign
 	lda #emitLabelPrefixEnd-emitLabelPrefix
 	ldx #<emitLabelPrefix
 	ldy #>emitLabelPrefix
@@ -340,6 +354,26 @@ emit_generated_label_name:
 	lda #emitNearPrefixEnd-emitNearPrefix
 	ldx #<emitNearPrefix
 	ldy #>emitNearPrefix
+	jmp .prefix
+.cmpTrue:
+	lda #emitCmpTruePrefixEnd-emitCmpTruePrefix
+	ldx #<emitCmpTruePrefix
+	ldy #>emitCmpTruePrefix
+	jmp .prefix
+.cmpFalse:
+	lda #emitCmpFalsePrefixEnd-emitCmpFalsePrefix
+	ldx #<emitCmpFalsePrefix
+	ldy #>emitCmpFalsePrefix
+	jmp .prefix
+.cmpDone:
+	lda #emitCmpDonePrefixEnd-emitCmpDonePrefix
+	ldx #<emitCmpDonePrefix
+	ldy #>emitCmpDonePrefix
+	jmp .prefix
+.cmpSameSign:
+	lda #emitCmpSameSignPrefixEnd-emitCmpSameSignPrefix
+	ldx #<emitCmpSameSignPrefix
+	ldy #>emitCmpSameSignPrefix
 .prefix:
 	jsr emit_text
 	bcc .failed
@@ -354,8 +388,8 @@ emit_generated_label_name:
 
 ;;; reserve_generated_label
 ;;; Copy the current counter into emitLabelValue, then increment it. The label
-;;; role is deliberately not retained here; an unfinished source frame already
-;;; knows whether a stored number is an if/while target.
+;;; role is deliberately not retained here; the source/codegen construct that
+;;; stores a generated number already knows what the number means when it emits it.
 reserve_generated_label:
 	lda generatedLabelCounter
 	sta emitLabelValue
@@ -394,6 +428,14 @@ emitWhileEndPrefix:	byte '_','_','n','c','_','w','h','i','l','e','_','e','n','d'
 emitWhileEndPrefixEnd:
 emitNearPrefix:	byte '_','_','n','c','_','n','e','a','r','_'
 emitNearPrefixEnd:
+emitCmpTruePrefix:	byte '_','_','n','c','_','c','m','p','_','t','r','u','e','_'
+emitCmpTruePrefixEnd:
+emitCmpFalsePrefix:	byte '_','_','n','c','_','c','m','p','_','f','a','l','s','e','_'
+emitCmpFalsePrefixEnd:
+emitCmpDonePrefix:	byte '_','_','n','c','_','c','m','p','_','d','o','n','e','_'
+emitCmpDonePrefixEnd:
+emitCmpSameSignPrefix:	byte '_','_','n','c','_','c','m','p','_','s','a','m','e','_','s','i','g','n','_'
+emitCmpSameSignPrefixEnd:
 
 emitOutputEnabled:	byte 0
 emitOutputByte:		byte 0
