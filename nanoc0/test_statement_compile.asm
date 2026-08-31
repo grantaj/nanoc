@@ -14,8 +14,9 @@ ST_FAIL_SWITCH     = $08
 ST_FAIL_LABEL      = $09
 ST_FAIL_RETURN     = $0a
 ST_FAIL_BRACES     = $0b
-ST_FAIL_OPEN       = $0c
-ST_FAIL_OUTPUT     = $0d
+ST_FAIL_CALL       = $0c
+ST_FAIL_OPEN       = $0d
+ST_FAIL_OUTPUT     = $0e
 
 	* = $4000
 
@@ -52,128 +53,279 @@ st_finish:
 .halt:
 	jmp .halt
 
-;;; Negative fixtures are parsed by the production parser with output disabled.
-;;; Each one proves a source-language boundary, not a private helper contract.
+;;; Each language-boundary check is deliberately small. This keeps the test
+;;; itself free of long relative branches while making the expected diagnostic
+;;; layer visible beside the source case it describes.
 st_test_failures:
+	jsr st_test_undeclared
+	bcs .break
+	rts
+.break:
+	jsr st_test_break_outside
+	bcs .depth
+	rts
+.depth:
+	jsr st_test_depth
+	bcs .late
+	rts
+.late:
+	jsr st_test_late_local
+	bcs .goto
+	rts
+.goto:
+	jsr st_test_goto
+	bcs .continue
+	rts
+.continue:
+	jsr st_test_continue
+	bcs .for
+	rts
+.for:
+	jsr st_test_for
+	bcs .switch
+	rts
+.switch:
+	jsr st_test_switch
+	bcs .label
+	rts
+.label:
+	jsr st_test_label
+	bcs .return
+	rts
+.return:
+	jsr st_test_bare_return
+	bcs .braces
+	rts
+.braces:
+	jsr st_test_braces
+	bcs .call
+	rts
+.call:
+	jsr st_test_call_hook
+	rts
+
+st_test_undeclared:
 	lda #PARSE_UNDECLARED
 	sta stExpectedParser
 	lda #$00
 	sta stExpectedScanner
-	lda #ST_FAIL_UNDECLARED
-	sta stFailureCode
+	sta stExpectedExpression
 	lda #undeclaredNameEnd-undeclaredName
 	ldx #<undeclaredName
 	ldy #>undeclaredName
 	jsr st_expect_failure
-	bcc .failed
+	bcs .ok
+	lda #ST_FAIL_UNDECLARED
+	clc
+	rts
+.ok:
+	sec
+	rts
 
+st_test_break_outside:
 	lda #PARSE_BREAK_OUTSIDE_LOOP
 	sta stExpectedParser
-	lda #ST_FAIL_BREAK
-	sta stFailureCode
+	lda #$00
+	sta stExpectedScanner
+	sta stExpectedExpression
 	lda #breakNameEnd-breakName
 	ldx #<breakName
 	ldy #>breakName
 	jsr st_expect_failure
-	bcc .failed
+	bcs .ok
+	lda #ST_FAIL_BREAK
+	clc
+	rts
+.ok:
+	sec
+	rts
 
+st_test_depth:
 	lda #PARSE_CONTROL_OVERFLOW
 	sta stExpectedParser
-	lda #ST_FAIL_DEPTH
-	sta stFailureCode
+	lda #$00
+	sta stExpectedScanner
+	sta stExpectedExpression
 	lda #depthNameEnd-depthName
 	ldx #<depthName
 	ldy #>depthName
 	jsr st_expect_failure
-	bcc .failed
+	bcs .ok
+	lda #ST_FAIL_DEPTH
+	clc
+	rts
+.ok:
+	sec
+	rts
 
+st_test_late_local:
 	lda #PARSE_LATE_LOCAL
 	sta stExpectedParser
-	lda #ST_FAIL_LATE
-	sta stFailureCode
+	lda #$00
+	sta stExpectedScanner
+	sta stExpectedExpression
 	lda #lateNameEnd-lateName
 	ldx #<lateName
 	ldy #>lateName
 	jsr st_expect_failure
-	bcc .failed
+	bcs .ok
+	lda #ST_FAIL_LATE
+	clc
+	rts
+.ok:
+	sec
+	rts
 
+st_test_goto:
 	lda #PARSE_UNDECLARED
 	sta stExpectedParser
-	lda #ST_FAIL_GOTO
-	sta stFailureCode
+	lda #$00
+	sta stExpectedScanner
+	sta stExpectedExpression
 	lda #gotoNameEnd-gotoName
 	ldx #<gotoName
 	ldy #>gotoName
 	jsr st_expect_failure
-	bcc .failed
+	bcs .ok
+	lda #ST_FAIL_GOTO
+	clc
+	rts
+.ok:
+	sec
+	rts
 
-	lda #ST_FAIL_CONTINUE
-	sta stFailureCode
+st_test_continue:
+	lda #PARSE_UNDECLARED
+	sta stExpectedParser
+	lda #$00
+	sta stExpectedScanner
+	sta stExpectedExpression
 	lda #continueNameEnd-continueName
 	ldx #<continueName
 	ldy #>continueName
 	jsr st_expect_failure
-	bcc .failed
+	bcs .ok
+	lda #ST_FAIL_CONTINUE
+	clc
+	rts
+.ok:
+	sec
+	rts
 
-	lda #ST_FAIL_FOR
-	sta stFailureCode
+st_test_for:
+	lda #PARSE_UNDECLARED
+	sta stExpectedParser
+	lda #$00
+	sta stExpectedScanner
+	sta stExpectedExpression
 	lda #forNameEnd-forName
 	ldx #<forName
 	ldy #>forName
 	jsr st_expect_failure
-	bcc .failed
+	bcs .ok
+	lda #ST_FAIL_FOR
+	clc
+	rts
+.ok:
+	sec
+	rts
 
-	lda #ST_FAIL_SWITCH
-	sta stFailureCode
+st_test_switch:
+	lda #PARSE_UNDECLARED
+	sta stExpectedParser
+	lda #$00
+	sta stExpectedScanner
+	sta stExpectedExpression
 	lda #switchNameEnd-switchName
 	ldx #<switchName
 	ldy #>switchName
 	jsr st_expect_failure
-	bcc .failed
+	bcs .ok
+	lda #ST_FAIL_SWITCH
+	clc
+	rts
+.ok:
+	sec
+	rts
 
+st_test_label:
 	lda #PARSE_SCANNER_ERROR
 	sta stExpectedParser
 	lda #LEX_UNEXPECTED_CHARACTER
 	sta stExpectedScanner
-	lda #ST_FAIL_LABEL
-	sta stFailureCode
+	lda #$00
+	sta stExpectedExpression
 	lda #labelNameEnd-labelName
 	ldx #<labelName
 	ldy #>labelName
 	jsr st_expect_failure
-	bcc .failed
+	bcs .ok
+	lda #ST_FAIL_LABEL
+	clc
+	rts
+.ok:
+	sec
+	rts
 
+st_test_bare_return:
 	lda #PARSE_BAD_RETURN
 	sta stExpectedParser
 	lda #$00
 	sta stExpectedScanner
-	lda #ST_FAIL_RETURN
-	sta stFailureCode
+	sta stExpectedExpression
 	lda #bareReturnNameEnd-bareReturnName
 	ldx #<bareReturnName
 	ldy #>bareReturnName
 	jsr st_expect_failure
-	bcc .failed
+	bcs .ok
+	lda #ST_FAIL_RETURN
+	clc
+	rts
+.ok:
+	sec
+	rts
 
+st_test_braces:
 	lda #PARSE_BAD_STATEMENT
 	sta stExpectedParser
-	lda #ST_FAIL_BRACES
-	sta stFailureCode
+	lda #$00
+	sta stExpectedScanner
+	sta stExpectedExpression
 	lda #noBracesNameEnd-noBracesName
 	ldx #<noBracesName
 	ldy #>noBracesName
 	jsr st_expect_failure
-	bcc .failed
-
-	sec
-	rts
-.failed:
-	lda stFailureCode
+	bcs .ok
+	lda #ST_FAIL_BRACES
 	clc
 	rts
+.ok:
+	sec
+	rts
 
-;;; A=filename length, X/Y=filename address. Success here means the fixture
-;;; failed exactly at the expected compiler layer.
+;;; A known runtime call must reach the one #55 call-primary seam. #56 does not
+;;; consume any call syntax of its own; #57 will replace EXPR_CALL_UNAVAILABLE.
+st_test_call_hook:
+	lda #PARSE_EXPRESSION_ERROR
+	sta stExpectedParser
+	lda #$00
+	sta stExpectedScanner
+	lda #EXPR_CALL_UNAVAILABLE
+	sta stExpectedExpression
+	lda #callNameEnd-callName
+	ldx #<callName
+	ldy #>callName
+	jsr st_expect_failure
+	bcs .ok
+	lda #ST_FAIL_CALL
+	clc
+	rts
+.ok:
+	sec
+	rts
+
+;;; A=filename length, X/Y=filename address. Success means the complete source
+;;; fixture failed at exactly the expected compiler layer.
 st_expect_failure:
 	jsr st_set_source
 	jsr open_source
@@ -181,27 +333,31 @@ st_expect_failure:
 	lda #$00
 	sta emitOutputEnabled
 	jsr parse_translation_unit
-	bcs .unexpectedSuccess
+	bcs .wrong
 	lda parserError
 	cmp stExpectedParser
-	bne .wrongFailure
+	bne .wrong
 	lda stExpectedScanner
-	beq .matched
+	beq .expression
 	lda scannerError
 	cmp stExpectedScanner
-	bne .wrongFailure
+	bne .wrong
+.expression:
+	lda stExpectedExpression
+	beq .matched
+	lda expressionError
+	cmp stExpectedExpression
+	bne .wrong
 .matched:
 	jsr close_source
 	sec
 	rts
-.unexpectedSuccess:
-.wrongFailure:
+.wrong:
 	jsr close_source
 	clc
 	rts
 .openFail:
 	lda #ST_FAIL_OPEN
-	sta stFailureCode
 	clc
 	rts
 
@@ -228,8 +384,8 @@ st_compile_fixture:
 	clc
 	rts
 .compileFail:
-	;;; Keep the same layered one-byte diagnostic convention as the expression
-	;;; native compile test.
+	;;; Preserve scanner/parser/expression ownership in the one-byte native
+	;;; diagnostic just like the expression acceptance test.
 	lda parserError
 	cmp #PARSE_SCANNER_ERROR
 	beq .scannerDiagnostic
@@ -246,6 +402,7 @@ st_compile_fixture:
 	ora #$40
 .closeDiagnostic:
 	sta stCompileDiagnostic
+	jsr close_source
 	jsr st_close_output
 	lda stCompileDiagnostic
 	clc
@@ -327,8 +484,8 @@ emit_persistent_symbol:
 	beq .bss
 	cmp #EMIT_STORAGE_DATA
 	beq .data
-	;;; EMIT_STORAGE_NONE is a function definition. Its persistent source name
-	;;; already exists even though visibility is committed only after the body.
+	;;; EMIT_STORAGE_NONE is a function definition. Its source name already exists
+	;;; even though visibility is committed only after the body.
 	ldx stSavedSymbol
 	jsr emit_persistent_name
 	bcc .failed
@@ -363,9 +520,8 @@ emit_current_symbol:
 	clc
 	rts
 
-;;; Each initialized-data byte gets an ordinary one-byte directive. The statement
-;;; fixtures currently use BSS globals, but keeping the hook complete means this
-;;; driver still exercises the real declaration contract.
+;;; Emit initialized bytes one per directive. Statement fixtures use BSS globals
+;;; today, but this keeps the driver faithful to the declaration contract.
 emit_static_byte:
 	sta stStaticByte
 	lda #stBytePrefixEnd-stBytePrefix
@@ -424,6 +580,7 @@ stHeader:
 	byte 'N','C','_','T','M','P',' ','=',' ','$','f','c',$0a
 	byte 'N','C','_','P','T','R',' ','=',' ','$','f','e',$0a
 	byte 'N','C','_','B','S','S',' ','=',' ','$','3','8','0','0',$0a
+	byte $09,'c','l','d',$0a
 	byte $09,'j','m','p',' ','_','_','c','_','m','a','i','n',$0a
 stHeaderEnd:
 stBytePrefix:	byte $09,'b','y','t','e',' ','$'
@@ -455,6 +612,8 @@ bareReturnName:	byte 'B','A','R','E','-','R','E','T','U','R','N','.','C'
 bareReturnNameEnd:
 noBracesName:	byte 'N','O','-','B','R','A','C','E','S','.','C'
 noBracesNameEnd:
+callName:	byte 'C','A','L','L','.','C'
+callNameEnd:
 returnName:	byte 'R','E','T','U','R','N','8','.','C'
 returnNameEnd:
 statementName:	byte 'S','T','A','T','E','M','E','N','T','S','.','C'
@@ -466,7 +625,7 @@ statementOutputNameEnd:
 
 stExpectedParser:	byte 0
 stExpectedScanner:	byte 0
-stFailureCode:		byte 0
+stExpectedExpression:	byte 0
 stCompileDiagnostic:	byte 0
 stOutputName:		word 0
 stOutputNameLength:	byte 0
