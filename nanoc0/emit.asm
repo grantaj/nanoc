@@ -4,9 +4,14 @@
 ;;;
 ;;; Generated `ass` source is streamed one byte at a time. When
 ;;; emitOutputEnabled is zero the sink discards text (useful while declaration-
-;;; only tests exercise parser state). When enabled, the caller must already
-;;; have selected a KERNAL output channel with CHKOUT and bytes go straight to
-;;; CHROUT. There is no line/output buffer.
+;;; only tests exercise parser state). When enabled, bytes go straight to the
+;;; compiler's fixed KERNAL output logical file. There is no line/output buffer.
+;;;
+;;; Source input and generated output may share one serial device. CHKIN and
+;;; CHKOUT switch the physical IEC TALK/LISTEN state, so every real output byte
+;;; explicitly reselects the compiler output before CHROUT. source.asm does the
+;;; symmetric CHKIN before each real source read. This is deliberately a little
+;;; slower than tracking hidden bus state and much harder to get wrong.
 ;;;
 ;;; emit_output_byte preserves X, Y and both compiler scratch pairs because the
 ;;; formatter may be walking text through them. #57 only needs to add the normal
@@ -28,7 +33,8 @@
 ;;; This file formats only the few things the compiler repeatedly needs. It is
 ;;; not printf and it is not an output representation.
 
-EMIT_PTR = $fc
+EMIT_PTR        = $fc
+EMIT_OUTPUT_LFN = 3
 
 ;;; emit_output_byte
 ;;; A=byte. Carry set success. X/Y and $fc-$ff preserved.
@@ -49,10 +55,22 @@ emit_output_byte:
 	sta emitOutputSavedScratch+2
 	lda $ff
 	sta emitOutputSavedScratch+3
+
+	;;; A source read may have selected the same IEC device for TALK. Re-select
+	;;; the compiler's output logical file before asking it to LISTEN again.
+	ldx #EMIT_OUTPUT_LFN
+	jsr CHKOUT
+	bcs .channelFailed
 	lda emitOutputByte
 	jsr CHROUT
 	jsr READST
 	sta emitOutputStatus
+	jmp .restore
+.channelFailed:
+	lda #$ff
+	sta emitOutputStatus
+
+.restore:
 	lda emitOutputSavedScratch
 	sta $fc
 	lda emitOutputSavedScratch+1
