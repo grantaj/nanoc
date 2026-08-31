@@ -467,15 +467,23 @@ test_late_local:
 	sec
 	rts
 
+;;; #55 gives expression failures their own diagnostic layer. The declaration
+;;; parser says "initializer expression failed" while expressionError preserves
+;;; the precise undeclared-name cause. Assert both rather than flattening the
+;;; expression engine back into #54's temporary declaration-only scanner.
 test_self_local:
-	lda #PARSE_UNDECLARED
+	lda #PARSE_EXPRESSION_ERROR
 	sta expectedParserError
 	jsr set_default_bss
 	lda #selfLocalNameEnd-selfLocalName
 	ldx #<selfLocalName
 	ldy #>selfLocalName
 	jsr expect_fixture_error
-	bcs .ok
+	bcc .fail
+	lda expressionError
+	cmp #EXPR_UNDECLARED
+	beq .ok
+.fail:
 	lda #FAIL_SELF_LOCAL
 	clc
 	rts
@@ -484,14 +492,18 @@ test_self_local:
 	rts
 
 test_forward_local:
-	lda #PARSE_UNDECLARED
+	lda #PARSE_EXPRESSION_ERROR
 	sta expectedParserError
 	jsr set_default_bss
 	lda #forwardLocalNameEnd-forwardLocalName
 	ldx #<forwardLocalName
 	ldy #>forwardLocalName
 	jsr expect_fixture_error
-	bcs .ok
+	bcc .fail
+	lda expressionError
+	cmp #EXPR_UNDECLARED
+	beq .ok
+.fail:
 	lda #FAIL_FORWARD_LOCAL
 	clc
 	rts

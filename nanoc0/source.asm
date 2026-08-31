@@ -7,6 +7,13 @@
 ;;; physical newline is first read.  Replaying a pushed-back byte never advances
 ;;; the line a second time.
 ;;;
+;;; The nanoc0 bootstrap reads source from device 8 while generated assembler is
+;;; written to device 9. The drives are separate, but the C64 still has one IEC
+;;; bus: CHKIN/CHKOUT switch its TALK/LISTEN direction. One byte therefore records
+;;; which compiler channel is actually selected. A direction change is explicit:
+;;; CLRCHN first sends UNTALK/UNLISTEN, then CHKIN or CHKOUT selects the still-open
+;;; stream. Opening a source file does not select it; the first real read does.
+;;;
 ;;; read_source_byte contract:
 ;;;   carry set   A = next source byte
 ;;;   carry clear A = SOURCE_STATE_EOF or SOURCE_STATE_IO_ERROR
@@ -21,9 +28,14 @@ SOURCE_STATE_IO_ERROR    = 2
 SOURCE_LF                = $0a
 SOURCE_CR                = $0d
 
+COMPILER_IO_NONE         = 0
+COMPILER_IO_SOURCE       = 1
+COMPILER_IO_OUTPUT       = 2
+
 ;;; open_source
 ;;; sourceName/sourceNameLength/sourceDevice identify the source file.
-;;; Carry set means the KERNAL input channel is ready.
+;;; Carry set means the logical file is open. Selection as the KERNAL input
+;;; channel is deliberately deferred until the first physical read.
 open_source:
 	jsr close_source
 	lda #SOURCE_STATE_OK
@@ -37,6 +49,8 @@ open_source:
 	sta sourceLine
 
 	jsr CLRCHN
+	lda #COMPILER_IO_NONE
+	sta compilerIecDirection
 	lda sourceNameLength
 	ldx sourceName
 	ldy sourceName+1
@@ -49,12 +63,13 @@ open_source:
 	bcs .error
 	lda #$01
 	sta sourceOpen
-	ldx sourceLfn
-	jsr CHKIN
-	bcc .ok
+	sec
+	rts
 .error:
-	;; CLOSE is harmless after a failed OPEN and also cleans up a CHKIN failure.
+	;; CLOSE is harmless after a failed OPEN.
 	jsr CLRCHN
+	lda #COMPILER_IO_NONE
+	sta compilerIecDirection
 	lda sourceLfn
 	jsr CLOSE
 	lda #$00
@@ -63,16 +78,16 @@ open_source:
 	sta sourceState
 	clc
 	rts
-.ok:
-	sec
-	rts
 
 ;;; close_source
-;;; Close only the logical file owned by this source reader.
+;;; Close only the logical file owned by this source reader. CLRCHN also means
+;;; neither compiler stream is selected afterwards.
 close_source:
 	lda sourceOpen
 	beq .done
 	jsr CLRCHN
+	lda #COMPILER_IO_NONE
+	sta compilerIecDirection
 	lda sourceLfn
 	jsr CLOSE
 	lda #$00
@@ -109,6 +124,20 @@ read_source_byte:
 	rts
 
 .read:
+	;;; Generated output may own the shared IEC bus since the previous source
+	;;; byte. Return the bus to neutral before selecting source as talker again.
+	lda compilerIecDirection
+	cmp #COMPILER_IO_SOURCE
+	beq .selected
+	jsr CLRCHN
+	lda #COMPILER_IO_NONE
+	sta compilerIecDirection
+	ldx sourceLfn
+	jsr CHKIN
+	bcs .ioError
+	lda #COMPILER_IO_SOURCE
+	sta compilerIecDirection
+.selected:
 	jsr CHRIN
 	sta sourceByte
 	jsr READST
@@ -117,6 +146,7 @@ read_source_byte:
 	;; EOI accompanies the final valid byte.  Any other status is an error.
 	and #$bf
 	beq .statusOk
+.ioError:
 	jsr close_source
 	lda #SOURCE_STATE_IO_ERROR
 	sta sourceState
@@ -190,6 +220,7 @@ sourcePushbackByte:	byte 0
 sourceEofPending:	byte 0
 sourceSkipLf:		byte 0
 sourceLine:		word 1
+compilerIecDirection:	byte COMPILER_IO_NONE
 
 ;;; KERNAL read scratch.
 sourceByte:		byte 0

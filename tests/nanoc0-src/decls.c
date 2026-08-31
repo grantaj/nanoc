@@ -15,8 +15,8 @@ int helper(char p, unsigned q, char *s)
 {
     int a;
     int b = p;
-    unsigned c = q + address;
-    int input = io_read(0);
+    unsigned c = q;
+    int input = p;
     int d = b;
     io_write(0, input);
     return b;

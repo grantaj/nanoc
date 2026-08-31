@@ -1,9 +1,8 @@
 ;;; core.asm
 ;;;
-;;; Size probe for the resident nanoc0 core.  These no-op output hooks let the
-;;; scanner + declaration/symbol/storage implementation assemble without pulling
-;;; in the later assembly writer.  `make nanoc0` reports the resulting resident
-;;; byte count so compiler growth stays visible from the start.
+;;; Size probe for the resident nanoc0 core. Declaration/static-data hooks are
+;;; no-ops here; expression text is discarded because emitOutputEnabled defaults
+;;; to zero. `make nanoc0` keeps resident compiler growth visible.
 
 	* = $4000
 

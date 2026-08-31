@@ -27,10 +27,14 @@ quit
 EOF
 
 # -warp removes real-time throttling so native tests run as fast as the host can
-# execute them. The filesystem-device form is used only by tests that read files.
+# execute them. Tests with filesystem fixtures get two drives. Drive 8 is the
+# input side; drive 9 defaults to the same host directory and is available for
+# generated output. A test may override VICE_FS_DIR_9 when it needs separation.
 if [ -n "${VICE_FS_DIR:-}" ]; then
+    VICE_FS_DIR_9=${VICE_FS_DIR_9:-$VICE_FS_DIR}
     if ! timeout "${VICE_TIMEOUT}s" "$VICE" -console -warp +sound \
         -iecdevice8 -device8 1 -fs8 "$VICE_FS_DIR" \
+        -iecdevice9 -device9 1 -fs9 "$VICE_FS_DIR_9" \
         -initbreak ready -moncommands "$MONITOR_FILE" >"$LOG_FILE" 2>&1; then
         echo "FAIL $NAME: VICE did not complete the test" >&2
         cat "$LOG_FILE" >&2
