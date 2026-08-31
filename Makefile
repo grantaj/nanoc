@@ -47,8 +47,8 @@ NANOC0_EXPRESSION_DEPS = \
 	nanoc0/declarations.asm nanoc0/statements.asm nanoc0/statement_codegen.asm \
 	nanoc0/test_declaration_body_skip.asm nanoc0/expression.asm \
 	nanoc0/expression_codegen.asm nanoc0/expression_codegen_state.asm \
-	nanoc0/emit.asm nanoc0/symbols.asm nanoc0/scanner.asm nanoc0/source.asm \
-	dis/kernal.inc
+	nanoc0/calls.asm nanoc0/call_codegen.asm nanoc0/emit.asm nanoc0/symbols.asm \
+	nanoc0/scanner.asm nanoc0/source.asm dis/kernal.inc
 
 STREAM_FIXTURES = \
 	tests/stream-src/main.asm \
@@ -142,11 +142,15 @@ nanoc0: $(NANOC0_TARGETS)
 	control_capacity=$$(awk '$$1 == "CONTROL_STACK_CAPACITY" { print $$3 }' nanoc0/statements.asm); \
 	control_frame=$$(awk '$$1 == "CONTROL_FRAME_BYTES" { print $$3 }' nanoc0/statements.asm); \
 	control=$$((1 + control_capacity * control_frame)); \
-	small=$$((bytes - workspace - token - control)); \
+	call_capacity=$$(awk '$$1 == "CALL_STACK_CAPACITY" { print $$3 }' nanoc0/calls.asm); \
+	call_frame=$$(awk '$$1 == "CALL_FRAME_BYTES" { print $$3 }' nanoc0/calls.asm); \
+	call=$$((1 + call_capacity * call_frame)); \
+	small=$$((bytes - workspace - token - control - call)); \
 	echo "nanoc0 resident core:          $$bytes bytes"; \
 	echo "  symbol/name workspace:      $$workspace bytes"; \
 	echo "  reusable token text:        $$token bytes"; \
 	echo "  statement control stack:    $$control bytes"; \
+	echo "  pending-call stack:         $$call bytes"; \
 	echo "  code + other small state:   $$small bytes"
 
 examples: $(EXAMPLE_TARGETS)
@@ -241,7 +245,7 @@ $(BUILD_DIR)/test_parser.prg: ass/test_parser.asm ass/parser.asm ass/scanner.asm
 $(BUILD_DIR)/test_parser_eof.prg: ass/test_parser_eof.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_parser_eof.asm
 
-$(BUILD_DIR)/test_instruction.prg: ass/test_instruction.asm ass/instruction.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc dis/mode_ids.inc dis/opcode_table.asm dis/mnemonic_table.asm test.inc | $(BUILD_DIR)
+$(BUILD_DIR)/test_instruction.prg: ass/test_instruction.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc dis/mode_ids.inc dis/opcode_table.asm dis/mnemonic_table.asm test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_instruction.asm
 
 $(BUILD_DIR)/test_values.prg: ass/test_values.asm $(ASSEMBLER_DEPS) | $(BUILD_DIR)
