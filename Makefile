@@ -232,7 +232,7 @@ $(BUILD_DIR)/parse.prg: ass/parse.asm ass/parser.asm ass/instruction.asm ass/sca
 $(BUILD_DIR)/test_skipws.prg: ass/test_skipws.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_skipws.asm
 
-$(BUILD_DIR)/test_scanner.prg: ass/test_scanner.asm ass/scanner.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
+$(BUILD_DIR)/test_scanner.prg: ass/test_scanner.asm ass/scanner.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_scanner.asm
 
 $(BUILD_DIR)/test_parser.prg: ass/test_parser.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
