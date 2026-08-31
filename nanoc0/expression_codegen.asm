@@ -300,9 +300,9 @@ emit_unary_minus:
 	ldy #>exprNegate
 	jmp emit_text
 
-;;; Keep relative branches in this selector local. The operation emitters are
-;;; intentionally ordinary separate routines and may grow without changing the
-;;; dispatcher's branch reach.
+;;; Keep relative branches in this selector local. Every Phase 1 operator class
+;;; is named explicitly; an unknown operator is an internal failure, not an
+;;; accidental comparison.
 emit_binary_reduction:
 	lda reduceOperator
 	cmp #OP_ADD
@@ -319,7 +319,20 @@ emit_binary_reduction:
 	beq .shl
 	cmp #OP_SHR
 	beq .shr
-	jmp emit_compare_reduction
+	cmp #OP_LT
+	beq .compare
+	cmp #OP_LE
+	beq .compare
+	cmp #OP_GT
+	beq .compare
+	cmp #OP_GE
+	beq .compare
+	cmp #OP_EQ
+	beq .compare
+	cmp #OP_NE
+	beq .compare
+	clc
+	rts
 .add:
 	jmp emit_add_reduction
 .sub:
@@ -334,6 +347,8 @@ emit_binary_reduction:
 	jmp emit_shl_reduction
 .shr:
 	jmp emit_shr_reduction
+.compare:
+	jmp emit_compare_reduction
 
 ;;; A/X is the right operand. Preserve it in the machine-contract scratch pair
 ;;; while the left spill is loaded.
@@ -1286,8 +1301,6 @@ exprCmpTmpHigh:		byte $09,'c','m','p',' ','N','C','_','T','M','P','+','1',$0a
 exprCmpTmpHighEnd:
 exprEorTmpHigh:		byte $09,'e','o','r',' ','N','C','_','T','M','P','+','1',$0a
 exprEorTmpHighEnd:
-exprBcc:		byte $09,'b','c','c',' '
-exprBccEnd:
 exprBcs:		byte $09,'b','c','s',' '
 exprBcsEnd:
 exprBne:		byte $09,'b','n','e',' '
