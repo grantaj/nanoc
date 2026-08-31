@@ -16,14 +16,15 @@
 ;;;   expressionNeedValue    parser expects a primary/unary, not an operator
 ;;;   expressionIndexable    current value may be followed by [index]
 ;;;   expressionMustIndex    non-char array address is only valid for [index]
+;;;   callDepth              live pending calls, handled by calls.asm
 ;;;
 ;;; expression_codegen.asm contains the literal 6502 sequences emitted by
 ;;; reductions. Keeping those sequences separate makes the parser itself readable
 ;;; without introducing an abstraction between parsing and code generation.
 ;;;
-;;; Calls are the one deliberately unfinished primary. The #55 stub fails at a
-;;; call expression without consuming it; #57 replaces that one routine with the
-;;; explicit pending-call state machine.
+;;; Function calls use OP_CALL on this same operator stack. Commas and the call's
+;;; closing ')' reduce only the current argument back to that marker; calls.asm
+;;; retains the tiny parallel pending-call facts and emits staging/copy/JSR code.
 
 	include "emit.asm"
 
@@ -38,7 +39,10 @@ EXPR_BSS_OVERFLOW           = 7
 EXPR_EMIT_ERROR             = 8
 EXPR_LITERAL_COUNT_OVERFLOW = 9
 EXPR_LITERAL_POOL_OVERFLOW  = 10
-EXPR_CALL_UNAVAILABLE       = 11
+EXPR_CALL_DEPTH_OVERFLOW    = 11
+EXPR_CALL_ARGUMENT_OVERFLOW = 12
+EXPR_CALL_ARGUMENT_COUNT    = 13
+EXPR_CALL_ARGUMENT_TYPE     = 14
 
 EXPR_STACK_CAPACITY   = 16
 EXPR_LITERAL_CAPACITY = 16
@@ -61,6 +65,7 @@ OP_EQ    = 13
 OP_NE    = 14
 OP_AND   = 15
 OP_OR    = 16
+OP_CALL  = 17
 
 PREC_MUL   = 70
 PREC_ADD   = 60
@@ -71,29 +76,34 @@ PREC_AND   = 20
 PREC_OR    = 10
 
 ;;; reset_expression_translation_state
-;;; Literal bytes and generated labels belong to one translation unit.
+;;; Literal bytes, generated labels and runtime-call state belong to one
+;;; translation unit.
 reset_expression_translation_state:
 	lda #$00
 	sta literalCount
 	sta literalBytesUsed
 	sta literalBytesUsed+1
 	jsr reset_generated_labels
+	jsr reset_call_translation_state
 	jmp reset_expression_function_state
 
 ;;; reset_expression_function_state
-;;; Spill labels are reused by depth inside each function. Previously allocated
-;;; BSS remains allocated, but the new function has a new label namespace.
+;;; Spill and call-staging names are reused by depth inside each function.
+;;; Previously allocated BSS remains allocated, but the new function has a new
+;;; generated storage namespace.
 reset_expression_function_state:
 	lda #$00
 	sta operatorCount
 	sta expressionSpillDepth
 	sta spillAllocatedCount
 	sta expressionError
+	jsr reset_call_function_state
 	rts
 
 ;;; parse_expression
 ;;; Compile one expression beginning at currentToken. The first token that is
-;;; not part of it remains current for the caller, normally ';', ',', ')' or ']'.
+;;; not part of it remains current for the caller, normally ';', ')' or ']'.
+;;; Commas belonging to calls are consumed internally by the same state machine.
 ;;; Carry set means the generated value is in target A/X and
 ;;; expressionValueType describes it.
 ;;;
@@ -123,6 +133,12 @@ parse_expression:
 	bcs .primaryDone
 	rts
 .primaryDone:
+	;;; A non-empty call has only opened its OP_CALL marker. Its first argument is
+	;;; current now, so return directly to the value side of this same loop.
+	lda expressionNeedValue
+	beq .primaryActions
+	jmp .value
+.primaryActions:
 	jsr reduce_unary_operators
 	bcs .unaryDone
 	rts
@@ -161,9 +177,31 @@ parse_expression:
 
 .operator:
 	lda currentTokenKind
+	cmp #','
+	bne .notComma
+	jsr call_delimiter_belongs_to_call
+	bcs .callComma
+	jmp .finish
+.callComma:
+	jsr finish_call_separator
+	bcs .callCommaDone
+	rts
+.callCommaDone:
+	jmp .value
+
+.notComma:
 	cmp #')'
 	bne .notCloseGroup
+	jsr call_delimiter_belongs_to_call
+	bcs .callClose
 	jmp .closeGroup
+.callClose:
+	jsr finish_call_close
+	bcs .callClosed
+	rts
+.callClosed:
+	jmp .primaryActions
+
 .notCloseGroup:
 	cmp #']'
 	bne .binaryCheck
@@ -457,7 +495,14 @@ parse_expression_primary:
 .call:
 	ldx primarySymbolIndex
 	jsr expression_call_primary
-	bcs .primaryDone
+	bcc .callFailed
+	lda expressionNeedValue
+	bne .callOpened
+	jmp .primaryDone
+.callOpened:
+	sec
+	rts
+.callFailed:
 	rts
 
 .primaryDone:
@@ -466,12 +511,9 @@ parse_expression_primary:
 	sec
 	rts
 
-;;; #55 intentionally exposes the final call-primary seam but does not consume
-;;; call syntax. #57 replaces this routine with the pending-call stack without
-;;; changing the expression parser above.
-expression_call_primary:
-	lda #EXPR_CALL_UNAVAILABLE
-	jmp expression_fail
+;;; Function calls are implemented by calls.asm below. Keeping the implementation
+;;; after the ordinary expression code makes this primary a forward reference
+;;; rather than placing the pending-call tables in the middle of the parser.
 
 ;;; Postfix indexing uses a marker on the same explicit operator stack. The full
 ;;; 16-bit base address is spilled before the index expression begins.
@@ -789,7 +831,8 @@ operator_precedence:
 	rts
 
 ;;; All Phase 1 binary operators are left associative. Reduce an operator with
-;;; precedence >= the incoming one before pushing the incoming operator.
+;;; precedence >= the incoming one before pushing the incoming operator. Group,
+;;; index and call markers are hard boundaries.
 reduce_for_precedence:
 .loop:
 	lda operatorCount
@@ -800,6 +843,8 @@ reduce_for_precedence:
 	cmp #OP_GROUP
 	beq .done
 	cmp #OP_INDEX
+	beq .done
+	cmp #OP_CALL
 	beq .done
 	cmp #OP_NEG
 	beq .unary
@@ -837,6 +882,8 @@ reduce_to_marker:
 	cmp #OP_GROUP
 	beq .mismatch
 	cmp #OP_INDEX
+	beq .mismatch
+	cmp #OP_CALL
 	beq .mismatch
 	cmp #OP_NEG
 	beq .unary
@@ -917,6 +964,8 @@ reduce_all_operators:
 	cmp #OP_GROUP
 	beq .marker
 	cmp #OP_INDEX
+	beq .marker
+	cmp #OP_CALL
 	beq .marker
 	cmp #OP_NEG
 	beq .unary
@@ -1280,17 +1329,18 @@ emit_one_literal:
 	sec
 	rts
 
-;;; The output side is kept in a separate readable slab. Calls are direct; there
-;;; is no intermediate representation or template-dispatch layer.
+;;; The output side is kept in separate readable slabs. Calls remain direct;
+;;; there is no intermediate representation or template-dispatch layer.
 	include "expression_codegen.asm"
 	include "expression_codegen_state.asm"
+	include "calls.asm"
 
 ;;; ---------------------------------------------------------------------------
 ;;; Expression compiler state
 ;;; ---------------------------------------------------------------------------
 
-;;; One bounded operator stack. Marker entries use the same arrays as binary
-;;; operators so grouping and indexing need no recursive parser state.
+;;; One bounded operator stack. Group/index/call markers use the same arrays as
+;;; binary operators so nesting needs no recursive parser state.
 operatorCount:		byte 0
 operatorKind:		ds EXPR_STACK_CAPACITY
 operatorSpill:		ds EXPR_STACK_CAPACITY
