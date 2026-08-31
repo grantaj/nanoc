@@ -8,6 +8,15 @@
 ;;; spill slot. The compiler retains no expression tree, RPN stream or generic
 ;;; intermediate representation.
 ;;;
+;;; The important state is deliberately small:
+;;;
+;;;   operatorCount          entries currently on the one operator stack
+;;;   expressionSpillDepth   live saved left operands
+;;;   spillAllocatedCount    spill words already reserved for this function
+;;;   expressionNeedValue    parser expects a primary/unary, not an operator
+;;;   expressionIndexable    current value may be followed by [index]
+;;;   expressionMustIndex    non-char array address is only valid for [index]
+;;;
 ;;; expression_codegen.asm contains the literal 6502 sequences emitted by
 ;;; reductions. Keeping those sequences separate makes the parser itself readable
 ;;; without introducing an abstraction between parsing and code generation.
@@ -34,6 +43,7 @@ EXPR_CALL_UNAVAILABLE       = 11
 EXPR_STACK_CAPACITY   = 16
 EXPR_LITERAL_CAPACITY = 16
 EXPR_LITERAL_BYTES    = 512
+EXPR_LITERAL_ROW      = 16
 
 OP_GROUP = 1
 OP_INDEX = 2
@@ -87,8 +97,9 @@ reset_expression_function_state:
 ;;; Carry set means the generated value is in target A/X and
 ;;; expressionValueType describes it.
 ;;;
-;;; Relative branches only select nearby cases. Transfers across this routine
-;;; are explicit JMPs so source growth cannot silently create branch-range bugs.
+;;; A scanner failure is already fully described by parserError/scannerError.
+;;; Expression code therefore returns it unchanged rather than relabelling it as
+;;; a malformed primary.
 parse_expression:
 	lda #EXPR_OK
 	sta expressionError
@@ -101,9 +112,13 @@ parse_expression:
 .value:
 	lda currentTokenKind
 	cmp #'-'
-	beq .unaryMinus
+	bne .notUnaryMinus
+	jmp .unaryMinus
+.notUnaryMinus:
 	cmp #'('
-	beq .openGroup
+	bne .primary
+	jmp .openGroup
+.primary:
 	jsr parse_expression_primary
 	bcs .primaryDone
 	rts
@@ -117,10 +132,8 @@ parse_expression:
 	rts
 .postfixDone:
 	lda expressionNeedValue
-	beq .postfixOperator
+	beq .operator
 	jmp .value
-.postfixOperator:
-	jmp .operator
 
 .unaryMinus:
 	lda #OP_NEG
@@ -130,7 +143,7 @@ parse_expression:
 .unaryPushed:
 	jsr parser_next
 	bcs .unaryAdvanced
-	jmp .scannerFail
+	rts
 .unaryAdvanced:
 	jmp .value
 
@@ -142,22 +155,27 @@ parse_expression:
 .groupPushed:
 	jsr parser_next
 	bcs .groupAdvanced
-	jmp .scannerFail
+	rts
 .groupAdvanced:
 	jmp .value
 
 .operator:
 	lda currentTokenKind
 	cmp #')'
-	beq .closeGroup
+	bne .notCloseGroup
+	jmp .closeGroup
+.notCloseGroup:
 	cmp #']'
-	beq .closeIndex
+	bne .binaryCheck
+	jmp .closeIndex
 
+.binaryCheck:
 	jsr binary_operator_for_token
 	bcs .binaryOperator
 	jmp .finish
 .binaryOperator:
 	sta pendingOperator
+	jsr operator_precedence
 	sty pendingPrecedence
 	jsr reduce_for_precedence
 	bcs .precedenceDone
@@ -173,7 +191,7 @@ parse_expression:
 .binaryPushed:
 	jsr parser_next
 	bcs .binaryAdvanced
-	jmp .scannerFail
+	rts
 .binaryAdvanced:
 	lda #$01
 	sta expressionNeedValue
@@ -184,20 +202,17 @@ parse_expression:
 	jsr reduce_to_marker
 	bcs .groupMarker
 	lda expressionError
-	bne .groupFailed
+	bne .failed
 	jmp .finish
-.groupFailed:
-	clc
-	rts
 .groupMarker:
 	jsr pop_group_marker
 	bcs .groupPopped
 	rts
 .groupPopped:
 	jsr parser_next
-	bcs .groupCloseAdvanced
-	jmp .scannerFail
-.groupCloseAdvanced:
+	bcs .groupAdvanced2
+	rts
+.groupAdvanced2:
 	jsr reduce_unary_operators
 	bcs .groupUnaryDone
 	rts
@@ -207,30 +222,25 @@ parse_expression:
 	rts
 .groupPostfixDone:
 	lda expressionNeedValue
-	beq .groupOperator
+	beq .operator
 	jmp .value
-.groupOperator:
-	jmp .operator
 
 .closeIndex:
 	lda #OP_INDEX
 	jsr reduce_to_marker
 	bcs .indexMarker
 	lda expressionError
-	bne .indexFailed
+	bne .failed
 	jmp .finish
-.indexFailed:
-	clc
-	rts
 .indexMarker:
 	jsr pop_index_marker
 	bcs .indexPopped
 	rts
 .indexPopped:
 	jsr parser_next
-	bcs .indexCloseAdvanced
-	jmp .scannerFail
-.indexCloseAdvanced:
+	bcs .indexAdvanced
+	rts
+.indexAdvanced:
 	jsr reduce_unary_operators
 	bcs .indexUnaryDone
 	rts
@@ -240,10 +250,8 @@ parse_expression:
 	rts
 .indexPostfixDone:
 	lda expressionNeedValue
-	beq .indexOperator
+	beq .operator
 	jmp .value
-.indexOperator:
-	jmp .operator
 
 .finish:
 	lda expressionNeedValue
@@ -262,10 +270,9 @@ parse_expression:
 .ok:
 	sec
 	rts
-
-.scannerFail:
-	lda #EXPR_BAD_PRIMARY
-	jmp expression_fail
+.failed:
+	clc
+	rts
 
 expression_fail:
 	sta expressionError
@@ -274,13 +281,12 @@ expression_fail:
 
 ;;; parse_expression_primary
 ;;; Emit one primary and advance currentToken beyond it. The routine records
-;;; whether the resulting address may be followed by indexing. The primary-kind
-;;; selector follows the same nearby-branch/absolute-JMP rule as the main state
-;;; machine; the individual primary cases are intentionally allowed to grow.
+;;; whether the result may be indexed and whether an array address is legal only
+;;; as the base of an immediate index operation.
 parse_expression_primary:
 	lda #$00
 	sta expressionIndexable
-	sta expressionArrayOnly
+	sta expressionMustIndex
 	lda currentTokenKind
 	cmp #TOKEN_INTEGER
 	bne .notInteger
@@ -308,11 +314,11 @@ parse_expression_primary:
 	sta expressionLiteralValue+1
 	lda currentTokenType
 	cmp #TOKEN_TYPE_UNSIGNED
-	beq .integerUnsigned
-	lda #TYPE_INT
-	jmp .integerTypeDone
-.integerUnsigned:
+	bne .integerSigned
 	lda #TYPE_UNSIGNED
+	jmp .integerTypeDone
+.integerSigned:
+	lda #TYPE_INT
 .integerTypeDone:
 	sta expressionValueType
 	jsr emit_load_literal
@@ -321,10 +327,8 @@ parse_expression_primary:
 	jmp expression_fail
 .integerEmitted:
 	jsr parser_next
-	bcs .integerAdvanced
-	jmp .scanFail
-.integerAdvanced:
-	jmp .primaryDone
+	bcs .primaryDone
+	rts
 
 .character:
 	lda currentTokenValue
@@ -339,10 +343,8 @@ parse_expression_primary:
 	jmp expression_fail
 .characterEmitted:
 	jsr parser_next
-	bcs .characterAdvanced
-	jmp .scanFail
-.characterAdvanced:
-	jmp .primaryDone
+	bcs .primaryDone
+	rts
 
 .string:
 	jsr capture_string_literal
@@ -361,10 +363,8 @@ parse_expression_primary:
 	lda #TYPE_CHAR
 	sta expressionElementType
 	jsr parser_next
-	bcs .stringAdvanced
-	jmp .scanFail
-.stringAdvanced:
-	jmp .primaryDone
+	bcs .primaryDone
+	rts
 
 .identifier:
 	jsr lookup_symbol
@@ -392,7 +392,7 @@ parse_expression_primary:
 .advanceName:
 	jsr parser_next
 	bcs .nameAdvanced
-	jmp .scanFail
+	rts
 .nameAdvanced:
 	lda primarySymbolArea
 	cmp #SYMBOL_AREA_PERSISTENT
@@ -416,11 +416,9 @@ parse_expression_primary:
 	sta expressionElementType
 .loadScalar:
 	jsr emit_load_primary_scalar
-	bcs .scalarLoaded
+	bcs .primaryDone
 	lda #EXPR_EMIT_ERROR
 	jmp expression_fail
-.scalarLoaded:
-	jmp .primaryDone
 
 .array:
 	lda primarySymbolType
@@ -433,14 +431,12 @@ parse_expression_primary:
 	cmp #TYPE_CHAR
 	beq .arrayCanDecay
 	lda #$01
-	sta expressionArrayOnly
+	sta expressionMustIndex
 .arrayCanDecay:
 	jsr emit_load_primary_address
-	bcs .arrayLoaded
+	bcs .primaryDone
 	lda #EXPR_EMIT_ERROR
 	jmp expression_fail
-.arrayLoaded:
-	jmp .primaryDone
 
 .function:
 	lda currentTokenKind
@@ -451,19 +447,14 @@ parse_expression_primary:
 .call:
 	ldx primarySymbolIndex
 	jsr expression_call_primary
-	bcs .callDone
+	bcs .primaryDone
 	rts
-.callDone:
-	jmp .primaryDone
 
 .primaryDone:
 	lda #$00
 	sta expressionNeedValue
 	sec
 	rts
-.scanFail:
-	lda #EXPR_BAD_PRIMARY
-	jmp expression_fail
 
 ;;; #55 intentionally exposes the final call-primary seam but does not consume
 ;;; call syntax. #57 replaces this routine with the pending-call stack without
@@ -478,7 +469,7 @@ handle_postfix_index:
 	lda currentTokenKind
 	cmp #'['
 	beq .index
-	lda expressionArrayOnly
+	lda expressionMustIndex
 	beq .done
 	lda #EXPR_BAD_TYPE
 	jmp expression_fail
@@ -518,14 +509,13 @@ handle_postfix_index:
 	inc operatorCount
 	jsr parser_next
 	bcs .advanced
-	lda #EXPR_BAD_PRIMARY
-	jmp expression_fail
+	rts
 .advanced:
 	lda #$01
 	sta expressionNeedValue
 	lda #$00
 	sta expressionIndexable
-	sta expressionArrayOnly
+	sta expressionMustIndex
 	sec
 	rts
 
@@ -646,149 +636,146 @@ reduce_unary_minus:
 	rts
 
 ;;; binary_operator_for_token
-;;; Carry set: A=OP_*, Y=precedence. Carry clear means expression terminator.
+;;; Carry set: A=OP_*. Carry clear means the token terminates the expression.
+;;; Precedence is deliberately looked up only by operator_precedence, so there is
+;;; one authoritative description of the precedence table.
 binary_operator_for_token:
 	lda currentTokenKind
 	cmp #'*'
-	beq .mul
+	bne .notMul
+	lda #OP_MUL
+	sec
+	rts
+.notMul:
 	cmp #'+'
-	beq .add
+	bne .notAdd
+	lda #OP_ADD
+	sec
+	rts
+.notAdd:
 	cmp #'-'
-	beq .sub
+	bne .notSub
+	lda #OP_SUB
+	sec
+	rts
+.notSub:
 	cmp #TOKEN_SHL
-	beq .shl
+	bne .notShl
+	lda #OP_SHL
+	sec
+	rts
+.notShl:
 	cmp #TOKEN_SHR
-	beq .shr
+	bne .notShr
+	lda #OP_SHR
+	sec
+	rts
+.notShr:
 	cmp #'<'
-	beq .lt
+	bne .notLt
+	lda #OP_LT
+	sec
+	rts
+.notLt:
 	cmp #TOKEN_LE
-	beq .le
+	bne .notLe
+	lda #OP_LE
+	sec
+	rts
+.notLe:
 	cmp #'>'
-	beq .gt
+	bne .notGt
+	lda #OP_GT
+	sec
+	rts
+.notGt:
 	cmp #TOKEN_GE
-	beq .ge
+	bne .notGe
+	lda #OP_GE
+	sec
+	rts
+.notGe:
 	cmp #TOKEN_EQ
-	beq .eq
+	bne .notEq
+	lda #OP_EQ
+	sec
+	rts
+.notEq:
 	cmp #TOKEN_NE
-	beq .ne
+	bne .notNe
+	lda #OP_NE
+	sec
+	rts
+.notNe:
 	cmp #'&'
-	beq .and
+	bne .notAnd
+	lda #OP_AND
+	sec
+	rts
+.notAnd:
 	cmp #'|'
-	beq .or
+	bne .none
+	lda #OP_OR
+	sec
+	rts
+.none:
 	clc
 	rts
-.mul:
-	lda #OP_MUL
-	ldy #PREC_MUL
-	sec
-	rts
-.add:
-	lda #OP_ADD
-	ldy #PREC_ADD
-	sec
-	rts
-.sub:
-	lda #OP_SUB
-	ldy #PREC_ADD
-	sec
-	rts
-.shl:
-	lda #OP_SHL
-	ldy #PREC_SHIFT
-	sec
-	rts
-.shr:
-	lda #OP_SHR
-	ldy #PREC_SHIFT
-	sec
-	rts
-.lt:
-	lda #OP_LT
-	ldy #PREC_REL
-	sec
-	rts
-.le:
-	lda #OP_LE
-	ldy #PREC_REL
-	sec
-	rts
-.gt:
-	lda #OP_GT
-	ldy #PREC_REL
-	sec
-	rts
-.ge:
-	lda #OP_GE
-	ldy #PREC_REL
-	sec
-	rts
-.eq:
-	lda #OP_EQ
-	ldy #PREC_EQ
-	sec
-	rts
-.ne:
-	lda #OP_NE
-	ldy #PREC_EQ
-	sec
-	rts
-.and:
-	lda #OP_AND
-	ldy #PREC_AND
-	sec
-	rts
-.or:
-	lda #OP_OR
-	ldy #PREC_OR
-	sec
-	rts
 
+;;; A=OP_*; Y=precedence, or zero for a marker/unary kind.
 operator_precedence:
 	cmp #OP_MUL
-	beq .mul
+	bne .notMul
+	ldy #PREC_MUL
+	rts
+.notMul:
 	cmp #OP_ADD
 	beq .add
 	cmp #OP_SUB
-	beq .add
-	cmp #OP_SHL
-	beq .shift
-	cmp #OP_SHR
-	beq .shift
-	cmp #OP_LT
-	bcc .none
-	cmp #OP_GE+1
-	bcc .rel
-	cmp #OP_EQ
-	beq .eq
-	cmp #OP_NE
-	beq .eq
-	cmp #OP_AND
-	beq .and
-	cmp #OP_OR
-	beq .or
-.none:
-	ldy #$00
-	rts
-.mul:
-	ldy #PREC_MUL
-	rts
+	bne .notAdd
 .add:
 	ldy #PREC_ADD
 	rts
+.notAdd:
+	cmp #OP_SHL
+	beq .shift
+	cmp #OP_SHR
+	bne .notShift
 .shift:
 	ldy #PREC_SHIFT
 	rts
+.notShift:
+	cmp #OP_LT
+	beq .rel
+	cmp #OP_LE
+	beq .rel
+	cmp #OP_GT
+	beq .rel
+	cmp #OP_GE
+	bne .notRel
 .rel:
 	ldy #PREC_REL
 	rts
+.notRel:
+	cmp #OP_EQ
+	beq .eq
+	cmp #OP_NE
+	bne .notEq
 .eq:
 	ldy #PREC_EQ
 	rts
-.and:
+.notEq:
+	cmp #OP_AND
+	bne .notAnd
 	ldy #PREC_AND
 	rts
-.or:
+.notAnd:
+	cmp #OP_OR
+	bne .none
 	ldy #PREC_OR
+	rts
+.none:
+	ldy #$00
 	rts
 
 ;;; All Phase 1 binary operators are left associative. Reduce an operator with
@@ -899,7 +886,7 @@ pop_index_marker:
 	lda reduceLeftType
 	sta expressionValueType
 	lda #$00
-	sta expressionArrayOnly
+	sta expressionMustIndex
 	sta expressionIndexable
 	sec
 	rts
@@ -968,7 +955,7 @@ reduce_top_binary:
 	lda reduceResultType
 	sta expressionValueType
 	lda #$00
-	sta expressionArrayOnly
+	sta expressionMustIndex
 	sta expressionIndexable
 	lda expressionValueType
 	cmp #TYPE_CHAR_PTR
@@ -984,7 +971,9 @@ reduce_top_binary:
 	lda #EXPR_EXPECTED_VALUE
 	jmp expression_fail
 
-;;; Work only with the four Phase 1 scalar types. char promotes to int.
+;;; Work only with the four Phase 1 scalar types. char promotes to int. Operator
+;;; classes are spelled out explicitly; their meaning does not depend on OP_*
+;;; numeric ordering.
 validate_binary_types:
 	lda reduceOperator
 	cmp #OP_ADD
@@ -1002,9 +991,17 @@ validate_binary_types:
 	cmp #OP_OR
 	beq .integerOnly
 	cmp #OP_LT
-	bcc .bad
-	cmp #OP_NE+1
-	bcc .comparison
+	beq .comparison
+	cmp #OP_LE
+	beq .comparison
+	cmp #OP_GT
+	beq .comparison
+	cmp #OP_GE
+	beq .comparison
+	cmp #OP_EQ
+	beq .comparison
+	cmp #OP_NE
+	beq .comparison
 	jmp .bad
 
 .add:
@@ -1164,7 +1161,9 @@ capture_string_literal:
 	rts
 
 ;;; emit_deferred_literals
-;;; Called after all function code. Each literal is a label plus raw byte list.
+;;; Called after executable/runtime output. Each literal is a label followed by
+;;; ordinary byte directives. Rows are deliberately capped at 16 values so the
+;;; generated source always stays well inside ass's 255-byte line buffer.
 emit_deferred_literals:
 	lda #$00
 	sta literalEmitIndex
@@ -1194,13 +1193,6 @@ emit_one_literal:
 	rts
 .labelDone:
 	jsr emit_newline
-	bcs .byteDirective
-	rts
-.byteDirective:
-	lda #exprBytePrefixEnd-exprBytePrefix
-	ldx #<exprBytePrefix
-	ldy #>exprBytePrefix
-	jsr emit_text
 	bcs .prepare
 	rts
 .prepare:
@@ -1216,16 +1208,26 @@ emit_one_literal:
 	inc literalEmitRemaining		; include NUL; scanner text < 255 bytes
 	lda #$00
 	sta literalEmitColumn
+
 .bytes:
 	lda literalEmitRemaining
-	beq .newline
+	beq .done
 	lda literalEmitColumn
-	beq .noComma
+	bne .comma
+	lda #exprBytePrefixEnd-exprBytePrefix
+	ldx #<exprBytePrefix
+	ldy #>exprBytePrefix
+	jsr emit_text
+	bcs .bytePrefixDone
+	rts
+.bytePrefixDone:
+	jmp .byte
+.comma:
 	lda #','
 	jsr emit_output_byte
-	bcs .noComma
+	bcs .byte
 	rts
-.noComma:
+.byte:
 	lda #'$'
 	jsr emit_output_byte
 	bcs .byteAddress
@@ -1250,16 +1252,31 @@ emit_one_literal:
 .offsetOk:
 	inc literalEmitColumn
 	dec literalEmitRemaining
-	jmp .bytes
-.newline:
-	jmp emit_newline
+	lda literalEmitRemaining
+	beq .endRow
+	lda literalEmitColumn
+	cmp #EXPR_LITERAL_ROW
+	bne .bytes
+.endRow:
+	jsr emit_newline
+	bcs .rowDone
+	rts
+.rowDone:
+	lda #$00
+	sta literalEmitColumn
+	lda literalEmitRemaining
+	bne .bytes
+.done:
+	sec
+	rts
 
 ;;; The output side is kept in a separate readable slab. Calls are direct; there
 ;;; is no intermediate representation or template-dispatch layer.
 	include "expression_codegen.asm"
+	include "expression_codegen_state.asm"
 
 ;;; ---------------------------------------------------------------------------
-;;; Compiler state
+;;; Expression compiler state
 ;;; ---------------------------------------------------------------------------
 
 ;;; One bounded operator stack. Marker entries use the same arrays as binary
@@ -1273,7 +1290,7 @@ spillAllocatedCount:	byte 0
 expressionNeedValue:	byte 0
 expressionValueType:	byte TYPE_INT
 expressionIndexable:	byte 0
-expressionArrayOnly:	byte 0
+expressionMustIndex:	byte 0
 expressionElementType:	byte TYPE_CHAR
 expressionError:	byte EXPR_OK
 pendingOperator:	byte 0
@@ -1289,15 +1306,6 @@ primarySymbolArea:	byte SYMBOL_AREA_NONE
 primarySymbolKind:	byte 0
 primarySymbolType:	byte TYPE_INT
 expressionLiteralValue:	word 0
-emitSpillIndex:		byte 0
-shiftLeftFlag:		byte 0
-shiftLoopLabel:		word 0
-shiftDoneLabel:		word 0
-compareTrueLabel:	word 0
-compareFalseLabel:	word 0
-compareDoneLabel:	word 0
-compareSameSignLabel:	word 0
-compareInvert:		byte 0
 
 ;;; Narrow deferred literal pool. Offsets/lengths are 16-bit so this storage is
 ;;; independent of the scanner's reusable token width.
