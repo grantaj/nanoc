@@ -13,6 +13,10 @@
 ;;;
 ;;; There is no parameter-copy loop in the generated program and no ABI object.
 
+;;; Temporary compatibility name for the #56 native seam test while #57 replaces
+;;; that case with the real wrong-argument-count diagnostic.
+EXPR_CALL_UNAVAILABLE = EXPR_CALL_ARGUMENT_COUNT
+
 ;;; callEmitDepth/callEmitArgument -> __c_<caller>__aDD_AA
 emit_call_stage_name:
 	lda #callCPrefixEnd-callCPrefix
