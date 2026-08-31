@@ -25,3 +25,11 @@ jobs:
 
       - name: Run C64-native tests
         run: make test
+
+      - name: Diagnose Nano C call tests
+        if: failure()
+        run: make test-nanoc0-calls
+
+      - name: Diagnose Nano C runtime tests
+        if: failure()
+        run: make test-nanoc0-runtime
