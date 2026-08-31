@@ -7,11 +7,9 @@
 ;;; only tests exercise parser state). When enabled, bytes go straight to the
 ;;; compiler's fixed KERNAL output logical file. There is no line/output buffer.
 ;;;
-;;; Source input and generated output may share one serial device. CHKIN and
-;;; CHKOUT switch the physical IEC TALK/LISTEN state, so every real output byte
-;;; explicitly reselects the compiler output before CHROUT. source.asm does the
-;;; symmetric CHKIN before each real source read. This is deliberately a little
-;;; slower than tracking hidden bus state and much harder to get wrong.
+;;; Source input and generated output may share one serial device. source.asm
+;;; records the currently selected compiler direction, so CHKOUT is issued only
+;;; when a preceding source read has turned the IEC bus back to TALK.
 ;;;
 ;;; emit_output_byte preserves X, Y and both compiler scratch pairs because the
 ;;; formatter may be walking text through them. #57 only needs to add the normal
@@ -56,17 +54,23 @@ emit_output_byte:
 	lda $ff
 	sta emitOutputSavedScratch+3
 
-	;;; A source read may have selected the same IEC device for TALK. Re-select
-	;;; the compiler's output logical file before asking it to LISTEN again.
+	lda compilerIoDirection
+	cmp #COMPILER_IO_OUTPUT
+	beq .selected
 	ldx #EMIT_OUTPUT_LFN
 	jsr CHKOUT
 	bcs .channelFailed
+	lda #COMPILER_IO_OUTPUT
+	sta compilerIoDirection
+.selected:
 	lda emitOutputByte
 	jsr CHROUT
 	jsr READST
 	sta emitOutputStatus
 	jmp .restore
 .channelFailed:
+	lda #COMPILER_IO_NONE
+	sta compilerIoDirection
 	lda #$ff
 	sta emitOutputStatus
 
