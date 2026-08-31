@@ -27,23 +27,26 @@ quit
 EOF
 
 # -warp removes real-time throttling so native tests run as fast as the host can
-# execute them. Filesystem devices are attached only by tests that need them.
-VICE_FS_ARGS=
+# execute them. Tests with filesystem fixtures get two drives. Drive 8 is the
+# input side; drive 9 defaults to the same host directory and is available for
+# generated output. A test may override VICE_FS_DIR_9 when it needs separation.
 if [ -n "${VICE_FS_DIR:-}" ]; then
-    VICE_FS_ARGS="$VICE_FS_ARGS -iecdevice8 -device8 1 -fs8 $VICE_FS_DIR"
-fi
-if [ -n "${VICE_FS_DIR_9:-}" ]; then
-    VICE_FS_ARGS="$VICE_FS_ARGS -iecdevice9 -device9 1 -fs9 $VICE_FS_DIR_9"
-fi
-
-# VICE_FS_DIR values in this repository contain no shell whitespace. Keeping the
-# optional device arguments as one small word list avoids duplicating the runner.
-# shellcheck disable=SC2086
-if ! timeout "${VICE_TIMEOUT}s" "$VICE" -console -warp +sound \
-    $VICE_FS_ARGS -initbreak ready -moncommands "$MONITOR_FILE" >"$LOG_FILE" 2>&1; then
-    echo "FAIL $NAME: VICE did not complete the test" >&2
-    cat "$LOG_FILE" >&2
-    exit 1
+    VICE_FS_DIR_9=${VICE_FS_DIR_9:-$VICE_FS_DIR}
+    if ! timeout "${VICE_TIMEOUT}s" "$VICE" -console -warp +sound \
+        -iecdevice8 -device8 1 -fs8 "$VICE_FS_DIR" \
+        -iecdevice9 -device9 1 -fs9 "$VICE_FS_DIR_9" \
+        -initbreak ready -moncommands "$MONITOR_FILE" >"$LOG_FILE" 2>&1; then
+        echo "FAIL $NAME: VICE did not complete the test" >&2
+        cat "$LOG_FILE" >&2
+        exit 1
+    fi
+else
+    if ! timeout "${VICE_TIMEOUT}s" "$VICE" -console -warp +sound \
+        -initbreak ready -moncommands "$MONITOR_FILE" >"$LOG_FILE" 2>&1; then
+        echo "FAIL $NAME: VICE did not complete the test" >&2
+        cat "$LOG_FILE" >&2
+        exit 1
+    fi
 fi
 
 if [ ! -s "$RESULT_FILE" ]; then
