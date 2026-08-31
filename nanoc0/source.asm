@@ -7,13 +7,12 @@
 ;;; physical newline is first read.  Replaying a pushed-back byte never advances
 ;;; the line a second time.
 ;;;
-;;; Nano C may read source and write generated assembler on the same serial
-;;; device. CHKIN/CHKOUT switch the physical IEC TALK/LISTEN state, so one byte
-;;; records which compiler channel is actually selected. A direction change is
-;;; explicit: CLRCHN first sends UNTALK/UNLISTEN without closing either logical
-;;; file, then CHKIN or CHKOUT selects the still-open stream. Opening a source
-;;; file does not select it; the first real read does that. This lets a driver
-;;; open both source and output before either stream owns the bus.
+;;; The nanoc0 bootstrap reads source from device 8 while generated assembler is
+;;; written to device 9. The drives are separate, but the C64 still has one IEC
+;;; bus: CHKIN/CHKOUT switch its TALK/LISTEN direction. One byte therefore records
+;;; which compiler channel is actually selected. A direction change is explicit:
+;;; CLRCHN first sends UNTALK/UNLISTEN, then CHKIN or CHKOUT selects the still-open
+;;; stream. Opening a source file does not select it; the first real read does.
 ;;;
 ;;; read_source_byte contract:
 ;;;   carry set   A = next source byte
@@ -125,9 +124,8 @@ read_source_byte:
 	rts
 
 .read:
-	;;; Generated output may have turned the IEC bus around since the previous
-	;;; source byte. Return the bus to neutral before selecting the still-open
-	;;; source as talker again.
+	;;; Generated output may own the shared IEC bus since the previous source
+	;;; byte. Return the bus to neutral before selecting source as talker again.
 	lda compilerIoDirection
 	cmp #COMPILER_IO_SOURCE
 	beq .selected
