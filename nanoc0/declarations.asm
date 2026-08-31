@@ -87,9 +87,11 @@ parse_translation_unit:
 .end:
 	lda userFunctionCount
 	beq .expectedFunction
-	jsr emit_deferred_literals
-	bcc .emitFail
+	;;; Finish executable/runtime output before appending deferred literal bytes.
+	;;; This makes the literal pool data rather than accidental fall-through code.
 	jsr emit_bss_boundaries
+	bcc .emitFail
+	jsr emit_deferred_literals
 	bcc .emitFail
 	sec
 	rts
@@ -916,9 +918,9 @@ parse_one_local:
 	clc
 	rts
 
-;;; A failed initializer is owned by the expression layer. The declaration
-;;; parser reports that boundary while expressionError retains the precise cause
-;;; such as EXPR_UNDECLARED or EXPR_BAD_TYPE for diagnostics and tests.
+;;; Expression-owned failures are reported at this boundary while expressionError
+;;; retains the precise cause. Scanner failures already have a complete layered
+;;; diagnostic in parserError/scannerError, so they pass through unchanged.
 compile_local_initializer:
 	lda currentTokenKind
 	cmp #';'
@@ -943,8 +945,14 @@ compile_local_initializer:
 	sec
 	rts
 .expressionFail:
+	lda parserError
+	cmp #PARSE_SCANNER_ERROR
+	beq .scannerFail
 	lda #PARSE_EXPRESSION_ERROR
 	jmp parser_fail
+.scannerFail:
+	clc
+	rts
 
 ;;; This is not a statement parser. It only finds the matching function brace so
 ;;; later definitions can be seen, while enforcing rules already owned by #54:
