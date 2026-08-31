@@ -5,6 +5,7 @@ NANOC0_IMAGE = $4000
 
 FAIL_BUILD_NANOC0  = $10
 FAIL_COMPILE_SOURCE = $20
+FAIL_COMPILE_ASS    = $30
 
 	* = $0800
 
@@ -65,6 +66,8 @@ main:
 	jmp finish
 
 .compilerReady:
+	;;; Keep one deliberately small complete program in front of the bootstrap.
+	;;; It catches entry/output regressions without making ass.c the first symptom.
 	lda #<smallSourceName
 	sta NANOC_COMMAND_SOURCE
 	lda #>smallSourceName
@@ -79,8 +82,29 @@ main:
 	sta NANOC_COMMAND_OUTPUT_LENGTH
 	jsr NANOC0_IMAGE
 	lda NANOC_COMMAND_STATUS
-	beq .pass
+	beq .smallReady
 	ora #FAIL_COMPILE_SOURCE
+	jmp finish
+
+.smallReady:
+	;;; The decisive source is the exact committed bootstrap/ass.c. No adapter or
+	;;; compiler-specific C copy sits between nanoc0 and this file.
+	lda #<assSourceName
+	sta NANOC_COMMAND_SOURCE
+	lda #>assSourceName
+	sta NANOC_COMMAND_SOURCE+1
+	lda #assSourceNameEnd-assSourceName
+	sta NANOC_COMMAND_SOURCE_LENGTH
+	lda #<assOutputName
+	sta NANOC_COMMAND_OUTPUT
+	lda #>assOutputName
+	sta NANOC_COMMAND_OUTPUT+1
+	lda #assOutputNameEnd-assOutputName
+	sta NANOC_COMMAND_OUTPUT_LENGTH
+	jsr NANOC0_IMAGE
+	lda NANOC_COMMAND_STATUS
+	beq .pass
+	ora #FAIL_COMPILE_ASS
 	jmp finish
 .pass:
 	lda #TEST_PASS
@@ -101,5 +125,11 @@ smallSourceNameEnd:
 smallOutputName:
 	byte 'N','C','O','U','T','.','A','S','M',',','S',',','W'
 smallOutputNameEnd:
+assSourceName:
+	byte 'B','O','O','T','S','T','R','A','P','/','A','S','S','.','C'
+assSourceNameEnd:
+assOutputName:
+	byte 'A','S','S','F','R','O','M','C','.','A','S','M',',','S',',','W'
+assOutputNameEnd:
 
 	include "ass.asm"
