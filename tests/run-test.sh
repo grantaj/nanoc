@@ -20,12 +20,18 @@ ENTRY=$(printf '%02x%02x' "$2" "$1")
 
 cat > "$MONITOR_FILE" <<EOF
 load "$PRG" 0
+> 0001 36
 watch store 0002
 g $ENTRY
 bsave "$RESULT_FILE" 0 0002 0003
 quit
 EOF
 
+# These are standalone machine-code tests, not BASIC programs. $36 exposes the
+# RAM underneath BASIC at $a000-$bfff while leaving KERNAL and I/O mapped in.
+# That lets larger native images use the RAM VICE already loaded there without
+# hiding KERNAL services needed by the assembler/compiler tests.
+#
 # -warp removes real-time throttling so native tests run as fast as the host can
 # execute them. Tests with filesystem fixtures get two drives. Drive 8 is the
 # input side; drive 9 defaults to the same host directory and is available for
