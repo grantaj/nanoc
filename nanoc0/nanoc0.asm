@@ -295,22 +295,22 @@ programHeader:
 	string "NC_PTR = $fe"
 	string "NC_BSS = $4800"
 	string "__nc_start:"
-	string "    jmp __nc_entry"
+	string "	jmp __nc_entry"
 	byte 0
 
 programMainEntry:
 	string "__nc_entry:"
-	string "    jsr __nc_init"
-	string "    jsr __c_main"
-	string "    rts"
+	string "	jsr __nc_init"
+	string "	jsr __c_main"
+	string "	rts"
 	byte 0
 
 programPlainEntry:
 	string "__nc_entry:"
-	string "    jsr __nc_init"
-	string "    lda #$00"
-	string "    tax"
-	string "    rts"
+	string "	jsr __nc_init"
+	string "	lda #$00"
+	string "	tax"
+	string "	rts"
 	byte 0
 
 compilerOutputOpen:	byte 0
