@@ -23,6 +23,10 @@
 ;;; well costs startup cycles rather than compiler machinery and preserves one
 ;;; authoritative BSS boundary.
 ;;;
+;;; Runtime/support entry points clear decimal mode before doing any arithmetic
+;;; and again on return. Generated Nano C never emits SED, but this makes the
+;;; machine invariant explicit even when a support routine is called with D set.
+;;;
 ;;; Runtime routines are emitted only when source used them. __nc_mul16 is kept in
 ;;; the small support slab unconditionally: #55 already emits calls to that fixed
 ;;; helper, and one always-present few-dozen-byte routine is simpler than another
@@ -330,6 +334,7 @@ runtimeInitSuffix:
 ;;; left operand in NC_TMP, right in A/X, low 16-bit product back in A/X.
 runtimeMulText:
 	string "__nc_mul16:"
+	string "    cld"
 	string "    sta NC_PTR"
 	string "    stx NC_PTR+1"
 	string "    ldy #$00"
@@ -380,6 +385,7 @@ runtimeCommonText:
 
 runtimeOpenText:
 	string "__c_io_open:"
+	string "    cld"
 	string "    ldx #$00"
 	string "__nc_io_open_find:"
 	string "    lda __nc_io_mode,x"
@@ -426,6 +432,7 @@ runtimeOpenText:
 
 runtimeReadText:
 	string "__c_io_read:"
+	string "    cld"
 	string "    lda __c_io_read__v00+1"
 	string "    beq __nc_io_read_handle_low"
 	string "    jmp __nc_io_minus2"
@@ -483,6 +490,7 @@ runtimeReadText:
 
 runtimeCreateText:
 	string "__c_io_create:"
+	string "    cld"
 	string "    ldx #$00"
 	string "__nc_io_create_find:"
 	string "    lda __nc_io_mode,x"
@@ -570,6 +578,7 @@ runtimeCreateText:
 
 runtimeWriteText:
 	string "__c_io_write:"
+	string "    cld"
 	string "    lda __c_io_write__v00+1"
 	string "    beq __nc_io_write_handle_low"
 	string "    jmp __nc_io_minus1"
@@ -612,6 +621,7 @@ runtimeWriteText:
 
 runtimeCloseText:
 	string "__c_io_close:"
+	string "    cld"
 	string "    lda __c_io_close__v00+1"
 	string "    beq __nc_io_close_handle_low"
 	string "    jmp __nc_io_minus1"
