@@ -44,7 +44,8 @@ ASSEMBLER_DEPS = \
 	dis/mode_widths.asm dis/opcode_table.asm dis/mnemonic_table.asm test.inc
 
 NANOC0_EXPRESSION_DEPS = \
-	nanoc0/declarations.asm nanoc0/statements.asm nanoc0/expression.asm \
+	nanoc0/declarations.asm nanoc0/statements.asm nanoc0/statement_codegen.asm \
+	nanoc0/test_declaration_body_skip.asm nanoc0/expression.asm \
 	nanoc0/expression_codegen.asm nanoc0/expression_codegen_state.asm \
 	nanoc0/emit.asm nanoc0/symbols.asm nanoc0/scanner.asm nanoc0/source.asm \
 	dis/kernal.inc
@@ -108,7 +109,10 @@ NANOC0_STATEMENT_FIXTURES = \
 	tests/nanoc0-stmt/label.c \
 	tests/nanoc0-stmt/bare-return.c \
 	tests/nanoc0-stmt/no-braces.c \
-	tests/nanoc0-stmt/call.c
+	tests/nanoc0-stmt/call.c \
+	tests/nanoc0-stmt/pointer-from-int.c \
+	tests/nanoc0-stmt/int-from-pointer.c \
+	tests/nanoc0-stmt/indexed-pointer-value.c
 
 SELFHOST_FIXTURES = \
 	ass/ass_0800.asm \
@@ -135,7 +139,9 @@ nanoc0: $(NANOC0_TARGETS)
 	bytes=$$((bytes - 2)); \
 	workspace=$$(awk '$$1 == "SYMBOL_WORKSPACE_BYTES" { print $$3 }' nanoc0/symbols.asm); \
 	token=$$(awk '$$1 == "TOKEN_TEXT_CAPACITY" { print $$3 }' nanoc0/scanner.asm); \
-	control=$$(awk '$$1 == "CONTROL_STACK_BYTES" { print $$3 }' nanoc0/statements.asm); \
+	control_capacity=$$(awk '$$1 == "CONTROL_STACK_CAPACITY" { print $$3 }' nanoc0/statements.asm); \
+	control_frame=$$(awk '$$1 == "CONTROL_FRAME_BYTES" { print $$3 }' nanoc0/statements.asm); \
+	control=$$((1 + control_capacity * control_frame)); \
 	small=$$((bytes - workspace - token - control)); \
 	echo "nanoc0 resident core:          $$bytes bytes"; \
 	echo "  symbol/name workspace:      $$workspace bytes"; \
@@ -226,7 +232,7 @@ $(BUILD_DIR)/parse.prg: ass/parse.asm ass/parser.asm ass/instruction.asm ass/sca
 $(BUILD_DIR)/test_skipws.prg: ass/test_skipws.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_skipws.asm
 
-$(BUILD_DIR)/test_scanner.prg: ass/test_scanner.asm ass/scanner.asm ass/zp.inc test.inc | $(BUILD_DIR)
+$(BUILD_DIR)/test_scanner.prg: ass/test_scanner.asm ass/scanner.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_scanner.asm
 
 $(BUILD_DIR)/test_parser.prg: ass/test_parser.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
