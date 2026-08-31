@@ -7,6 +7,12 @@
 ;;; physical newline is first read.  Replaying a pushed-back byte never advances
 ;;; the line a second time.
 ;;;
+;;; The compiler alternates reading C source and writing generated assembler on
+;;; the same serial device. CHKIN/CHKOUT therefore also alternate the physical
+;;; IEC TALK/LISTEN state. Each real source read explicitly reselects this input
+;;; logical file before CHRIN rather than relying on the logical file merely
+;;; remaining open.
+;;;
 ;;; read_source_byte contract:
 ;;;   carry set   A = next source byte
 ;;;   carry clear A = SOURCE_STATE_EOF or SOURCE_STATE_IO_ERROR
@@ -109,6 +115,11 @@ read_source_byte:
 	rts
 
 .read:
+	;;; Generated output may have selected another serial channel since the last
+	;;; byte. Re-select this logical input before asking the device to talk.
+	ldx sourceLfn
+	jsr CHKIN
+	bcs .ioError
 	jsr CHRIN
 	sta sourceByte
 	jsr READST
@@ -117,6 +128,7 @@ read_source_byte:
 	;; EOI accompanies the final valid byte.  Any other status is an error.
 	and #$bf
 	beq .statusOk
+.ioError:
 	jsr close_source
 	lda #SOURCE_STATE_IO_ERROR
 	sta sourceState
