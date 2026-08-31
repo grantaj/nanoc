@@ -27,22 +27,23 @@ quit
 EOF
 
 # -warp removes real-time throttling so native tests run as fast as the host can
-# execute them. The filesystem-device form is used only by tests that read files.
+# execute them. Filesystem devices are attached only by tests that need them.
+VICE_FS_ARGS=
 if [ -n "${VICE_FS_DIR:-}" ]; then
-    if ! timeout "${VICE_TIMEOUT}s" "$VICE" -console -warp +sound \
-        -iecdevice8 -device8 1 -fs8 "$VICE_FS_DIR" \
-        -initbreak ready -moncommands "$MONITOR_FILE" >"$LOG_FILE" 2>&1; then
-        echo "FAIL $NAME: VICE did not complete the test" >&2
-        cat "$LOG_FILE" >&2
-        exit 1
-    fi
-else
-    if ! timeout "${VICE_TIMEOUT}s" "$VICE" -console -warp +sound \
-        -initbreak ready -moncommands "$MONITOR_FILE" >"$LOG_FILE" 2>&1; then
-        echo "FAIL $NAME: VICE did not complete the test" >&2
-        cat "$LOG_FILE" >&2
-        exit 1
-    fi
+    VICE_FS_ARGS="$VICE_FS_ARGS -iecdevice8 -device8 1 -fs8 $VICE_FS_DIR"
+fi
+if [ -n "${VICE_FS_DIR_9:-}" ]; then
+    VICE_FS_ARGS="$VICE_FS_ARGS -iecdevice9 -device9 1 -fs9 $VICE_FS_DIR_9"
+fi
+
+# VICE_FS_DIR values in this repository contain no shell whitespace. Keeping the
+# optional device arguments as one small word list avoids duplicating the runner.
+# shellcheck disable=SC2086
+if ! timeout "${VICE_TIMEOUT}s" "$VICE" -console -warp +sound \
+    $VICE_FS_ARGS -initbreak ready -moncommands "$MONITOR_FILE" >"$LOG_FILE" 2>&1; then
+    echo "FAIL $NAME: VICE did not complete the test" >&2
+    cat "$LOG_FILE" >&2
+    exit 1
 fi
 
 if [ ! -s "$RESULT_FILE" ]; then
