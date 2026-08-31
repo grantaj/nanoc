@@ -489,8 +489,11 @@ emit_or_reduction:
 	jmp emit_text
 
 ;;; __nc_mul16 uses the frozen helper convention: left operand in NC_TMP,
-;;; right operand in A/X, result in A/X.
+;;; right operand in A/X, result in A/X. Record the helper at the exact point
+;;; where a real multiplication reduction is emitted.
 emit_mul_reduction:
+	lda #$01
+	sta multiplyUsed
 	lda #exprMulSaveLowEnd-exprMulSaveLow
 	ldx #<exprMulSaveLow
 	ldy #>exprMulSaveLow
