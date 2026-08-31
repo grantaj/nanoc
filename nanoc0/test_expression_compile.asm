@@ -1,6 +1,7 @@
 	include "../test.inc"
 
 XT_OUTPUT_LFN = 3
+XT_OUTPUT_DEVICE = 9
 
 XT_FAIL_DEPTH   = $01
 XT_FAIL_STRING  = $02
@@ -193,7 +194,7 @@ xt_open_output:
 	ldy #>outputName
 	jsr SETNAM
 	lda #XT_OUTPUT_LFN
-	ldx #$08
+	ldx #XT_OUTPUT_DEVICE
 	ldy #XT_OUTPUT_LFN
 	jsr SETLFS
 	jsr OPEN
@@ -361,8 +362,7 @@ emit_static_byte:
 	rts
 
 ;;; Source EOF closes its input channel with CLRCHN, which also clears CHKOUT.
-;;; The runtime fixture has no deferred body strings, so reselect output here and
-;;; append the checker immediately after the last initializer's executable code.
+;;; Reselect drive 9 here before appending the checker after the generated code.
 emit_bss_boundaries:
 	lda xtRuntimeMode
 	bne .runtime
