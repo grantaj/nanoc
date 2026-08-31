@@ -531,6 +531,8 @@ emit_shr_reduction:
 ;;; are created within this routine, so their relative branches are local by
 ;;; construction; no distance analysis is required.
 emit_shift_reduction:
+	lda #EMIT_LABEL_GENERIC
+	sta emitLabelKind
 	jsr reserve_generated_label
 	lda emitLabelValue
 	sta shiftLoopLabel
@@ -664,10 +666,12 @@ emit_shift_reduction:
 ;;; Caller places the real target in emitLabelValue and passes the *opposite*
 ;;; short-branch fragment in A/X/Y. The generated shape is:
 ;;;
-;;;     b<opposite> skip
+;;;     b<opposite> nearby
 ;;;     jmp target
-;;; skip:
+;;; nearby:
 ;;;
+;;; emitLabelKind describes the real target. The helper temporarily spells its
+;;; own adjacent label as __nc_near_NNNN, then restores the caller's role.
 emit_long_conditional_jump:
 	sta conditionalBranchLength
 	stx conditionalBranchPtr
@@ -676,6 +680,8 @@ emit_long_conditional_jump:
 	sta conditionalTargetLabel
 	lda emitLabelValue+1
 	sta conditionalTargetLabel+1
+	lda emitLabelKind
+	sta conditionalTargetKind
 	jsr reserve_generated_label
 	lda emitLabelValue
 	sta conditionalSkipLabel
@@ -689,33 +695,51 @@ emit_long_conditional_jump:
 	bcs .skipName
 	rts
 .skipName:
+	lda #EMIT_LABEL_NEAR
+	sta emitLabelKind
 	lda conditionalSkipLabel
 	sta emitLabelValue
 	lda conditionalSkipLabel+1
 	sta emitLabelValue+1
 	jsr emit_generated_label_name
 	bcs .branchDone
-	rts
+	jmp .restoreFailed
 .branchDone:
 	jsr emit_newline
 	bcs .jump
-	rts
+	jmp .restoreFailed
 .jump:
+	lda conditionalTargetKind
+	sta emitLabelKind
 	lda conditionalTargetLabel
 	sta emitLabelValue
 	lda conditionalTargetLabel+1
 	sta emitLabelValue+1
 	jsr emit_jump_label
 	bcs .skipLabel
-	rts
+	jmp .restoreFailed
 .skipLabel:
+	lda #EMIT_LABEL_NEAR
+	sta emitLabelKind
 	lda conditionalSkipLabel
 	sta emitLabelValue
 	lda conditionalSkipLabel+1
 	sta emitLabelValue+1
-	jmp emit_label_definition
+	jsr emit_label_definition
+	php
+	lda conditionalTargetKind
+	sta emitLabelKind
+	plp
+	rts
+.restoreFailed:
+	lda conditionalTargetKind
+	sta emitLabelKind
+	clc
+	rts
 
 set_true_target:
+	lda #EMIT_LABEL_CMP_TRUE
+	sta emitLabelKind
 	lda compareTrueLabel
 	sta emitLabelValue
 	lda compareTrueLabel+1
@@ -723,6 +747,8 @@ set_true_target:
 	rts
 
 set_false_target:
+	lda #EMIT_LABEL_CMP_FALSE
+	sta emitLabelKind
 	lda compareFalseLabel
 	sta emitLabelValue
 	lda compareFalseLabel+1
@@ -786,6 +812,8 @@ emit_bmi_false:
 	jmp emit_long_conditional_jump
 
 emit_bpl_same_sign:
+	lda #EMIT_LABEL_CMP_SAME_SIGN
+	sta emitLabelKind
 	lda compareSameSignLabel
 	sta emitLabelValue
 	lda compareSameSignLabel+1
@@ -800,6 +828,8 @@ emit_compare_reduction:
 	bcs .labels
 	rts
 .labels:
+	lda #EMIT_LABEL_GENERIC
+	sta emitLabelKind
 	jsr reserve_compare_labels
 	lda reduceOperator
 	cmp #OP_EQ
@@ -1046,6 +1076,8 @@ emit_signed_relational:
 	bcs .sameSign
 	rts
 .sameSign:
+	lda #EMIT_LABEL_CMP_SAME_SIGN
+	sta emitLabelKind
 	lda compareSameSignLabel
 	sta emitLabelValue
 	lda compareSameSignLabel+1
@@ -1083,6 +1115,8 @@ emit_label_definition:
 	jmp emit_newline
 
 emit_comparison_result_labels:
+	lda #EMIT_LABEL_CMP_TRUE
+	sta emitLabelKind
 	lda compareTrueLabel
 	sta emitLabelValue
 	lda compareTrueLabel+1
@@ -1098,6 +1132,8 @@ emit_comparison_result_labels:
 	bcs .skipFalse
 	rts
 .skipFalse:
+	lda #EMIT_LABEL_CMP_DONE
+	sta emitLabelKind
 	lda compareDoneLabel
 	sta emitLabelValue
 	lda compareDoneLabel+1
@@ -1106,6 +1142,8 @@ emit_comparison_result_labels:
 	bcs .falseLabel
 	rts
 .falseLabel:
+	lda #EMIT_LABEL_CMP_FALSE
+	sta emitLabelKind
 	lda compareFalseLabel
 	sta emitLabelValue
 	lda compareFalseLabel+1
@@ -1121,6 +1159,8 @@ emit_comparison_result_labels:
 	bcs .doneLabel
 	rts
 .doneLabel:
+	lda #EMIT_LABEL_CMP_DONE
+	sta emitLabelKind
 	lda compareDoneLabel
 	sta emitLabelValue
 	lda compareDoneLabel+1
@@ -1129,7 +1169,9 @@ emit_comparison_result_labels:
 
 ;;; Index value is in target A/X. reduceSpill is the saved full 16-bit base.
 ;;; Non-char global arrays scale the index by two before address addition.
-emit_index_load:
+;;; This routine ends with the effective address in NC_PTR and emits no load.
+;;; Indexed reads call it and then load; indexed assignments reuse it directly.
+emit_index_address:
 	jsr emit_save_right_tmp
 	bcs .scale
 	rts
@@ -1162,7 +1204,10 @@ emit_index_load:
 	lda #exprIndexHighEnd-exprIndexHigh
 	ldx #<exprIndexHigh
 	ldy #>exprIndexHigh
-	jsr emit_text
+	jmp emit_text
+
+emit_index_load:
+	jsr emit_index_address
 	bcs .load
 	rts
 .load:
@@ -1355,3 +1400,4 @@ conditionalBranchLength:	byte 0
 conditionalBranchPtr:		word 0
 conditionalTargetLabel:	word 0
 conditionalSkipLabel:		word 0
+conditionalTargetKind:	byte EMIT_LABEL_GENERIC

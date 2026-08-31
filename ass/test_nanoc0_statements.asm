@@ -1,0 +1,85 @@
+	include "../test.inc"
+
+ST_GENERATED_ENTRY = $0800
+
+ST_FAIL_RETURN_ASSEMBLE    = $10
+ST_FAIL_RETURN_VALUE       = $20
+ST_FAIL_STATEMENT_ASSEMBLE = $30
+ST_FAIL_STATEMENT_VALUE    = $40
+
+	* = ASSEMBLER_TEST_ENTRY
+
+main:
+	lda #<returnGeneratedName
+	sta ASSEMBLER_COMMAND_NAME
+	lda #>returnGeneratedName
+	sta ASSEMBLER_COMMAND_NAME+1
+	lda #returnGeneratedNameEnd-returnGeneratedName
+	sta ASSEMBLER_COMMAND_LENGTH
+	lda #<ST_GENERATED_ENTRY
+	sta ASSEMBLER_COMMAND_TARGET
+	lda #>ST_GENERATED_ENTRY
+	sta ASSEMBLER_COMMAND_TARGET+1
+	jsr assemblerEntry
+	cmp #ASSEMBLE_OK
+	beq .runReturn
+	ora #ST_FAIL_RETURN_ASSEMBLE
+	jmp .finish
+
+.runReturn:
+	jsr ST_GENERATED_ENTRY
+	cmp #$5a
+	bne .badReturn
+	cpx #$00
+	bne .badReturn
+
+	lda #<statementGeneratedName
+	sta ASSEMBLER_COMMAND_NAME
+	lda #>statementGeneratedName
+	sta ASSEMBLER_COMMAND_NAME+1
+	lda #statementGeneratedNameEnd-statementGeneratedName
+	sta ASSEMBLER_COMMAND_LENGTH
+	lda #<ST_GENERATED_ENTRY
+	sta ASSEMBLER_COMMAND_TARGET
+	lda #>ST_GENERATED_ENTRY
+	sta ASSEMBLER_COMMAND_TARGET+1
+	jsr assemblerEntry
+	cmp #ASSEMBLE_OK
+	beq .runStatements
+	ora #ST_FAIL_STATEMENT_ASSEMBLE
+	jmp .finish
+
+.runStatements:
+	jsr ST_GENERATED_ENTRY
+	sta stReturnedLow
+	stx stReturnedHigh
+	cmp #$34
+	bne .badStatements
+	cpx #$12
+	bne .badStatements
+	lda #TEST_PASS
+	jmp .finish
+
+.badReturn:
+	lda #ST_FAIL_RETURN_VALUE
+	jmp .finish
+.badStatements:
+	lda stReturnedLow
+	beq .genericStatementFail
+	jmp .finish
+.genericStatementFail:
+	lda #ST_FAIL_STATEMENT_VALUE
+.finish:
+	sta TEST_RESULT
+.halt:
+	jmp .halt
+
+returnGeneratedName:	byte 'R','E','T','8','O','U','T','.','A','S','M'
+returnGeneratedNameEnd:
+statementGeneratedName:	byte 'S','T','M','T','O','U','T','.','A','S','M'
+statementGeneratedNameEnd:
+
+stReturnedLow:	byte 0
+stReturnedHigh:	byte 0
+
+	include "ass.asm"
