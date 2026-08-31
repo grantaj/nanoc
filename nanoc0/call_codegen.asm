@@ -217,5 +217,3 @@ callJsrSpace:		byte $09,'j','s','r',' '
 callJsrSpaceEnd:
 callPlusOne:		byte '+','1'
 callPlusOneEnd:
-
-	include "runtime_codegen.asm"
