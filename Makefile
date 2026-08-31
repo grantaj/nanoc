@@ -152,13 +152,13 @@ ass: $(ASS_TARGETS)
 nanoc0: $(NANOC0_TARGETS)
 	@bytes=$$(wc -c < $(BUILD_DIR)/nanoc0-core.prg); \
 	bytes=$$((bytes - 2)); \
-	workspace=$$(awk '$1 == "SYMBOL_WORKSPACE_BYTES" { print $3 }' nanoc0/symbols.asm); \
-	token=$$(awk '$1 == "TOKEN_TEXT_CAPACITY" { print $3 }' nanoc0/scanner.asm); \
-	control_capacity=$$(awk '$1 == "CONTROL_STACK_CAPACITY" { print $3 }' nanoc0/statements.asm); \
-	control_frame=$$(awk '$1 == "CONTROL_FRAME_BYTES" { print $3 }' nanoc0/statements.asm); \
+	workspace=$$(awk '$$1 == "SYMBOL_WORKSPACE_BYTES" { print $$3 }' nanoc0/symbols.asm); \
+	token=$$(awk '$$1 == "TOKEN_TEXT_CAPACITY" { print $$3 }' nanoc0/scanner.asm); \
+	control_capacity=$$(awk '$$1 == "CONTROL_STACK_CAPACITY" { print $$3 }' nanoc0/statements.asm); \
+	control_frame=$$(awk '$$1 == "CONTROL_FRAME_BYTES" { print $$3 }' nanoc0/statements.asm); \
 	control=$$((1 + control_capacity * control_frame)); \
-	call_capacity=$$(awk '$1 == "CALL_STACK_CAPACITY" { print $3 }' nanoc0/calls.asm); \
-	call_frame=$$(awk '$1 == "CALL_FRAME_BYTES" { print $3 }' nanoc0/calls.asm); \
+	call_capacity=$$(awk '$$1 == "CALL_STACK_CAPACITY" { print $$3 }' nanoc0/calls.asm); \
+	call_frame=$$(awk '$$1 == "CALL_FRAME_BYTES" { print $$3 }' nanoc0/calls.asm); \
 	call=$$((1 + call_capacity * call_frame)); \
 	small=$$((bytes - workspace - token - control - call)); \
 	echo "nanoc0 resident core:          $$bytes bytes"; \
