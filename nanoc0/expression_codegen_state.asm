@@ -14,7 +14,3 @@ compareFalseLabel:	word 0
 compareDoneLabel:	word 0
 compareSameSignLabel:	word 0
 compareInvert:		byte 0
-conditionalBranchLength:	byte 0
-conditionalBranchPtr:		word 0
-conditionalTargetLabel:	word 0
-conditionalSkipLabel:		word 0
