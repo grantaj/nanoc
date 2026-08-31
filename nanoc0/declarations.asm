@@ -2,22 +2,21 @@
 ;;;
 ;;; Nano C Phase 1 declaration parser.
 ;;;
-;;; This is deliberately only the declaration/storage half of the parser. It
-;;; consumes the translation unit from top to bottom, emits static initializer
-;;; bytes immediately, records symbols that later source may use, compiles
-;;; function-entry local initializers through the one expression engine, and
-;;; skips executable statement bodies that #56 will compile.
+;;; The translation unit is consumed from top to bottom. Declarations allocate
+;;; storage and become visible immediately; function-entry local initializers use
+;;; the one expression engine; after locals end, statements.asm takes over the
+;;; same current token and emits executable code directly.
 ;;;
-;;; Four tiny declaration output hooks are supplied by the eventual compiler
-;;; driver and by the native tests:
+;;; Four tiny declaration output hooks are supplied by the compiler driver and
+;;; by native tests:
 ;;;
 ;;;   emit_persistent_symbol   A = EMIT_STORAGE_*, X = persistent symbol index
 ;;;   emit_current_symbol      X = current-function symbol index
 ;;;   emit_static_byte         A = one initialized-data byte
 ;;;   emit_bss_boundaries      reads zeroRequiredEnd/bssOffset
 ;;;
-;;; expression.asm additionally writes ordinary target assembly through the
-;;; one-byte emit_output_byte hook. Each hook returns carry set on success.
+;;; expression.asm and statements.asm additionally stream ordinary target
+;;; assembly through the one-byte emit_output_byte hook.
 ;;;
 ;;; Storage facts are streamed at the point they are known. For an uninitialized
 ;;; persistent/current symbol, allocOffset is the slot just allocated. For a
@@ -59,6 +58,12 @@ PARSE_LOCAL_ARRAY           = 21
 PARSE_EXPECTED_FUNCTION     = 22
 PARSE_NAME_CAPACITY         = 23
 PARSE_EXPRESSION_ERROR      = 24
+PARSE_BAD_STATEMENT         = 25
+PARSE_BAD_ASSIGNMENT        = 26
+PARSE_BREAK_OUTSIDE_LOOP    = 27
+PARSE_CONTROL_OVERFLOW      = 28
+PARSE_BAD_CONDITION         = 29
+PARSE_BAD_RETURN            = 30
 
 ;;; parse_translation_unit
 ;;; Source must already be open. bssBase must already contain the wrapper's
@@ -769,7 +774,7 @@ parse_function_definition:
 	bcc .failed
 	jsr parse_function_locals
 	bcc .failed
-	jsr skip_function_statements
+	jsr parse_function_statements
 	bcc .failed
 
 	jsr make_persistent_visible
@@ -954,10 +959,13 @@ compile_local_initializer:
 	clc
 	rts
 
-;;; This is not a statement parser. It only finds the matching function brace so
-;;; later definitions can be seen, while enforcing rules already owned by #54:
-;;; no later declarations and immediate failure for undeclared identifiers.
-skip_function_statements:
+;;; #54's declaration/capacity tests intentionally contain calls before #57.
+;;; They define NANOC0_DECLARATION_BODY_SKIP and retain the old brace walker so
+;;; those tests continue to measure declaration state rather than call support.
+;;; Every production nanoc0 image takes the else path and contains the real
+;;; explicit statement engine instead.
+ifdef NANOC0_DECLARATION_BODY_SKIP
+parse_function_statements:
 	lda #$00
 	sta bodyBraceDepth
 .loop:
@@ -993,8 +1001,7 @@ skip_function_statements:
 	dec bodyBraceDepth
 	jmp .advance
 .functionDone:
-	jsr parser_next
-	rts
+	jmp parser_next
 .lateLocal:
 	lda #PARSE_LATE_LOCAL
 	jmp parser_fail
@@ -1004,6 +1011,11 @@ skip_function_statements:
 .failed:
 	clc
 	rts
+
+bodyBraceDepth:		byte 0
+else
+	include "statements.asm"
+endif
 
 ;;; currentCount is the slot being constructed until make_current_visible.
 emit_current_checked:
@@ -1025,5 +1037,4 @@ initializerCount:	word 0
 constantValue:		word 0
 constantMagnitude:	word 0
 constantNegative:	byte 0
-bodyBraceDepth:		byte 0
 stringEmitIndex:	byte 0
