@@ -68,9 +68,11 @@ main:
 .halt:
 	jmp .halt
 
-runtimeGeneratedName:	byte 'R','T','O','U','T','.','A','S','M'
+runtimeGeneratedName:
+	byte 'T','E','S','T','S','/','N','A','N','O','C','0','-','R','U','N','T','I','M','E','/','R','T','O','U','T','.','A','S','M'
 runtimeGeneratedNameEnd:
-smokeName:		byte 'S','M','O','K','E','.','A','S','M'
+smokeName:
+	byte 'T','E','S','T','S','/','N','A','N','O','C','0','-','R','U','N','T','I','M','E','/','S','M','O','K','E','.','A','S','M'
 smokeNameEnd:
 
 rtReturnedLow:	byte 0
