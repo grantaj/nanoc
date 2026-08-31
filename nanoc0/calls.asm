@@ -21,10 +21,12 @@ CALL_ARGUMENT_CAPACITY = 8
 CALL_FRAME_BYTES       = 3
 
 ;;; reset_call_translation_state
-;;; Runtime parameter slots belong to the whole generated translation unit.
+;;; Runtime parameter slots, runtime use and compiler-private support use belong
+;;; to the whole generated translation unit.
 reset_call_translation_state:
 	ldx #$00
 	lda #$00
+	sta multiplyUsed
 .loop:
 	sta runtimeParamAllocated,x
 	sta runtimeUsed,x
