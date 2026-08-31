@@ -5,6 +5,9 @@
 ;;; declaration state without teaching production declarations a second statement
 ;;; parser. Remove this shim once the call issue lets those fixtures traverse their
 ;;; bodies normally.
+;;;
+;;; This file is assembled only when NANOC0_DECLARATION_BODY_SKIP is defined.
+;;; Production nanoc0 includes statements.asm instead.
 
 parse_function_statements:
 	lda #$00
