@@ -20,15 +20,11 @@ jobs:
       - name: Build all targets
         run: make
 
-      - name: Build production nanoc0 entry
-        run: |
-          cd nanoc0
-          vasm6502_oldstyle -Fbin -cbm-prg -o ../build/nanoc0.prg nanoc0.asm
-          bytes=$(wc -c < ../build/nanoc0.prg)
-          echo "production nanoc0 loaded image: $((bytes - 2)) bytes"
-
       - name: Validate candidate Phase 1 C assembler
         run: sh scripts/test-ass-c.sh
 
       - name: Run C64-native tests
         run: make test
+
+      - name: Run production nanoc0 ladder
+        run: sh scripts/test-nanoc0-integration.sh
