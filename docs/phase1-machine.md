@@ -224,6 +224,8 @@ The assembly program wrapper calls `__nc_init` once before calling any C-defined
 
 Function parameter/local/temporary storage lies after `__nc_zero_end` and does not need startup clearing: parameters are written by callers, well-formed Phase 1 locals are assigned before reading, and compiler temporaries are overwritten before use.
 
+If the generated program uses the bootstrap I/O runtime, `__nc_init` separately clears its small handle-mode/EOF state. That is runtime initialization, not an extension of C zero-initialisation to all compiler-owned BSS.
+
 This keeps the loaded image small while retaining the source language's zero-initialisation rule.
 
 # 7. Function calls
@@ -310,6 +312,8 @@ In assembly shape:
 A `char` parameter copies only the low staged byte. `int`, `unsigned`, and `char *` parameters copy both bytes.
 
 Call-staging storage is static per caller and may be reused by later non-overlapping calls. Nested pending calls receive distinct staging slots as required by their nesting depth. For example, while compiling `f(x, f(y, z))`, the saved outer `x` and the inner call's arguments occupy different compile-time slots.
+
+The bootstrap compiler bounds pending call nesting at four and arguments per call at eight. `bootstrap/ass.c` currently needs at most five arguments, so this is measured capacity with modest headroom rather than an arbitrary ABI limit.
 
 This is still much smaller than a software call stack: the compiler resolves every slot at compile time.
 
@@ -449,7 +453,7 @@ JSR __nc_mul16
 result        -> A/X
 ```
 
-`__nc_mul16` is compiler support, not a C library function. It may clobber `Y` and `NC_PTR` as well as ordinary call-clobbered state. It returns with `D = 0` like every other Nano C support routine.
+`__nc_mul16` is compiler support, not a C library function. It may clobber `Y` and `NC_PTR` as well as ordinary call-clobbered state. It returns with `D = 0` like every other Nano C support routine. The compiler emits it only when the translation actually contains a multiplication.
 
 An assembly programmer would normally factor repeated 16-bit multiplication into a small subroutine; Nano C does the same.
 
@@ -543,38 +547,43 @@ This is not a general data-section system. It is one loaded image plus one expli
 
 # 12. Runtime calls
 
-The Phase 1 source runtime remains exactly:
+The Phase 1 source runtime is exactly:
 
 ```c
 int io_open(char *name, int length);
 int io_read(int handle);
+int io_create(char *name, int length);
+int io_write(int handle, int value);
 int io_close(int handle);
 ```
 
-These routines are ordinary assembly helpers with fixed parameter slots and the same `A/X` integer return convention as C-defined functions.
+These are ordinary assembly helpers with fixed parameter slots and the same `A/X` integer return convention as C-defined functions. They are runtime services, not language features or a standard library.
 
-For example the runtime exposes storage conceptually like:
+Generated calls use the same caller-staging sequence as C-defined functions: calculate every argument, save it in caller-owned words, copy those words to the known runtime parameter slots, then `JSR` the runtime entry.
 
-```asm
-__io_open_name:   word 0
-__io_open_length: word 0
-```
+## 12.1 Concrete C64 file model
 
-and generated code stages source arguments, copies them to those slots, then executes:
+The bootstrap runtime manages six small handle slots. This is enough for the measured assembler need of five simultaneously nested source files plus one output file; it is not an arbitrary file-object API.
 
-```asm
-jsr io_open
-```
+C-visible handles are indices 0 through 5. The generated runtime maps them to KERNAL logical file numbers 4 through 9. Input uses device 8 and output uses device 9 in the project test environment.
 
-The C64 implementation may call the existing KERNAL file primitives directly. A runtime handle is a small non-negative logical file/channel identifier managed by the runtime. The C-facing behaviour remains the contract already frozen in `docs/phase1.md`:
+`io_open` uses the ordinary KERNAL `SETNAM`, `SETLFS`, `OPEN`, `CHKIN`, `CHRIN`, `READST`, `CLRCHN` and `CLOSE` path. IEC disk `OPEN` does not itself make a missing file observable, so `io_open` probes one byte. On success that byte is retained in the handle's existing EOF/state storage and returned by the first `io_read`; the probe never consumes a source byte from the C program's point of view.
+
+`io_read` follows the same end-of-input convention as the native assembler: the final valid byte is returned even when `READST` reports EOI with it, and the following call returns `-1`.
+
+`io_create` creates/replaces a sequential output file by spelling the C64 filename as `@0:<name>,S,W` and opening it on output device 9. `io_write` selects that channel and writes the low byte of its value through `CHROUT`.
+
+The C-facing results are:
 
 - `io_open`: non-negative handle or `-1`;
-- `io_read`: byte, `-1` EOF, or `-2` error;
-- `io_close`: `0`.
+- `io_read`: byte 0..255, `-1` EOF, or `-2` I/O error;
+- `io_create`: non-negative handle or `-1`;
+- `io_write`: `0` on success or `-1`;
+- `io_close`: `0` for a valid handle.
 
-The runtime may clobber all ordinary call-clobbered machine state. It must execute `CLD` before returning so generated arithmetic never depends on KERNAL/runtime decimal-mode behaviour.
+The runtime may clobber all ordinary call-clobbered machine state. Every entry starts in binary mode for its own arithmetic and every path that returns to generated C restores `D = 0`.
 
-No additional standard library is implied.
+No seek, formatted I/O, stream object, allocator or other standard-library surface is implied.
 
 # 13. Assembly wrapper boundary
 
@@ -587,15 +596,16 @@ NC_BSS = $5000
 
 * = $1000
 include "generated.asm"
-include "nanoc_runtime.asm"
 ```
 
-The wrapper is also responsible for:
+The wrapper is responsible for:
 
 1. selecting any C64 memory banking required by its chosen RAM geometry;
-2. calling `__nc_init` once, which establishes `D = 0` and clears zero-initialised storage;
+2. calling generated `__nc_init` once, which establishes `D = 0`, clears source-level zero-initialised globals and initializes emitted runtime state;
 3. calling whichever C function is the program entry point;
 4. interpreting the returned `A/X` value if needed.
+
+Compiler-private support and used runtime entries are emitted directly in the generated `ass` source; there is no separate runtime package or linker step.
 
 This is deliberately analogous to the current `ass_4000.asm` / `ass_0800.asm` wrappers: the reusable body does not need to own the whole machine.
 
