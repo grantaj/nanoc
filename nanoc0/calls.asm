@@ -47,6 +47,37 @@ reset_call_function_state:
 	bne .loop
 	rts
 
+;;; parse_call_expression_statement
+;;; The statement grammar permits a call primary as a statement, but not a
+;;; general expression statement. Run the ordinary expression engine and remember
+;;; the token immediately following its first completed outer call. It must be
+;;; ';'. This keeps all argument parsing in one place while rejecting `f()+1;`.
+parse_call_expression_statement:
+	lda #$01
+	sta callStatementMode
+	lda #$00
+	sta callStatementSawOuter
+	jsr parse_expression
+	php
+	lda #$00
+	sta callStatementMode
+	plp
+	bcc .failed
+	lda callStatementSawOuter
+	beq .bad
+	lda callStatementTerminator
+	cmp #';'
+	beq .ok
+.bad:
+	lda #EXPR_BAD_PRIMARY
+	jmp expression_fail
+.ok:
+	sec
+	rts
+.failed:
+	clc
+	rts
+
 ;;; expression_call_primary
 ;;; X=known persistent function symbol. currentToken is '('.
 ;;;
@@ -380,6 +411,21 @@ complete_current_call:
 	sta expressionNeedValue
 	jsr parser_next
 	bcc .failed
+
+	;;; Only the first completed outer call matters for the statement grammar.
+	;;; Later calls in a forbidden larger expression must not overwrite its
+	;;; immediate terminator.
+	lda callStatementMode
+	beq .done
+	lda callDepth
+	bne .done
+	lda callStatementSawOuter
+	bne .done
+	lda currentTokenKind
+	sta callStatementTerminator
+	lda #$01
+	sta callStatementSawOuter
+.done:
 	sec
 	rts
 .failed:
@@ -457,3 +503,6 @@ callEmitCallee:		byte 0
 callEmitParamType:	byte TYPE_INT
 callCopyIndex:		byte 0
 callRuntimeArgument:	byte 0
+callStatementMode:	byte 0
+callStatementSawOuter:	byte 0
+callStatementTerminator:	byte 0
