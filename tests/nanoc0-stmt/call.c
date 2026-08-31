@@ -1,5 +1,5 @@
 int main()
 {
-    io_close(0);
+    io_close();
     return 0;
 }
