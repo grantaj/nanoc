@@ -119,15 +119,15 @@ NANOC0_STATEMENT_FIXTURES = \
 	tests/nanoc0-stmt/indexed-pointer-value.c
 
 NANOC0_CALL_FIXTURES = \
-	tests/nanoc0-call/CNTBAD.C \
-	tests/nanoc0-call/TYPBAD.C \
-	tests/nanoc0-call/LATBAD.C \
-	tests/nanoc0-call/DEPBAD.C \
-	tests/nanoc0-call/ARGBAD.C
+	tests/nanoc0-call/cntbad.c \
+	tests/nanoc0-call/typbad.c \
+	tests/nanoc0-call/latbad.c \
+	tests/nanoc0-call/depbad.c \
+	tests/nanoc0-call/argbad.c
 
 NANOC0_RUNTIME_FIXTURES = \
 	tests/nanoc0-runtime/runtime.c \
-	tests/nanoc0-runtime/RUNTIME.IN
+	tests/nanoc0-runtime/runtime.in
 
 SELFHOST_FIXTURES = \
 	ass/ass_0800.asm \
@@ -152,13 +152,13 @@ ass: $(ASS_TARGETS)
 nanoc0: $(NANOC0_TARGETS)
 	@bytes=$$(wc -c < $(BUILD_DIR)/nanoc0-core.prg); \
 	bytes=$$((bytes - 2)); \
-	workspace=$$(awk '$$1 == "SYMBOL_WORKSPACE_BYTES" { print $$3 }' nanoc0/symbols.asm); \
-	token=$$(awk '$$1 == "TOKEN_TEXT_CAPACITY" { print $$3 }' nanoc0/scanner.asm); \
-	control_capacity=$$(awk '$$1 == "CONTROL_STACK_CAPACITY" { print $$3 }' nanoc0/statements.asm); \
-	control_frame=$$(awk '$$1 == "CONTROL_FRAME_BYTES" { print $$3 }' nanoc0/statements.asm); \
+	workspace=$$(awk '$1 == "SYMBOL_WORKSPACE_BYTES" { print $3 }' nanoc0/symbols.asm); \
+	token=$$(awk '$1 == "TOKEN_TEXT_CAPACITY" { print $3 }' nanoc0/scanner.asm); \
+	control_capacity=$$(awk '$1 == "CONTROL_STACK_CAPACITY" { print $3 }' nanoc0/statements.asm); \
+	control_frame=$$(awk '$1 == "CONTROL_FRAME_BYTES" { print $3 }' nanoc0/statements.asm); \
 	control=$$((1 + control_capacity * control_frame)); \
-	call_capacity=$$(awk '$$1 == "CALL_STACK_CAPACITY" { print $$3 }' nanoc0/calls.asm); \
-	call_frame=$$(awk '$$1 == "CALL_FRAME_BYTES" { print $$3 }' nanoc0/calls.asm); \
+	call_capacity=$$(awk '$1 == "CALL_STACK_CAPACITY" { print $3 }' nanoc0/calls.asm); \
+	call_frame=$$(awk '$1 == "CALL_FRAME_BYTES" { print $3 }' nanoc0/calls.asm); \
 	call=$$((1 + call_capacity * call_frame)); \
 	small=$$((bytes - workspace - token - control - call)); \
 	echo "nanoc0 resident core:          $$bytes bytes"; \
