@@ -23,7 +23,14 @@
 ;;;   parameter/local       __c_<function-name>__vNN
 ;;;   expression spill      __c_<function-name>__sNN
 ;;;   deferred string       __nc_stringNN
-;;;   compiler label        __nc_LNNNN
+;;;   generic label         __nc_LNNNN
+;;;   statement labels      __nc_if_false_NNNN, __nc_if_end_NNNN,
+;;;                         __nc_while_top_NNNN, __nc_while_end_NNNN
+;;;   branch trampoline     __nc_near_NNNN
+;;;
+;;; Every generated label still comes from one monotonically increasing counter.
+;;; emitLabelKind changes only the human-readable spelling; it is transient
+;;; formatter state, not another label namespace or retained control structure.
 ;;;
 ;;; In particular, parameter slot names use the parameter ordinal/current-table
 ;;; index rather than the source parameter name. The current table is discarded
@@ -35,6 +42,13 @@
 
 EMIT_PTR        = $fc
 EMIT_OUTPUT_LFN = 3
+
+EMIT_LABEL_GENERIC    = 0
+EMIT_LABEL_IF_FALSE   = 1
+EMIT_LABEL_IF_END     = 2
+EMIT_LABEL_WHILE_TOP  = 3
+EMIT_LABEL_WHILE_END  = 4
+EMIT_LABEL_NEAR       = 5
 
 ;;; emit_output_byte
 ;;; A=byte. Carry set success. X/Y and $fc-$ff preserved.
@@ -283,11 +297,50 @@ emit_literal_name:
 	rts
 
 ;;; Generated control labels are monotonically numbered and never patched.
-;;; emitLabelValue is the label to spell.
+;;; emitLabelValue is the number to spell; emitLabelKind chooses only its
+;;; descriptive prefix. Keep the selector explicit so the generated vocabulary
+;;; is visible here rather than hidden in an indexed table.
 emit_generated_label_name:
+	lda emitLabelKind
+	cmp #EMIT_LABEL_IF_FALSE
+	beq .ifFalse
+	cmp #EMIT_LABEL_IF_END
+	beq .ifEnd
+	cmp #EMIT_LABEL_WHILE_TOP
+	beq .whileTop
+	cmp #EMIT_LABEL_WHILE_END
+	beq .whileEnd
+	cmp #EMIT_LABEL_NEAR
+	beq .near
 	lda #emitLabelPrefixEnd-emitLabelPrefix
 	ldx #<emitLabelPrefix
 	ldy #>emitLabelPrefix
+	jmp .prefix
+.ifFalse:
+	lda #emitIfFalsePrefixEnd-emitIfFalsePrefix
+	ldx #<emitIfFalsePrefix
+	ldy #>emitIfFalsePrefix
+	jmp .prefix
+.ifEnd:
+	lda #emitIfEndPrefixEnd-emitIfEndPrefix
+	ldx #<emitIfEndPrefix
+	ldy #>emitIfEndPrefix
+	jmp .prefix
+.whileTop:
+	lda #emitWhileTopPrefixEnd-emitWhileTopPrefix
+	ldx #<emitWhileTopPrefix
+	ldy #>emitWhileTopPrefix
+	jmp .prefix
+.whileEnd:
+	lda #emitWhileEndPrefixEnd-emitWhileEndPrefix
+	ldx #<emitWhileEndPrefix
+	ldy #>emitWhileEndPrefix
+	jmp .prefix
+.near:
+	lda #emitNearPrefixEnd-emitNearPrefix
+	ldx #<emitNearPrefix
+	ldy #>emitNearPrefix
+.prefix:
 	jsr emit_text
 	bcc .failed
 	lda emitLabelValue
@@ -300,7 +353,9 @@ emit_generated_label_name:
 	rts
 
 ;;; reserve_generated_label
-;;; Copy the current counter into emitLabelValue, then increment it.
+;;; Copy the current counter into emitLabelValue, then increment it. The label
+;;; role is deliberately not retained here; an unfinished source frame already
+;;; knows whether a stored number is an if/while target.
 reserve_generated_label:
 	lda generatedLabelCounter
 	sta emitLabelValue
@@ -316,6 +371,7 @@ reset_generated_labels:
 	lda #$00
 	sta generatedLabelCounter
 	sta generatedLabelCounter+1
+	sta emitLabelKind
 	rts
 
 emitCPrefix:		byte '_','_','c','_'
@@ -328,6 +384,16 @@ emitStringPrefix:	byte '_','_','n','c','_','s','t','r','i','n','g'
 emitStringPrefixEnd:
 emitLabelPrefix:	byte '_','_','n','c','_','L'
 emitLabelPrefixEnd:
+emitIfFalsePrefix:	byte '_','_','n','c','_','i','f','_','f','a','l','s','e','_'
+emitIfFalsePrefixEnd:
+emitIfEndPrefix:	byte '_','_','n','c','_','i','f','_','e','n','d','_'
+emitIfEndPrefixEnd:
+emitWhileTopPrefix:	byte '_','_','n','c','_','w','h','i','l','e','_','t','o','p','_'
+emitWhileTopPrefixEnd:
+emitWhileEndPrefix:	byte '_','_','n','c','_','w','h','i','l','e','_','e','n','d','_'
+emitWhileEndPrefixEnd:
+emitNearPrefix:	byte '_','_','n','c','_','n','e','a','r','_'
+emitNearPrefixEnd:
 
 emitOutputEnabled:	byte 0
 emitOutputByte:		byte 0
@@ -342,3 +408,4 @@ emitSavedValue:		byte 0
 emitWord:		word 0
 generatedLabelCounter:	word 0
 emitLabelValue:		word 0
+emitLabelKind:		byte EMIT_LABEL_GENERIC
