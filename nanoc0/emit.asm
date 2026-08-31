@@ -7,11 +7,11 @@
 ;;; only tests exercise parser state). When enabled, bytes go straight to the
 ;;; compiler's fixed KERNAL output logical file. There is no line/output buffer.
 ;;;
-;;; Source input and generated output may share one serial device. source.asm
-;;; records the currently selected compiler direction. On a real direction
-;;; change we CLRCHN first, then CHKOUT the still-open output logical file; this
-;;; mirrors source.asm's CLRCHN/CHKIN transition and leaves steady output as a
-;;; simple stream of CHROUT calls.
+;;; The bootstrap driver opens source on device 8 and generated output on device
+;;; 9. Both drives still share the C64's one IEC bus, so source.asm records the
+;;; currently selected TALK/LISTEN direction. On a real direction change we
+;;; CLRCHN first, then CHKOUT the still-open output logical file; steady output
+;;; remains a simple stream of CHROUT calls.
 ;;;
 ;;; emit_output_byte preserves X, Y and both compiler scratch pairs because the
 ;;; formatter may be walking text through them. #57 only needs to add the normal
