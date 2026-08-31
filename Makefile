@@ -36,6 +36,7 @@ NANOC0_TARGETS = \
 	$(BUILD_DIR)/test_nanoc0_expression_run.prg \
 	$(BUILD_DIR)/test_nanoc0_statement_compile.prg \
 	$(BUILD_DIR)/test_nanoc0_statement_run.prg \
+	$(BUILD_DIR)/test_nanoc0_calls.prg \
 	$(BUILD_DIR)/test_nanoc0_runtime_compile.prg \
 	$(BUILD_DIR)/test_nanoc0_runtime_run.prg
 
@@ -117,6 +118,13 @@ NANOC0_STATEMENT_FIXTURES = \
 	tests/nanoc0-stmt/int-from-pointer.c \
 	tests/nanoc0-stmt/indexed-pointer-value.c
 
+NANOC0_CALL_FIXTURES = \
+	tests/nanoc0-call/CNTBAD.C \
+	tests/nanoc0-call/TYPBAD.C \
+	tests/nanoc0-call/LATBAD.C \
+	tests/nanoc0-call/DEPBAD.C \
+	tests/nanoc0-call/ARGBAD.C
+
 NANOC0_RUNTIME_FIXTURES = \
 	tests/nanoc0-runtime/runtime.c \
 	tests/nanoc0-runtime/RUNTIME.IN
@@ -130,7 +138,7 @@ EXAMPLE_TARGETS = \
 	$(BUILD_DIR)/border-demo.prg \
 	$(BUILD_DIR)/border-c.prg
 
-.PHONY: all setup dis ass nanoc0 examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap test-nanoc0-expressions test-nanoc0-statements test-nanoc0-runtime clean
+.PHONY: all setup dis ass nanoc0 examples test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap test-nanoc0-expressions test-nanoc0-statements test-nanoc0-calls test-nanoc0-runtime clean
 
 all: dis ass nanoc0 examples
 
@@ -162,7 +170,7 @@ nanoc0: $(NANOC0_TARGETS)
 
 examples: $(EXAMPLE_TARGETS)
 
-test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap test-nanoc0-expressions test-nanoc0-statements test-nanoc0-runtime
+test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap test-nanoc0-expressions test-nanoc0-statements test-nanoc0-calls test-nanoc0-runtime
 
 test-skipws: $(BUILD_DIR)/test_skipws.prg
 	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< skipws
@@ -222,6 +230,9 @@ test-nanoc0-statements: $(BUILD_DIR)/test_nanoc0_statement_compile.prg $(BUILD_D
 	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR)/tests/nanoc0-stmt VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_statement_compile.prg nanoc0-statement-compile
 	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR)/tests/nanoc0-stmt VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_statement_run.prg nanoc0-statements
 
+test-nanoc0-calls: $(BUILD_DIR)/test_nanoc0_calls.prg $(NANOC0_CALL_FIXTURES)
+	VICE_FS_DIR=$(CURDIR)/tests/nanoc0-call VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< nanoc0-calls
+
 test-nanoc0-runtime: $(BUILD_DIR)/test_nanoc0_runtime_compile.prg $(BUILD_DIR)/test_nanoc0_runtime_run.prg $(NANOC0_RUNTIME_FIXTURES)
 	rm -f tests/nanoc0-runtime/RTOUT.ASM tests/nanoc0-runtime/rtout.asm tests/nanoc0-runtime/SMOKE.ASM tests/nanoc0-runtime/smoke.asm tests/nanoc0-runtime/DTEST tests/nanoc0-runtime/dtest
 	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR)/tests/nanoc0-runtime VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_runtime_compile.prg nanoc0-runtime-compile
@@ -248,7 +259,7 @@ $(BUILD_DIR)/parse.prg: ass/parse.asm ass/parser.asm ass/instruction.asm ass/sca
 $(BUILD_DIR)/test_skipws.prg: ass/test_skipws.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_skipws.asm
 
-$(BUILD_DIR)/test_scanner.prg: ass/test_scanner.asm ass/scanner.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
+$(BUILD_DIR)/test_scanner.prg: ass/test_scanner.asm ass/scanner.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_scanner.asm
 
 $(BUILD_DIR)/test_parser.prg: ass/test_parser.asm ass/parser.asm ass/scanner.asm ass/skipws.asm ass/zp.inc test.inc | $(BUILD_DIR)
@@ -307,6 +318,9 @@ $(BUILD_DIR)/test_nanoc0_statement_compile.prg: nanoc0/test_statement_compile.as
 
 $(BUILD_DIR)/test_nanoc0_statement_run.prg: ass/test_nanoc0_statements.asm ass/ass.asm $(ASSEMBLER_DEPS) | $(BUILD_DIR)
 	cd ass && $(VASM) $(VASMFLAGS) -o ../$@ test_nanoc0_statements.asm
+
+$(BUILD_DIR)/test_nanoc0_calls.prg: nanoc0/test_calls.asm $(NANOC0_EXPRESSION_DEPS) test.inc | $(BUILD_DIR)
+	cd nanoc0 && $(VASM) $(VASMFLAGS) -o ../$@ test_calls.asm
 
 $(BUILD_DIR)/test_nanoc0_runtime_compile.prg: nanoc0/test_runtime_compile.asm $(NANOC0_EXPRESSION_DEPS) test.inc | $(BUILD_DIR)
 	cd nanoc0 && $(VASM) $(VASMFLAGS) -o ../$@ test_runtime_compile.asm
