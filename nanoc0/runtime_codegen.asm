@@ -335,47 +335,47 @@ runtimeClosePathEnd:
 
 runtimeInitPrefix:
 	string "__nc_init:"
-	string "    cld"
-	string "    lda #<NC_BSS"
-	string "    sta NC_PTR"
-	string "    lda #>NC_BSS"
-	string "    sta NC_PTR+1"
+	string "	cld"
+	string "	lda #<NC_BSS"
+	string "	sta NC_PTR"
+	string "	lda #>NC_BSS"
+	string "	sta NC_PTR+1"
 	byte 0
 
 runtimeInitClearText:
-	string "    ldy #$00"
+	string "	ldy #$00"
 	string ".clear_globals:"
-	string "    lda NC_TMP"
-	string "    ora NC_TMP+1"
-	string "    beq .globals_done"
-	string "    lda #$00"
-	string "    sta (NC_PTR),y"
-	string "    inc NC_PTR"
-	string "    bne .pointer_done"
-	string "    inc NC_PTR+1"
+	string "	lda NC_TMP"
+	string "	ora NC_TMP+1"
+	string "	beq .globals_done"
+	string "	lda #$00"
+	string "	sta (NC_PTR),y"
+	string "	inc NC_PTR"
+	string "	bne .pointer_done"
+	string "	inc NC_PTR+1"
 	string ".pointer_done:"
-	string "    lda NC_TMP"
-	string "    bne .decrement_low"
-	string "    dec NC_TMP+1"
+	string "	lda NC_TMP"
+	string "	bne .decrement_low"
+	string "	dec NC_TMP+1"
 	string ".decrement_low:"
-	string "    dec NC_TMP"
-	string "    jmp .clear_globals"
+	string "	dec NC_TMP"
+	string "	jmp .clear_globals"
 	string ".globals_done:"
 	byte 0
 
 runtimeInitIoText:
-	string "    lda #$00"
-	string "    ldx #$05        ; six runtime handles"
+	string "	lda #$00"
+	string "	ldx #$05        ; six runtime handles"
 	string ".clear_io:"
-	string "    sta __nc_io_mode,x"
-	string "    sta __nc_io_eof,x"
-	string "    dex"
-	string "    bpl .clear_io"
+	string "	sta __nc_io_mode,x"
+	string "	sta __nc_io_eof,x"
+	string "	dex"
+	string "	bpl .clear_io"
 	byte 0
 
 runtimeInitReturnText:
-	string "    cld"
-	string "    rts"
+	string "	cld"
+	string "	rts"
 	byte 0
 
 runtimeIncludeLength:	byte 0
