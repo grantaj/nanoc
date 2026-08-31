@@ -328,7 +328,8 @@ rtBssAssignEnd:
 rtBssEndPrefix:	byte '_','_','n','c','_','b','s','s','_','e','n','d',' ','=',' ','N','C','_','B','S','S','+','$'
 rtBssEndPrefixEnd:
 
-runtimeName:	byte 'R','U','N','T','I','M','E','.','C'
+runtimeName:
+	byte 'T','E','S','T','S','/','N','A','N','O','C','0','-','R','U','N','T','I','M','E','/','R','U','N','T','I','M','E','.','C'
 runtimeNameEnd:
 outputName:	byte 'R','T','O','U','T','.','A','S','M',',','S',',','W'
 outputNameEnd:
