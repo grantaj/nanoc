@@ -19,6 +19,7 @@
 ;;; function body itself is depth zero, so `}` at depth zero ends the function.
 
 CONTROL_STACK_CAPACITY = 16
+CONTROL_STACK_BYTES    = 81
 
 CONTROL_BLOCK   = 1
 CONTROL_IF_TRUE = 2
@@ -287,8 +288,9 @@ close_if_else_body:
 
 parse_while_statement:
 	jsr ensure_control_space
-	bcc .failed
-
+	bcs .haveSpace
+	rts
+.haveSpace:
 	ldx controlDepth
 	jsr reserve_generated_label
 	lda emitLabelValue
@@ -306,7 +308,9 @@ parse_while_statement:
 	sta controlLabel1Hi,x
 
 	jsr parser_next
-	bcc .failed
+	bcs .haveWhileToken
+	rts
+.haveWhileToken:
 	lda currentTokenKind
 	cmp #'('
 	beq .haveOpen
@@ -314,9 +318,13 @@ parse_while_statement:
 	jmp parser_fail
 .haveOpen:
 	jsr parser_next
-	bcc .failed
+	bcs .haveConditionToken
+	rts
+.haveConditionToken:
 	jsr parse_condition_expression
-	bcc .failed
+	bcs .conditionDone
+	rts
+.conditionDone:
 	lda currentTokenKind
 	cmp #')'
 	beq .haveClose
@@ -324,7 +332,9 @@ parse_while_statement:
 	jmp parser_fail
 .haveClose:
 	jsr parser_next
-	bcc .failed
+	bcs .haveBodyToken
+	rts
+.haveBodyToken:
 	lda currentTokenKind
 	cmp #'{' 
 	beq .haveBody
@@ -341,9 +351,7 @@ parse_while_statement:
 	inc controlDepth
 	jsr emit_statement_false_jump
 	bcc .emitFail
-	jsr parser_next
-.failed:
-	rts
+	jmp parser_next
 .emitFail:
 	lda #PARSE_EMIT_ERROR
 	jmp parser_fail
