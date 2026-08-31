@@ -35,4 +35,5 @@ int main()
     int r27 = words[1];
     int r28 = 'A' == 65;
     int r29 = 5 != 5;
+    int r30 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"[70];
 }
