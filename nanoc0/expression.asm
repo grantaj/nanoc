@@ -222,7 +222,9 @@ parse_expression:
 	rts
 .groupPostfixDone:
 	lda expressionNeedValue
-	beq .operator
+	bne .groupValue
+	jmp .operator
+.groupValue:
 	jmp .value
 
 .closeIndex:
@@ -250,7 +252,9 @@ parse_expression:
 	rts
 .indexPostfixDone:
 	lda expressionNeedValue
-	beq .operator
+	bne .indexValue
+	jmp .operator
+.indexValue:
 	jmp .value
 
 .finish:
@@ -327,7 +331,9 @@ parse_expression_primary:
 	jmp expression_fail
 .integerEmitted:
 	jsr parser_next
-	bcs .primaryDone
+	bcc .integerFailed
+	jmp .primaryDone
+.integerFailed:
 	rts
 
 .character:
@@ -343,7 +349,9 @@ parse_expression_primary:
 	jmp expression_fail
 .characterEmitted:
 	jsr parser_next
-	bcs .primaryDone
+	bcc .characterFailed
+	jmp .primaryDone
+.characterFailed:
 	rts
 
 .string:
@@ -363,7 +371,9 @@ parse_expression_primary:
 	lda #TYPE_CHAR
 	sta expressionElementType
 	jsr parser_next
-	bcs .primaryDone
+	bcc .stringFailed
+	jmp .primaryDone
+.stringFailed:
 	rts
 
 .identifier:
