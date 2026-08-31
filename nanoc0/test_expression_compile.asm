@@ -115,8 +115,21 @@ xt_compile_runtime_fixture:
 	clc
 	rts
 .compileFail:
+	;;; Preserve the compiler's layered diagnostic in the normal one-byte native
+	;;; test result. $40.. reports parserError; $80.. reports expressionError when
+	;;; the declaration layer failed specifically at the expression boundary.
+	lda parserError
+	cmp #PARSE_EXPRESSION_ERROR
+	bne .parserDiagnostic
+	lda expressionError
+	ora #$80
+	jmp .closeDiagnostic
+.parserDiagnostic:
+	ora #$40
+.closeDiagnostic:
+	pha
 	jsr xt_close_output
-	lda #XT_FAIL_COMPILE
+	pla
 	clc
 	rts
 .outputFail:
