@@ -20,25 +20,18 @@
 ;;;
 ;;; Input OPEN on an IEC disk does not itself report a missing file. io_open must
 ;;; therefore select the channel and read one byte before READST can distinguish
-;;; a real file from a failed disk open. Modes 3 and 4 mean an input handle has
-;;; that byte prefetched, with mode 4 also recording that it was the final byte.
-;;; Until the first io_read, __nc_io_eof holds the prefetched byte itself. That
-;;; read changes the mode to ordinary input (1) and turns __nc_io_eof back into
-;;; its normal 0/1 EOF-pending flag. No extra runtime arrays are needed.
+;;; a real file from a failed disk open. The two prefetch modes remember that
+;;; byte in __nc_io_eof until the first io_read. No extra prefetch array exists.
 ;;;
-;;; __nc_init clears the complete generated BSS interval. Only source globals
-;;; require C zero-initialisation, but clearing parameter/spill/staging storage as
-;;; well costs startup cycles rather than compiler machinery and preserves one
-;;; authoritative BSS boundary.
+;;; __nc_init clears exactly the source-global zero-required interval. Runtime
+;;; mode/EOF state is then cleared explicitly when I/O support is present; normal
+;;; function parameters, locals, spills and staging are never startup-cleared.
 ;;;
 ;;; Runtime/support entry points clear decimal mode before doing any arithmetic
 ;;; and again on return. Generated Nano C never emits SED, but this makes the
 ;;; machine invariant explicit even when a support routine is called with D set.
 ;;;
-;;; Runtime routines are emitted only when source used them. __nc_mul16 is kept in
-;;; the small support slab unconditionally: #55 already emits calls to that fixed
-;;; helper, and one always-present few-dozen-byte routine is simpler than another
-;;; compiler usage bit solely to omit dead support text.
+;;; Runtime routines and __nc_mul16 are emitted only when the source used them.
 
 RUNTIME_HANDLE_CAPACITY = 6
 
@@ -51,12 +44,14 @@ emit_runtime_support:
 	bcs .initDone
 	rts
 .initDone:
+	lda multiplyUsed
+	beq .runtimeCheck
 	ldx #<runtimeMulText
 	ldy #>runtimeMulText
 	jsr emit_runtime_lines
-	bcs .mulDone
+	bcs .runtimeCheck
 	rts
-.mulDone:
+.runtimeCheck:
 	jsr runtime_any_used
 	bcs .runtime
 	sec
@@ -208,8 +203,8 @@ emit_runtime_definition:
 	clc
 	rts
 
-;;; bssOffset is final after prepare_runtime_storage. Emit its low/high bytes
-;;; directly into the count loaded by __nc_init.
+;;; zeroRequiredEnd is the byte count of source globals that need C startup
+;;; zeroing. Runtime state, when present, is reset separately below.
 emit_runtime_init:
 	ldx #<runtimeInitPrefix
 	ldy #>runtimeInitPrefix
@@ -220,7 +215,7 @@ emit_runtime_init:
 	ldy #>runtimeLdaImmediate
 	jsr emit_text
 	bcc .failed
-	lda bssOffset
+	lda zeroRequiredEnd
 	jsr emit_hex_byte
 	bcc .failed
 	jsr emit_newline
@@ -237,7 +232,7 @@ emit_runtime_init:
 	ldy #>runtimeLdaImmediate
 	jsr emit_text
 	bcc .failed
-	lda bssOffset+1
+	lda zeroRequiredEnd+1
 	jsr emit_hex_byte
 	bcc .failed
 	jsr emit_newline
@@ -249,8 +244,19 @@ emit_runtime_init:
 	bcc .failed
 	jsr emit_newline
 	bcc .failed
-	ldx #<runtimeInitSuffix
-	ldy #>runtimeInitSuffix
+	ldx #<runtimeInitClearText
+	ldy #>runtimeInitClearText
+	jsr emit_runtime_lines
+	bcc .failed
+	jsr runtime_any_used
+	bcc .return
+	ldx #<runtimeInitIoText
+	ldy #>runtimeInitIoText
+	jsr emit_runtime_lines
+	bcc .failed
+.return:
+	ldx #<runtimeInitReturnText
+	ldy #>runtimeInitReturnText
 	jmp emit_runtime_lines
 .failed:
 	clc
@@ -316,25 +322,38 @@ runtimeInitPrefix:
 	string "    sta NC_PTR+1"
 	byte 0
 
-runtimeInitSuffix:
+runtimeInitClearText:
 	string "    ldy #$00"
-	string "__nc_init_loop:"
+	string ".clear_globals:"
 	string "    lda NC_TMP"
 	string "    ora NC_TMP+1"
-	string "    beq __nc_init_done"
+	string "    beq .globals_done"
 	string "    lda #$00"
 	string "    sta (NC_PTR),y"
 	string "    inc NC_PTR"
-	string "    bne __nc_init_pointer_done"
+	string "    bne .pointer_done"
 	string "    inc NC_PTR+1"
-	string "__nc_init_pointer_done:"
+	string ".pointer_done:"
 	string "    lda NC_TMP"
-	string "    bne __nc_init_decrement_low"
+	string "    bne .decrement_low"
 	string "    dec NC_TMP+1"
-	string "__nc_init_decrement_low:"
+	string ".decrement_low:"
 	string "    dec NC_TMP"
-	string "    jmp __nc_init_loop"
-	string "__nc_init_done:"
+	string "    jmp .clear_globals"
+	string ".globals_done:"
+	byte 0
+
+runtimeInitIoText:
+	string "    lda #$00"
+	string "    ldx #$05        ; six runtime handles"
+	string ".clear_io:"
+	string "    sta __nc_io_mode,x"
+	string "    sta __nc_io_eof,x"
+	string "    dex"
+	string "    bpl .clear_io"
+	byte 0
+
+runtimeInitReturnText:
 	string "    cld"
 	string "    rts"
 	byte 0
@@ -347,13 +366,13 @@ runtimeMulText:
 	string "    stx NC_PTR+1"
 	string "    ldy #$00"
 	string "    ldx #$00"
-	string "__nc_mul16_loop:"
+	string ".loop:"
 	string "    lda NC_PTR"
 	string "    ora NC_PTR+1"
-	string "    beq __nc_mul16_done"
+	string "    beq .done"
 	string "    lda NC_PTR"
 	string "    and #$01"
-	string "    beq __nc_mul16_noadd"
+	string "    beq .noadd"
 	string "    tya"
 	string "    clc"
 	string "    adc NC_TMP"
@@ -361,19 +380,27 @@ runtimeMulText:
 	string "    txa"
 	string "    adc NC_TMP+1"
 	string "    tax"
-	string "__nc_mul16_noadd:"
+	string ".noadd:"
 	string "    asl NC_TMP"
 	string "    rol NC_TMP+1"
 	string "    lsr NC_PTR+1"
 	string "    ror NC_PTR"
-	string "    jmp __nc_mul16_loop"
-	string "__nc_mul16_done:"
+	string "    jmp .loop"
+	string ".done:"
 	string "    tya"
 	string "    cld"
 	string "    rts"
 	byte 0
 
 runtimeCommonText:
+	string "NC_IO_INPUT        = $01"
+	string "NC_IO_OUTPUT       = $02"
+	string "NC_IO_PREFETCH     = $03"
+	string "NC_IO_PREFETCH_EOF = $04"
+	string "NC_IO_HANDLE_COUNT = $06"
+	string "NC_IO_LFN_BASE     = $04"
+	string "NC_IO_READ_DEVICE  = $08"
+	string "NC_IO_WRITE_DEVICE = $09"
 	string "__nc_io_zero:"
 	string "    lda #$00"
 	string "    ldx #$00"
@@ -395,64 +422,64 @@ runtimeOpenText:
 	string "__c_io_open:"
 	string "    cld"
 	string "    ldx #$00"
-	string "__nc_io_open_find:"
+	string ".find:"
 	string "    lda __nc_io_mode,x"
-	string "    beq __nc_io_open_slot"
+	string "    beq .slot"
 	string "    inx"
-	string "    cpx #$06"
-	string "    bne __nc_io_open_find"
+	string "    cpx #NC_IO_HANDLE_COUNT"
+	string "    bne .find"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_open_slot:"
+	string ".slot:"
 	string "    stx __nc_io_handle"
 	string "    lda __c_io_open__v01+1"
-	string "    beq __nc_io_open_length_ok"
+	string "    beq .length_ok"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_open_length_ok:"
-	string "    jsr $ffcc"
+	string ".length_ok:"
+	string "    jsr $ffcc      ; CLRCHN"
 	string "    lda __c_io_open__v01"
 	string "    ldx __c_io_open__v00"
 	string "    ldy __c_io_open__v00+1"
-	string "    jsr $ffbd"
+	string "    jsr $ffbd      ; SETNAM"
 	string "    lda __nc_io_handle"
 	string "    clc"
-	string "    adc #$04"
+	string "    adc #NC_IO_LFN_BASE"
 	string "    tay"
-	string "    ldx #$08"
-	string "    jsr $ffba"
-	string "    jsr $ffc0"
-	string "    bcs __nc_io_open_fail"
+	string "    ldx #NC_IO_READ_DEVICE"
+	string "    jsr $ffba      ; SETLFS"
+	string "    jsr $ffc0      ; OPEN"
+	string "    bcs .fail"
 	string "    lda __nc_io_handle"
 	string "    clc"
-	string "    adc #$04"
+	string "    adc #NC_IO_LFN_BASE"
 	string "    tax"
-	string "    jsr $ffc6"
-	string "    bcs __nc_io_open_fail"
-	string "    jsr $ffcf"
+	string "    jsr $ffc6      ; CHKIN"
+	string "    bcs .fail"
+	string "    jsr $ffcf      ; CHRIN"
 	string "    sta NC_TMP"
-	string "    jsr $ffb7"
+	string "    jsr $ffb7      ; READST"
 	string "    sta NC_TMP+1"
 	string "    and #$bf"
-	string "    beq __nc_io_open_ok"
-	string "__nc_io_open_fail:"
-	string "    jsr $ffcc"
+	string "    beq .ok"
+	string ".fail:"
+	string "    jsr $ffcc      ; CLRCHN"
 	string "    lda __nc_io_handle"
 	string "    clc"
-	string "    adc #$04"
-	string "    jsr $ffc3"
+	string "    adc #NC_IO_LFN_BASE"
+	string "    jsr $ffc3      ; CLOSE"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_open_ok:"
-	string "    jsr $ffcc"
+	string ".ok:"
+	string "    jsr $ffcc      ; CLRCHN"
 	string "    ldx __nc_io_handle"
 	string "    lda NC_TMP"
 	string "    sta __nc_io_eof,x"
 	string "    lda NC_TMP+1"
 	string "    and #$40"
-	string "    beq __nc_io_open_prefetch"
-	string "    lda #$04"
-	string "    bne __nc_io_open_store_mode"
-	string "__nc_io_open_prefetch:"
-	string "    lda #$03"
-	string "__nc_io_open_store_mode:"
+	string "    beq .prefetch"
+	string "    lda #NC_IO_PREFETCH_EOF"
+	string "    bne .store_mode"
+	string ".prefetch:"
+	string "    lda #NC_IO_PREFETCH"
+	string ".store_mode:"
 	string "    sta __nc_io_mode,x"
 	string "    txa"
 	string "    ldx #$00"
@@ -464,82 +491,83 @@ runtimeReadText:
 	string "__c_io_read:"
 	string "    cld"
 	string "    lda __c_io_read__v00+1"
-	string "    beq __nc_io_read_handle_low"
+	string "    beq .handle_low"
 	string "    jmp __nc_io_minus2"
-	string "__nc_io_read_handle_low:"
+	string ".handle_low:"
 	string "    lda __c_io_read__v00"
-	string "    cmp #$06"
-	string "    bcc __nc_io_read_in_range"
+	string "    cmp #NC_IO_HANDLE_COUNT"
+	string "    bcc .in_range"
 	string "    jmp __nc_io_minus2"
-	string "__nc_io_read_in_range:"
+	string ".in_range:"
 	string "    sta __nc_io_handle"
 	string "    tax"
 	string "    lda __nc_io_mode,x"
-	string "    cmp #$01"
-	string "    beq __nc_io_read_open"
-	string "    cmp #$03"
-	string "    beq __nc_io_read_prefetch"
-	string "    cmp #$04"
-	string "    beq __nc_io_read_prefetch_eof"
+	string "    cmp #NC_IO_INPUT"
+	string "    beq .open"
+	string "    cmp #NC_IO_PREFETCH"
+	string "    beq .prefetch"
+	string "    cmp #NC_IO_PREFETCH_EOF"
+	string "    beq .prefetch_eof"
 	string "    jmp __nc_io_minus2"
-	string "__nc_io_read_prefetch:"
+	string ".prefetch:"
 	string "    lda __nc_io_eof,x"
 	string "    sta NC_TMP"
 	string "    lda #$00"
 	string "    sta __nc_io_eof,x"
-	string "    lda #$01"
+	string "    lda #NC_IO_INPUT"
 	string "    sta __nc_io_mode,x"
 	string "    lda NC_TMP"
 	string "    ldx #$00"
 	string "    cld"
 	string "    rts"
-	string "__nc_io_read_prefetch_eof:"
+	string ".prefetch_eof:"
 	string "    lda __nc_io_eof,x"
 	string "    sta NC_TMP"
 	string "    lda #$01"
 	string "    sta __nc_io_eof,x"
+	string "    lda #NC_IO_INPUT"
 	string "    sta __nc_io_mode,x"
 	string "    lda NC_TMP"
 	string "    ldx #$00"
 	string "    cld"
 	string "    rts"
-	string "__nc_io_read_open:"
+	string ".open:"
 	string "    lda __nc_io_eof,x"
-	string "    beq __nc_io_read_byte"
+	string "    beq .byte"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_read_byte:"
-	string "    jsr $ffcc"
+	string ".byte:"
+	string "    jsr $ffcc      ; CLRCHN"
 	string "    lda __nc_io_handle"
 	string "    clc"
-	string "    adc #$04"
+	string "    adc #NC_IO_LFN_BASE"
 	string "    tax"
-	string "    jsr $ffc6"
-	string "    bcc __nc_io_read_selected"
-	string "    jmp __nc_io_read_error_clear"
-	string "__nc_io_read_selected:"
-	string "    jsr $ffcf"
+	string "    jsr $ffc6      ; CHKIN"
+	string "    bcc .selected"
+	string "    jmp .error_clear"
+	string ".selected:"
+	string "    jsr $ffcf      ; CHRIN"
 	string "    sta NC_TMP"
-	string "    jsr $ffb7"
+	string "    jsr $ffb7      ; READST"
 	string "    sta NC_TMP+1"
-	string "    jsr $ffcc"
+	string "    jsr $ffcc      ; CLRCHN"
 	string "    lda NC_TMP+1"
 	string "    and #$bf"
-	string "    beq __nc_io_read_status_ok"
+	string "    beq .status_ok"
 	string "    jmp __nc_io_minus2"
-	string "__nc_io_read_status_ok:"
+	string ".status_ok:"
 	string "    lda NC_TMP+1"
 	string "    and #$40"
-	string "    beq __nc_io_read_return"
+	string "    beq .return"
 	string "    ldx __nc_io_handle"
 	string "    lda #$01"
 	string "    sta __nc_io_eof,x"
-	string "__nc_io_read_return:"
+	string ".return:"
 	string "    lda NC_TMP"
 	string "    ldx #$00"
 	string "    cld"
 	string "    rts"
-	string "__nc_io_read_error_clear:"
-	string "    jsr $ffcc"
+	string ".error_clear:"
+	string "    jsr $ffcc      ; CLRCHN"
 	string "    jmp __nc_io_minus2"
 	byte 0
 
@@ -547,24 +575,24 @@ runtimeCreateText:
 	string "__c_io_create:"
 	string "    cld"
 	string "    ldx #$00"
-	string "__nc_io_create_find:"
+	string ".find:"
 	string "    lda __nc_io_mode,x"
-	string "    beq __nc_io_create_slot"
+	string "    beq .slot"
 	string "    inx"
-	string "    cpx #$06"
-	string "    bne __nc_io_create_find"
+	string "    cpx #NC_IO_HANDLE_COUNT"
+	string "    bne .find"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_create_slot:"
+	string ".slot:"
 	string "    stx __nc_io_handle"
 	string "    lda __c_io_create__v01+1"
-	string "    beq __nc_io_create_length_low"
+	string "    beq .length_low"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_create_length_low:"
+	string ".length_low:"
 	string "    lda __c_io_create__v01"
-	string "    cmp #$f9"
-	string "    bcc __nc_io_create_length_ok"
+	string "    cmp #$f9       ; room for @0: and ,S,W"
+	string "    bcc .length_ok"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_create_length_ok:"
+	string ".length_ok:"
 	string "    lda #'@'"
 	string "    sta __nc_io_name"
 	string "    lda #'0'"
@@ -576,14 +604,14 @@ runtimeCreateText:
 	string "    lda __c_io_create__v00+1"
 	string "    sta NC_PTR+1"
 	string "    ldy #$00"
-	string "__nc_io_create_copy:"
+	string ".copy:"
 	string "    cpy __c_io_create__v01"
-	string "    beq __nc_io_create_suffix"
+	string "    beq .suffix"
 	string "    lda (NC_PTR),y"
 	string "    sta __nc_io_name+3,y"
 	string "    iny"
-	string "    jmp __nc_io_create_copy"
-	string "__nc_io_create_suffix:"
+	string "    jmp .copy"
+	string ".suffix:"
 	string "    tya"
 	string "    clc"
 	string "    adc #$03"
@@ -599,29 +627,29 @@ runtimeCreateText:
 	string "    inx"
 	string "    lda #'W'"
 	string "    sta __nc_io_name,x"
-	string "    jsr $ffcc"
+	string "    jsr $ffcc      ; CLRCHN"
 	string "    lda __c_io_create__v01"
 	string "    clc"
 	string "    adc #$07"
 	string "    ldx #<__nc_io_name"
 	string "    ldy #>__nc_io_name"
-	string "    jsr $ffbd"
+	string "    jsr $ffbd      ; SETNAM"
 	string "    lda __nc_io_handle"
 	string "    clc"
-	string "    adc #$04"
+	string "    adc #NC_IO_LFN_BASE"
 	string "    tay"
-	string "    ldx #$09"
-	string "    jsr $ffba"
-	string "    jsr $ffc0"
-	string "    bcc __nc_io_create_ok"
+	string "    ldx #NC_IO_WRITE_DEVICE"
+	string "    jsr $ffba      ; SETLFS"
+	string "    jsr $ffc0      ; OPEN"
+	string "    bcc .ok"
 	string "    lda __nc_io_handle"
 	string "    clc"
-	string "    adc #$04"
-	string "    jsr $ffc3"
+	string "    adc #NC_IO_LFN_BASE"
+	string "    jsr $ffc3      ; CLOSE"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_create_ok:"
+	string ".ok:"
 	string "    ldx __nc_io_handle"
-	string "    lda #$02"
+	string "    lda #NC_IO_OUTPUT"
 	string "    sta __nc_io_mode,x"
 	string "    lda #$00"
 	string "    sta __nc_io_eof,x"
@@ -635,42 +663,42 @@ runtimeWriteText:
 	string "__c_io_write:"
 	string "    cld"
 	string "    lda __c_io_write__v00+1"
-	string "    beq __nc_io_write_handle_low"
+	string "    beq .handle_low"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_write_handle_low:"
+	string ".handle_low:"
 	string "    lda __c_io_write__v00"
-	string "    cmp #$06"
-	string "    bcc __nc_io_write_in_range"
+	string "    cmp #NC_IO_HANDLE_COUNT"
+	string "    bcc .in_range"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_write_in_range:"
+	string ".in_range:"
 	string "    sta __nc_io_handle"
 	string "    tax"
 	string "    lda __nc_io_mode,x"
-	string "    cmp #$02"
-	string "    beq __nc_io_write_open"
+	string "    cmp #NC_IO_OUTPUT"
+	string "    beq .open"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_write_open:"
-	string "    jsr $ffcc"
+	string ".open:"
+	string "    jsr $ffcc      ; CLRCHN"
 	string "    lda __nc_io_handle"
 	string "    clc"
-	string "    adc #$04"
+	string "    adc #NC_IO_LFN_BASE"
 	string "    tax"
-	string "    jsr $ffc9"
-	string "    bcc __nc_io_write_selected"
-	string "    jmp __nc_io_write_error_clear"
-	string "__nc_io_write_selected:"
+	string "    jsr $ffc9      ; CHKOUT"
+	string "    bcc .selected"
+	string "    jmp .error_clear"
+	string ".selected:"
 	string "    lda __c_io_write__v01"
-	string "    jsr $ffd2"
-	string "    jsr $ffb7"
+	string "    jsr $ffd2      ; CHROUT"
+	string "    jsr $ffb7      ; READST"
 	string "    sta NC_TMP"
-	string "    jsr $ffcc"
+	string "    jsr $ffcc      ; CLRCHN"
 	string "    lda NC_TMP"
-	string "    beq __nc_io_write_ok"
+	string "    beq .ok"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_write_ok:"
+	string ".ok:"
 	string "    jmp __nc_io_zero"
-	string "__nc_io_write_error_clear:"
-	string "    jsr $ffcc"
+	string ".error_clear:"
+	string "    jsr $ffcc      ; CLRCHN"
 	string "    jmp __nc_io_minus1"
 	byte 0
 
@@ -678,25 +706,25 @@ runtimeCloseText:
 	string "__c_io_close:"
 	string "    cld"
 	string "    lda __c_io_close__v00+1"
-	string "    beq __nc_io_close_handle_low"
+	string "    beq .handle_low"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_close_handle_low:"
+	string ".handle_low:"
 	string "    lda __c_io_close__v00"
-	string "    cmp #$06"
-	string "    bcc __nc_io_close_in_range"
+	string "    cmp #NC_IO_HANDLE_COUNT"
+	string "    bcc .in_range"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_close_in_range:"
+	string ".in_range:"
 	string "    sta __nc_io_handle"
 	string "    tax"
 	string "    lda __nc_io_mode,x"
-	string "    bne __nc_io_close_open"
+	string "    bne .open"
 	string "    jmp __nc_io_minus1"
-	string "__nc_io_close_open:"
-	string "    jsr $ffcc"
+	string ".open:"
+	string "    jsr $ffcc      ; CLRCHN"
 	string "    lda __nc_io_handle"
 	string "    clc"
-	string "    adc #$04"
-	string "    jsr $ffc3"
+	string "    adc #NC_IO_LFN_BASE"
+	string "    jsr $ffc3      ; CLOSE"
 	string "    ldx __nc_io_handle"
 	string "    lda #$00"
 	string "    sta __nc_io_mode,x"
