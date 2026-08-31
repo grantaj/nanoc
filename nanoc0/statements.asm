@@ -3,20 +3,20 @@
 ;;; Nano C Phase 1 executable statement parser and direct emitter.
 ;;;
 ;;; This is the statement analogue of expression.asm: one current token, one
-;;; explicit bounded stack, and assembly emitted as soon as a source construct
-;;; is understood. There is no recursive block parser and no retained statement
-;;; representation.
+;;; explicit bounded control stack, and assembly emitted as soon as a source
+;;; construct is understood. There is no recursive block parser and no retained
+;;; statement representation.
 ;;;
-;;; A control-stack frame remembers only facts that an unfinished source
-;;; construct needs later:
+;;; A frame remembers only a concrete fact about source whose closing brace has
+;;; not yet arrived:
 ;;;
-;;;   BLOCK   no extra fact; only its closing brace is still outstanding
-;;;   IF      false label, and (after else begins) the end label; the kind byte
-;;;           says whether the true or else body is open
-;;;   WHILE   loop-top and loop-end labels
+;;;   BLOCK      only that an ordinary nested block is open
+;;;   IF_TRUE    the false/join label for the open true body
+;;;   IF_ELSE    the end label for the open else body
+;;;   WHILE      loop-top and loop-end labels
 ;;;
-;;; `break` searches these same frames downward for the nearest WHILE. The
-;;; function body itself is depth zero, so a `}` at depth zero ends the function.
+;;; `break` searches those same frames downward for the nearest WHILE. The
+;;; function body itself is depth zero, so `}` at depth zero ends the function.
 
 CONTROL_STACK_CAPACITY = 16
 
@@ -28,7 +28,7 @@ CONTROL_WHILE   = 4
 ;;; parse_function_statements
 ;;; currentToken is the first executable token after function-entry locals.
 ;;; Carry set returns with currentToken already advanced beyond the function's
-;;; closing brace. Nested blocks are driven entirely by controlDepth.
+;;; closing brace.
 parse_function_statements:
 	jsr reset_statement_function_state
 
@@ -128,9 +128,9 @@ begin_plain_block:
 .failed:
 	rts
 
-;;; A closing brace completes exactly the frame on top. The mandatory braces of
-;;; if/while bodies are represented by the IF/WHILE frame itself; an ordinary
-;;; nested source block uses BLOCK.
+;;; A closing brace completes exactly the top frame. The mandatory braces of an
+;;; if/while body are represented by the IF/WHILE frame itself; only an extra
+;;; source block consumes a BLOCK frame.
 close_statement_body:
 	lda #$00
 	sta statementFunctionDone
@@ -144,7 +144,10 @@ close_statement_body:
 	dex
 	lda controlKind,x
 	cmp #CONTROL_BLOCK
-	beq .block
+	bne .notBlock
+	dec controlDepth
+	jmp parser_next
+.notBlock:
 	cmp #CONTROL_IF_TRUE
 	bne .notIfTrue
 	jmp close_if_true_body
@@ -159,9 +162,6 @@ close_statement_body:
 .badFrame:
 	lda #PARSE_BAD_STATEMENT
 	jmp parser_fail
-.block:
-	dec controlDepth
-	jmp parser_next
 
 parse_if_statement:
 	jsr ensure_control_space
@@ -170,28 +170,28 @@ parse_if_statement:
 	bcc .failed
 	lda currentTokenKind
 	cmp #'('
-	beq .open
+	beq .haveOpen
 	lda #PARSE_BAD_STATEMENT
 	jmp parser_fail
-.open:
+.haveOpen:
 	jsr parser_next
 	bcc .failed
 	jsr parse_condition_expression
 	bcc .failed
 	lda currentTokenKind
 	cmp #')'
-	beq .close
+	beq .haveClose
 	lda #PARSE_BAD_STATEMENT
 	jmp parser_fail
-.close:
+.haveClose:
 	jsr parser_next
 	bcc .failed
 	lda currentTokenKind
 	cmp #'{' 
-	beq .body
+	beq .haveBody
 	lda #PARSE_BAD_STATEMENT
 	jmp parser_fail
-.body:
+.haveBody:
 	jsr reserve_generated_label
 	ldx controlDepth
 	lda emitLabelValue
@@ -201,8 +201,6 @@ parse_if_statement:
 	lda #CONTROL_IF_TRUE
 	sta controlKind,x
 	inc controlDepth
-	lda #EMIT_LABEL_IF_FALSE
-	sta emitLabelContext
 	jsr emit_statement_false_jump
 	bcc .emitFail
 	jsr parser_next
@@ -212,10 +210,9 @@ parse_if_statement:
 	lda #PARSE_EMIT_ERROR
 	jmp parser_fail
 
-;;; The true-body `}` is current on entry. Read one token beyond it to decide
-;;; whether an `else` follows. Without else, the false label is the join point
-;;; and that token belongs to the surrounding construct. With else, the true
-;;; path first jumps over the else body.
+;;; The true-body `}` is current on entry. One token of lookahead is enough to
+;;; decide the optional else. Without else, the false label is the join point and
+;;; the token already read belongs to the surrounding construct.
 close_if_true_body:
 	jsr parser_next
 	bcc .failed
@@ -229,9 +226,7 @@ close_if_true_body:
 	sta emitLabelValue
 	lda controlLabel0Hi,x
 	sta emitLabelValue+1
-	lda #EMIT_LABEL_IF_FALSE
-	sta emitLabelContext
-	jsr emit_statement_label
+	jsr emit_label_definition
 	bcc .emitFail
 	dec controlDepth
 	sec
@@ -247,10 +242,7 @@ close_if_true_body:
 	sta controlLabel1Hi,x
 	lda #CONTROL_IF_ELSE
 	sta controlKind,x
-
-	lda #EMIT_LABEL_IF_END
-	sta emitLabelContext
-	jsr emit_statement_jump
+	jsr emit_jump_label
 	bcc .emitFail
 
 	ldx controlDepth
@@ -259,9 +251,7 @@ close_if_true_body:
 	sta emitLabelValue
 	lda controlLabel0Hi,x
 	sta emitLabelValue+1
-	lda #EMIT_LABEL_IF_FALSE
-	sta emitLabelContext
-	jsr emit_statement_label
+	jsr emit_label_definition
 	bcc .emitFail
 
 	jsr parser_next
@@ -287,9 +277,7 @@ close_if_else_body:
 	sta emitLabelValue
 	lda controlLabel1Hi,x
 	sta emitLabelValue+1
-	lda #EMIT_LABEL_IF_END
-	sta emitLabelContext
-	jsr emit_statement_label
+	jsr emit_label_definition
 	bcc .emitFail
 	dec controlDepth
 	jmp parser_next
@@ -300,15 +288,14 @@ close_if_else_body:
 parse_while_statement:
 	jsr ensure_control_space
 	bcc .failed
+
 	ldx controlDepth
 	jsr reserve_generated_label
 	lda emitLabelValue
 	sta controlLabel0Lo,x
 	lda emitLabelValue+1
 	sta controlLabel0Hi,x
-	lda #EMIT_LABEL_WHILE_TOP
-	sta emitLabelContext
-	jsr emit_statement_label
+	jsr emit_label_definition
 	bcc .emitFail
 
 	ldx controlDepth
@@ -322,28 +309,28 @@ parse_while_statement:
 	bcc .failed
 	lda currentTokenKind
 	cmp #'('
-	beq .open
+	beq .haveOpen
 	lda #PARSE_BAD_STATEMENT
 	jmp parser_fail
-.open:
+.haveOpen:
 	jsr parser_next
 	bcc .failed
 	jsr parse_condition_expression
 	bcc .failed
 	lda currentTokenKind
 	cmp #')'
-	beq .close
+	beq .haveClose
 	lda #PARSE_BAD_STATEMENT
 	jmp parser_fail
-.close:
+.haveClose:
 	jsr parser_next
 	bcc .failed
 	lda currentTokenKind
 	cmp #'{' 
-	beq .body
+	beq .haveBody
 	lda #PARSE_BAD_STATEMENT
 	jmp parser_fail
-.body:
+.haveBody:
 	ldx controlDepth
 	lda #CONTROL_WHILE
 	sta controlKind,x
@@ -352,9 +339,6 @@ parse_while_statement:
 	lda controlLabel1Hi,x
 	sta emitLabelValue+1
 	inc controlDepth
-
-	lda #EMIT_LABEL_WHILE_END
-	sta emitLabelContext
 	jsr emit_statement_false_jump
 	bcc .emitFail
 	jsr parser_next
@@ -371,9 +355,7 @@ close_while_body:
 	sta emitLabelValue
 	lda controlLabel0Hi,x
 	sta emitLabelValue+1
-	lda #EMIT_LABEL_WHILE_TOP
-	sta emitLabelContext
-	jsr emit_statement_jump
+	jsr emit_jump_label
 	bcc .emitFail
 
 	ldx controlDepth
@@ -382,9 +364,7 @@ close_while_body:
 	sta emitLabelValue
 	lda controlLabel1Hi,x
 	sta emitLabelValue+1
-	lda #EMIT_LABEL_WHILE_END
-	sta emitLabelContext
-	jsr emit_statement_label
+	jsr emit_label_definition
 	bcc .emitFail
 	dec controlDepth
 	jmp parser_next
@@ -416,9 +396,7 @@ parse_break_statement:
 	lda #PARSE_BAD_STATEMENT
 	jmp parser_fail
 .emit:
-	lda #EMIT_LABEL_WHILE_END
-	sta emitLabelContext
-	jsr emit_statement_jump
+	jsr emit_jump_label
 	bcc .emitFail
 	jmp parser_next
 .outside:
@@ -431,8 +409,8 @@ parse_break_statement:
 	clc
 	rts
 
-;;; Conditions are ordinary expressions. The statement layer adds only the one
-;;; Phase 1 rule it owns: pointers are not condition values.
+;;; Conditions are ordinary expressions. The statement layer adds only the Phase
+;;; 1 rule that pointer values are not conditions.
 parse_condition_expression:
 	jsr parse_expression
 	bcs .parsed
@@ -493,8 +471,8 @@ parse_return_statement:
 ;;; Identifier-led statements
 ;;; ---------------------------------------------------------------------------
 
-;;; Resolve the target while its identifier is still in the reusable token.
-;;; Only the small semantic identity that must survive parser_next is retained.
+;;; Resolve the identifier before replacing the reusable token. Only the small
+;;; semantic identity that later tokens need is retained.
 parse_identifier_statement:
 	jsr lookup_symbol
 	bcs .found
@@ -523,19 +501,19 @@ parse_identifier_statement:
 	bcc .failed
 	lda currentTokenKind
 	cmp #'='
-	beq .scalar
+	bne .notScalar
+	jmp parse_scalar_assignment
+.notScalar:
 	cmp #'['
-	beq .indexed
+	bne .notIndexed
+	jmp parse_indexed_assignment
+.notIndexed:
 	cmp #'('
-	beq .call
+	bne .bad
+	jmp parse_call_statement_hook
+.bad:
 	lda #PARSE_BAD_ASSIGNMENT
 	jmp parser_fail
-.scalar:
-	jmp parse_scalar_assignment
-.indexed:
-	jmp parse_indexed_assignment
-.call:
-	jmp parse_call_statement_hook
 .failed:
 	clc
 	rts
@@ -580,11 +558,14 @@ parse_scalar_assignment:
 	clc
 	rts
 
-;;; Indexed assignment deliberately reuses #55's factored effective-address
-;;; machinery. The index is evaluated first, emit_prepare_index_offset puts the
-;;; (possibly scaled) full 16-bit offset in NC_TMP, the named base is loaded into
-;;; A/X, and emit_add_prepared_index forms NC_PTR. Only that completed address is
-;;; retained across the RHS expression.
+;;; Indexed assignment reuses #55's effective-address emitter rather than
+;;; carrying a second copy of 16-bit scaling/addition here. After the index has
+;;; been evaluated, its A/X value is parked in NC_TMP while the named base is
+;;; loaded and saved in the normal expression spill slot expected by
+;;; emit_index_load. That existing emitter forms NC_PTR exactly as for an indexed
+;;; rvalue. Its final load is deliberately harmless: the statement immediately
+;;; saves NC_PTR and then evaluates the RHS, so the loaded old element value is
+;;; discarded. A few generated instructions buy one authoritative address path.
 parse_indexed_assignment:
 	jsr validate_indexed_target
 	bcc .badTarget
@@ -604,7 +585,11 @@ parse_indexed_assignment:
 	jmp parser_fail
 .address:
 	jsr emit_statement_index_address
-	bcc .emitFail
+	bcs .addressDone
+	lda expressionError
+	beq .emitFail
+	jmp statement_expression_failed
+.addressDone:
 	jsr ensure_statement_address_slot
 	bcc .failed
 	jsr emit_save_statement_address
@@ -683,16 +668,40 @@ validate_indexed_target:
 	clc
 	rts
 
-;;; currentToken is still ']'; target index value is in runtime A/X.
+;;; Index is in target A/X on entry. The normal expression spill stack is idle
+;;; because parse_expression has completed, so one spill may temporarily hold
+;;; the lvalue base. Restore depth immediately after the #55 emitter has used it.
 emit_statement_index_address:
+	jsr emit_save_right_tmp
+	bcc .emitFailed
+	jsr load_statement_target_base
+	bcc .emitFailed
+	jsr spill_current_value
+	bcs .baseSpilled
+	clc
+	rts
+.baseSpilled:
+	lda expressionSpillDepth
+	sec
+	sbc #$01
+	sta reduceSpill
 	lda statementElementType
 	sta reduceLeftType
-	jsr emit_prepare_index_offset
-	bcc .failed
-	jsr load_statement_target_base
-	bcc .failed
-	jsr emit_add_prepared_index
-.failed:
+
+	lda #exprLoadTmpResultEnd-exprLoadTmpResult
+	ldx #<exprLoadTmpResult
+	ldy #>exprLoadTmpResult
+	jsr emit_text
+	bcc .releaseFailed
+	jsr emit_index_load
+	php
+	dec expressionSpillDepth
+	plp
+	rts
+.releaseFailed:
+	dec expressionSpillDepth
+.emitFailed:
+	clc
 	rts
 
 load_statement_target_base:
@@ -711,9 +720,8 @@ load_statement_target_base:
 .array:
 	jmp emit_load_primary_address
 
-;;; One two-byte address slot is enough for every indexed assignment in a
-;;; function because statements are emitted/evaluated sequentially and the slot
-;;; is no longer live after each store.
+;;; One two-byte saved effective address is enough for every indexed assignment
+;;; in a function: it is live only while that statement's RHS is evaluated.
 ensure_statement_address_slot:
 	lda statementAddressAllocated
 	beq .allocate
@@ -739,9 +747,9 @@ ensure_statement_address_slot:
 	sec
 	rts
 
-;;; The call statement intentionally uses the exact primary-call seam exposed by
-;;; #55. Until #57 supplies that state machine, the stub reports
-;;; EXPR_CALL_UNAVAILABLE without this statement parser learning call syntax.
+;;; The statement call form goes through the one call-primary seam already left
+;;; by #55. #57 replaces that seam with pending-call state; this file does not
+;;; learn a temporary argument grammar.
 parse_call_statement_hook:
 	lda statementTargetArea
 	cmp #SYMBOL_AREA_PERSISTENT
@@ -778,6 +786,8 @@ parse_call_statement_hook:
 	lda #PARSE_BAD_STATEMENT
 	jmp parser_fail
 
+;;; Expression failures retain their precise expressionError. Scanner failure is
+;;; already layered through parserError/scannerError and must not be relabelled.
 statement_expression_failed:
 	lda parserError
 	cmp #PARSE_SCANNER_ERROR
@@ -891,6 +901,8 @@ emit_save_statement_address:
 	clc
 	rts
 
+;;; RHS A/X is saved in NC_TMP while the static lvalue address is restored to
+;;; NC_PTR. Store one byte for char elements, both bytes for word elements.
 emit_indexed_store:
 	jsr emit_save_right_tmp
 	bcc .failed
@@ -939,9 +951,10 @@ emit_indexed_store:
 	clc
 	rts
 
-;;; A/X is the condition result. Collapse both bytes to Z, then use exactly the
-;;; expression engine's branch-over-absolute-JMP helper. emitLabelValue is the
-;;; semantic false destination and emitLabelContext selects its readable prefix.
+;;; A/X is the condition result. Collapse both bytes to Z, then use the exact
+;;; universal helper already used by expression comparisons. The real false
+;;; destination is the absolute JMP; the relative BNE reaches only the helper's
+;;; immediately adjacent skip label.
 emit_statement_false_jump:
 	lda #statementTruthTestEnd-statementTruthTest
 	ldx #<statementTruthTest
@@ -951,42 +964,8 @@ emit_statement_false_jump:
 	lda #exprBneEnd-exprBne
 	ldx #<exprBne
 	ldy #>exprBne
-	jsr emit_long_conditional_jump
-	bcc .clearFailed
-	lda #EMIT_LABEL_GENERIC
-	sta emitLabelContext
-	sec
-	rts
-.clearFailed:
+	jmp emit_long_conditional_jump
 .failed:
-	lda #EMIT_LABEL_GENERIC
-	sta emitLabelContext
-	clc
-	rts
-
-emit_statement_jump:
-	jsr emit_jump_label
-	bcc .clearFailed
-	lda #EMIT_LABEL_GENERIC
-	sta emitLabelContext
-	sec
-	rts
-.clearFailed:
-	lda #EMIT_LABEL_GENERIC
-	sta emitLabelContext
-	clc
-	rts
-
-emit_statement_label:
-	jsr emit_label_definition
-	bcc .clearFailed
-	lda #EMIT_LABEL_GENERIC
-	sta emitLabelContext
-	sec
-	rts
-.clearFailed:
-	lda #EMIT_LABEL_GENERIC
-	sta emitLabelContext
 	clc
 	rts
 
@@ -1029,10 +1008,9 @@ statementStoreWordEnd:
 ;;; Compiler statement state
 ;;; ---------------------------------------------------------------------------
 
-;;; Fixed control stack: 16 frames * (kind + two 16-bit label slots) = 80
-;;; bytes, plus the one-byte depth. IF_TRUE versus IF_ELSE is explicit in the
-;;; kind byte rather than hidden in numeric ordering. Label slots are written
-;;; only by constructs that actually need them; BLOCK needs only its kind.
+;;; Fixed control stack: 16 frames * (kind + two 16-bit label slots) = 80 bytes,
+;;; plus the one-byte depth. IF_TRUE versus IF_ELSE is explicit in the kind byte;
+;;; no enum ordering carries semantics. BLOCK frames use only controlKind.
 controlDepth:		byte 0
 controlKind:		ds CONTROL_STACK_CAPACITY
 controlLabel0Lo:	ds CONTROL_STACK_CAPACITY
