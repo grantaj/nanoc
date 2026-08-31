@@ -108,11 +108,11 @@ expression_call_primary:
 	clc
 	rts
 
-;;; call_closing_parenthesis_is_call
-;;; Carry set when the nearest unmatched '(' marker is OP_CALL. Carry clear means
-;;; ')' belongs to an ordinary grouping context (or to the caller of the complete
-;;; expression). OP_INDEX is also a boundary: ')' cannot jump through '['.
-call_closing_parenthesis_is_call:
+;;; call_delimiter_belongs_to_call
+;;; Carry set when the nearest unmatched delimiter marker is OP_CALL. This is
+;;; used for both ',' and ')'. A nearer ordinary '(' or '[' means the delimiter
+;;; cannot close/separate the pending call yet.
+call_delimiter_belongs_to_call:
 	ldx operatorCount
 .loop:
 	cpx #$00
