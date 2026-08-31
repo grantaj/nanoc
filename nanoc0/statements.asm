@@ -1,11 +1,11 @@
 ;;; statements.asm
 ;;;
-;;; Nano C Phase 1 executable statement parser and direct emitter.
+;;; Nano C Phase 1 executable statement parser.
 ;;;
-;;; This is the statement analogue of expression.asm: one current token, one
-;;; explicit bounded control stack, and assembly emitted as soon as a source
-;;; construct is understood. There is no recursive block parser and no retained
-;;; statement representation.
+;;; One current token and one explicit bounded control stack are enough for the
+;;; Phase 1 statement grammar. Source constructs emit target assembly as soon as
+;;; they are understood; statement_codegen.asm contains the spelling routines,
+;;; not a retained statement representation.
 ;;;
 ;;; A frame remembers only a concrete fact about source whose closing brace has
 ;;; not yet arrived:
@@ -19,7 +19,7 @@
 ;;; function body itself is depth zero, so `}` at depth zero ends the function.
 
 CONTROL_STACK_CAPACITY = 16
-CONTROL_STACK_BYTES    = 81
+CONTROL_FRAME_BYTES    = 5
 
 CONTROL_BLOCK   = 1
 CONTROL_IF_TRUE = 2
@@ -48,12 +48,17 @@ parse_function_statements:
 	lda currentTokenKind
 	cmp #'}'
 	bne .notClose
+	lda controlDepth
+	bne .closeNested
+	;;; No unfinished frame means this is the function's own closing brace.
+	lda #EMIT_LABEL_GENERIC
+	sta emitLabelKind
+	jsr parser_next
+	rts
+.closeNested:
 	jsr close_statement_body
 	bcc .failed
-	lda statementFunctionDone
-	beq .loop
-	sec
-	rts
+	jmp .loop
 .notClose:
 	cmp #'{' 
 	bne .notBlock
@@ -101,7 +106,6 @@ reset_statement_function_state:
 	lda #$00
 	sta controlDepth
 	sta statementAddressAllocated
-	sta statementFunctionDone
 	rts
 
 ;;; ---------------------------------------------------------------------------
@@ -131,17 +135,10 @@ begin_plain_block:
 
 ;;; A closing brace completes exactly the top frame. The mandatory braces of an
 ;;; if/while body are represented by the IF/WHILE frame itself; only an extra
-;;; source block consumes a BLOCK frame.
+;;; source block consumes a BLOCK frame. Function-brace handling stays in the
+;;; main loop where depth zero is visible directly.
 close_statement_body:
-	lda #$00
-	sta statementFunctionDone
-	lda controlDepth
-	bne .nested
-	lda #$01
-	sta statementFunctionDone
-	jmp parser_next
-.nested:
-	tax
+	ldx controlDepth
 	dex
 	lda controlKind,x
 	cmp #CONTROL_BLOCK
@@ -202,6 +199,8 @@ parse_if_statement:
 	lda #CONTROL_IF_TRUE
 	sta controlKind,x
 	inc controlDepth
+	lda #EMIT_LABEL_IF_FALSE
+	sta emitLabelKind
 	jsr emit_statement_false_jump
 	bcc .emitFail
 	jsr parser_next
@@ -227,6 +226,8 @@ close_if_true_body:
 	sta emitLabelValue
 	lda controlLabel0Hi,x
 	sta emitLabelValue+1
+	lda #EMIT_LABEL_IF_FALSE
+	sta emitLabelKind
 	jsr emit_label_definition
 	bcc .emitFail
 	dec controlDepth
@@ -243,6 +244,8 @@ close_if_true_body:
 	sta controlLabel1Hi,x
 	lda #CONTROL_IF_ELSE
 	sta controlKind,x
+	lda #EMIT_LABEL_IF_END
+	sta emitLabelKind
 	jsr emit_jump_label
 	bcc .emitFail
 
@@ -252,6 +255,8 @@ close_if_true_body:
 	sta emitLabelValue
 	lda controlLabel0Hi,x
 	sta emitLabelValue+1
+	lda #EMIT_LABEL_IF_FALSE
+	sta emitLabelKind
 	jsr emit_label_definition
 	bcc .emitFail
 
@@ -278,6 +283,8 @@ close_if_else_body:
 	sta emitLabelValue
 	lda controlLabel1Hi,x
 	sta emitLabelValue+1
+	lda #EMIT_LABEL_IF_END
+	sta emitLabelKind
 	jsr emit_label_definition
 	bcc .emitFail
 	dec controlDepth
@@ -297,6 +304,8 @@ parse_while_statement:
 	sta controlLabel0Lo,x
 	lda emitLabelValue+1
 	sta controlLabel0Hi,x
+	lda #EMIT_LABEL_WHILE_TOP
+	sta emitLabelKind
 	jsr emit_label_definition
 	bcc .emitFail
 
@@ -349,6 +358,8 @@ parse_while_statement:
 	lda controlLabel1Hi,x
 	sta emitLabelValue+1
 	inc controlDepth
+	lda #EMIT_LABEL_WHILE_END
+	sta emitLabelKind
 	jsr emit_statement_false_jump
 	bcc .emitFail
 	jmp parser_next
@@ -363,6 +374,8 @@ close_while_body:
 	sta emitLabelValue
 	lda controlLabel0Hi,x
 	sta emitLabelValue+1
+	lda #EMIT_LABEL_WHILE_TOP
+	sta emitLabelKind
 	jsr emit_jump_label
 	bcc .emitFail
 
@@ -372,6 +385,8 @@ close_while_body:
 	sta emitLabelValue
 	lda controlLabel1Hi,x
 	sta emitLabelValue+1
+	lda #EMIT_LABEL_WHILE_END
+	sta emitLabelKind
 	jsr emit_label_definition
 	bcc .emitFail
 	dec controlDepth
@@ -381,13 +396,11 @@ close_while_body:
 	jmp parser_fail
 
 parse_break_statement:
-	lda controlDepth
-	sta statementSearchDepth
+	ldx controlDepth
 .search:
-	lda statementSearchDepth
+	cpx #$00
 	beq .outside
-	dec statementSearchDepth
-	ldx statementSearchDepth
+	dex
 	lda controlKind,x
 	cmp #CONTROL_WHILE
 	bne .search
@@ -395,6 +408,8 @@ parse_break_statement:
 	sta emitLabelValue
 	lda controlLabel1Hi,x
 	sta emitLabelValue+1
+	lda #EMIT_LABEL_WHILE_END
+	sta emitLabelKind
 
 	jsr parser_next
 	bcc .failed
@@ -459,10 +474,7 @@ parse_return_statement:
 	lda #PARSE_BAD_RETURN
 	jmp parser_fail
 .emit:
-	lda #statementRtsEnd-statementRts
-	ldx #<statementRts
-	ldy #>statementRts
-	jsr emit_text
+	jsr emit_return_value
 	bcc .emitFail
 	jmp parser_next
 .badType:
@@ -542,9 +554,12 @@ parse_scalar_assignment:
 	bcs .rhsParsed
 	jmp statement_expression_failed
 .rhsParsed:
+	jsr scalar_assignment_type_ok
+	bcc .badTarget
 	lda currentTokenKind
 	cmp #';'
 	beq .store
+.badTarget:
 	lda #PARSE_BAD_ASSIGNMENT
 	jmp parser_fail
 .store:
@@ -566,14 +581,29 @@ parse_scalar_assignment:
 	clc
 	rts
 
-;;; Indexed assignment reuses #55's effective-address emitter rather than
-;;; carrying a second copy of 16-bit scaling/addition here. After the index has
-;;; been evaluated, its A/X value is parked in NC_TMP while the named base is
-;;; loaded and saved in the normal expression spill slot expected by
-;;; emit_index_load. That existing emitter forms NC_PTR exactly as for an indexed
-;;; rvalue. Its final load is deliberately harmless: the statement immediately
-;;; saves NC_PTR and then evaluates the RHS, so the loaded old element value is
-;;; discarded. A few generated instructions buy one authoritative address path.
+;;; Integer destinations accept the three integer value types. A char pointer is
+;;; deliberately narrower: Phase 1 pointer assignment is from another char *;
+;;; integer/pointer casts are not part of the language.
+scalar_assignment_type_ok:
+	lda statementTargetType
+	cmp #TYPE_CHAR_PTR
+	beq .pointer
+	lda expressionValueType
+	jmp type_is_integer
+.pointer:
+	lda expressionValueType
+	cmp #TYPE_CHAR_PTR
+	beq .ok
+	clc
+	rts
+.ok:
+	sec
+	rts
+
+;;; Indexed assignment follows the literal machine shape from phase1-machine.md:
+;;; compute the complete lvalue address first, save it in static function storage,
+;;; evaluate the RHS freely, restore NC_PTR, then store. Address arithmetic itself
+;;; is shared with indexed reads through #55's emit_index_address.
 parse_indexed_assignment:
 	jsr validate_indexed_target
 	bcc .badTarget
@@ -617,6 +647,9 @@ parse_indexed_assignment:
 	bcs .rhsParsed
 	jmp statement_expression_failed
 .rhsParsed:
+	lda expressionValueType
+	jsr type_is_integer
+	bcc .badTarget
 	lda currentTokenKind
 	cmp #';'
 	beq .store
@@ -675,58 +708,6 @@ validate_indexed_target:
 .bad:
 	clc
 	rts
-
-;;; Index is in target A/X on entry. The normal expression spill stack is idle
-;;; because parse_expression has completed, so one spill may temporarily hold
-;;; the lvalue base. Restore depth immediately after the #55 emitter has used it.
-emit_statement_index_address:
-	jsr emit_save_right_tmp
-	bcc .emitFailed
-	jsr load_statement_target_base
-	bcc .emitFailed
-	jsr spill_current_value
-	bcs .baseSpilled
-	clc
-	rts
-.baseSpilled:
-	lda expressionSpillDepth
-	sec
-	sbc #$01
-	sta reduceSpill
-	lda statementElementType
-	sta reduceLeftType
-
-	lda #exprLoadTmpResultEnd-exprLoadTmpResult
-	ldx #<exprLoadTmpResult
-	ldy #>exprLoadTmpResult
-	jsr emit_text
-	bcc .releaseFailed
-	jsr emit_index_load
-	php
-	dec expressionSpillDepth
-	plp
-	rts
-.releaseFailed:
-	dec expressionSpillDepth
-.emitFailed:
-	clc
-	rts
-
-load_statement_target_base:
-	lda statementTargetIndex
-	sta primarySymbolIndex
-	lda statementTargetArea
-	sta primarySymbolArea
-	lda statementTargetKind
-	sta primarySymbolKind
-	lda statementTargetType
-	sta primarySymbolType
-	lda statementTargetKind
-	cmp #SYMBOL_ARRAY
-	beq .array
-	jmp emit_load_primary_scalar
-.array:
-	jmp emit_load_primary_address
 
 ;;; One two-byte saved effective address is enough for every indexed assignment
 ;;; in a function: it is live only while that statement's RHS is evaluated.
@@ -807,218 +788,12 @@ statement_expression_failed:
 	rts
 
 ;;; ---------------------------------------------------------------------------
-;;; Statement target-code emission
-;;; ---------------------------------------------------------------------------
-
-emit_store_persistent_value:
-	lda #exprStaSpaceEnd-exprStaSpace
-	ldx #<exprStaSpace
-	ldy #>exprStaSpace
-	jsr emit_text
-	bcc .failed
-	ldx statementTargetIndex
-	jsr emit_persistent_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda statementTargetType
-	cmp #TYPE_CHAR
-	beq .done
-	lda #exprStxSpaceEnd-exprStxSpace
-	ldx #<exprStxSpace
-	ldy #>exprStxSpace
-	jsr emit_text
-	bcc .failed
-	ldx statementTargetIndex
-	jsr emit_persistent_name
-	bcc .failed
-	jsr emit_plus_one_newline
-	bcc .failed
-.done:
-	sec
-	rts
-.failed:
-	clc
-	rts
-
-emit_statement_address_name:
-	lda #emitCPrefixEnd-emitCPrefix
-	ldx #<emitCPrefix
-	ldy #>emitCPrefix
-	jsr emit_text
-	bcc .failed
-	ldx currentFunctionIndex
-	jsr emit_persistent_source_name
-	bcc .failed
-	lda #statementAddressSuffixEnd-statementAddressSuffix
-	ldx #<statementAddressSuffix
-	ldy #>statementAddressSuffix
-	jmp emit_text
-.failed:
-	clc
-	rts
-
-emit_statement_address_definition:
-	jsr emit_statement_address_name
-	bcc .failed
-	lda #exprBssAssignEnd-exprBssAssign
-	ldx #<exprBssAssign
-	ldy #>exprBssAssign
-	jsr emit_text
-	bcc .failed
-	lda allocOffset
-	sta emitWord
-	lda allocOffset+1
-	sta emitWord+1
-	jsr emit_hex_word
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-emit_save_statement_address:
-	lda #statementLdaPtrEnd-statementLdaPtr
-	ldx #<statementLdaPtr
-	ldy #>statementLdaPtr
-	jsr emit_text
-	bcc .failed
-	lda #exprStaSpaceEnd-exprStaSpace
-	ldx #<exprStaSpace
-	ldy #>exprStaSpace
-	jsr emit_text
-	bcc .failed
-	jsr emit_statement_address_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda #statementLdaPtrHighEnd-statementLdaPtrHigh
-	ldx #<statementLdaPtrHigh
-	ldy #>statementLdaPtrHigh
-	jsr emit_text
-	bcc .failed
-	lda #exprStaSpaceEnd-exprStaSpace
-	ldx #<exprStaSpace
-	ldy #>exprStaSpace
-	jsr emit_text
-	bcc .failed
-	jsr emit_statement_address_name
-	bcc .failed
-	jmp emit_plus_one_newline
-.failed:
-	clc
-	rts
-
-;;; RHS A/X is saved in NC_TMP while the static lvalue address is restored to
-;;; NC_PTR. Store one byte for char elements, both bytes for word elements.
-emit_indexed_store:
-	jsr emit_save_right_tmp
-	bcc .failed
-	lda #exprLdaSpaceEnd-exprLdaSpace
-	ldx #<exprLdaSpace
-	ldy #>exprLdaSpace
-	jsr emit_text
-	bcc .failed
-	jsr emit_statement_address_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda #statementStaPtrEnd-statementStaPtr
-	ldx #<statementStaPtr
-	ldy #>statementStaPtr
-	jsr emit_text
-	bcc .failed
-	lda #exprLdaSpaceEnd-exprLdaSpace
-	ldx #<exprLdaSpace
-	ldy #>exprLdaSpace
-	jsr emit_text
-	bcc .failed
-	jsr emit_statement_address_name
-	bcc .failed
-	jsr emit_plus_one_newline
-	bcc .failed
-	lda #statementStaPtrHighEnd-statementStaPtrHigh
-	ldx #<statementStaPtrHigh
-	ldy #>statementStaPtrHigh
-	jsr emit_text
-	bcc .failed
-
-	lda statementElementType
-	cmp #TYPE_CHAR
-	beq .char
-	lda #statementStoreWordEnd-statementStoreWord
-	ldx #<statementStoreWord
-	ldy #>statementStoreWord
-	jmp emit_text
-.char:
-	lda #statementStoreCharEnd-statementStoreChar
-	ldx #<statementStoreChar
-	ldy #>statementStoreChar
-	jmp emit_text
-.failed:
-	clc
-	rts
-
-;;; A/X is the condition result. Collapse both bytes to Z, then use the exact
-;;; universal helper already used by expression comparisons. The real false
-;;; destination is the absolute JMP; the relative BNE reaches only the helper's
-;;; immediately adjacent skip label.
-emit_statement_false_jump:
-	lda #statementTruthTestEnd-statementTruthTest
-	ldx #<statementTruthTest
-	ldy #>statementTruthTest
-	jsr emit_text
-	bcc .failed
-	lda #exprBneEnd-exprBne
-	ldx #<exprBne
-	ldy #>exprBne
-	jmp emit_long_conditional_jump
-.failed:
-	clc
-	rts
-
-;;; ---------------------------------------------------------------------------
-;;; Fixed emitted fragments
-;;; ---------------------------------------------------------------------------
-
-statementRts:		byte $09,'r','t','s',$0a
-statementRtsEnd:
-statementAddressSuffix:	byte '_','_','a'
-statementAddressSuffixEnd:
-statementLdaPtr:		byte $09,'l','d','a',' ','N','C','_','P','T','R',$0a
-statementLdaPtrEnd:
-statementLdaPtrHigh:	byte $09,'l','d','a',' ','N','C','_','P','T','R','+','1',$0a
-statementLdaPtrHighEnd:
-statementStaPtr:		byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a
-statementStaPtrEnd:
-statementStaPtrHigh:	byte $09,'s','t','a',' ','N','C','_','P','T','R','+','1',$0a
-statementStaPtrHighEnd:
-statementTruthTest:
-	byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
-	byte $09,'t','x','a',$0a
-	byte $09,'o','r','a',' ','N','C','_','T','M','P',$0a
-statementTruthTestEnd:
-statementStoreChar:
-	byte $09,'l','d','y',' ','#','$','0','0',$0a
-	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a
-	byte $09,'s','t','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
-statementStoreCharEnd:
-statementStoreWord:
-	byte $09,'l','d','y',' ','#','$','0','0',$0a
-	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a
-	byte $09,'s','t','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
-	byte $09,'i','n','y',$0a
-	byte $09,'l','d','a',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'s','t','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
-statementStoreWordEnd:
-
-;;; ---------------------------------------------------------------------------
 ;;; Compiler statement state
 ;;; ---------------------------------------------------------------------------
 
-;;; Fixed control stack: 16 frames * (kind + two 16-bit label slots) = 80 bytes,
-;;; plus the one-byte depth. IF_TRUE versus IF_ELSE is explicit in the kind byte;
-;;; no enum ordering carries semantics. BLOCK frames use only controlKind.
+;;; Fixed control stack: each of 16 frames has one kind byte and two 16-bit label
+;;; slots. The one-byte depth is separate. IF_TRUE versus IF_ELSE is explicit in
+;;; the kind byte; no enum ordering carries semantics. BLOCK uses only kind.
 controlDepth:		byte 0
 controlKind:		ds CONTROL_STACK_CAPACITY
 controlLabel0Lo:	ds CONTROL_STACK_CAPACITY
@@ -1026,11 +801,11 @@ controlLabel0Hi:	ds CONTROL_STACK_CAPACITY
 controlLabel1Lo:	ds CONTROL_STACK_CAPACITY
 controlLabel1Hi:	ds CONTROL_STACK_CAPACITY
 
-statementFunctionDone:	byte 0
-statementSearchDepth:	byte 0
 statementTargetIndex:	byte 0
 statementTargetArea:	byte SYMBOL_AREA_NONE
 statementTargetKind:	byte 0
 statementTargetType:	byte TYPE_INT
 statementElementType:	byte TYPE_CHAR
 statementAddressAllocated:	byte 0
+
+	include "statement_codegen.asm"
