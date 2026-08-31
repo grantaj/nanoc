@@ -8,8 +8,13 @@
 
 ;;; Index is in target A/X on entry. The normal expression spill stack is idle
 ;;; because parse_expression has completed, so one spill may temporarily hold
-;;; the lvalue base. #55's emit_index_address then performs the one authoritative
+;;; the lvalue base. #55's emit_index_address performs the one authoritative
 ;;; scale-and-add operation and leaves the complete effective address in NC_PTR.
+;;;
+;;; Saving the index to NC_TMP before loading the base keeps the machine sequence
+;;; explicit. We reload that value into A/X only because emit_index_address has
+;;; the same A/X entry contract as an indexed read; the address arithmetic itself
+;;; is not duplicated here.
 emit_statement_index_address:
 	jsr emit_save_right_tmp
 	bcc .emitFailed
@@ -27,8 +32,6 @@ emit_statement_index_address:
 	lda statementElementType
 	sta reduceLeftType
 
-	;;; Loading the named base above replaced A/X, so restore the already-evaluated
-	;;; index before entering the shared address emitter.
 	lda #exprLoadTmpResultEnd-exprLoadTmpResult
 	ldx #<exprLoadTmpResult
 	ldy #>exprLoadTmpResult
