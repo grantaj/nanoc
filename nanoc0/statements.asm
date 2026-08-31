@@ -491,8 +491,11 @@ parse_return_statement:
 ;;; Identifier-led statements
 ;;; ---------------------------------------------------------------------------
 
-;;; Resolve the identifier before replacing the reusable token. Only the small
-;;; semantic identity that later tokens need is retained.
+;;; Resolve the identifier while its source spelling is still current. A known
+;;; function is handed straight back to the one expression parser so call
+;;; statements and call primaries share exactly the same argument machinery.
+;;; Non-functions retain only the small semantic identity needed after the
+;;; reusable token is replaced.
 parse_identifier_statement:
 	jsr lookup_symbol
 	bcs .found
@@ -509,6 +512,11 @@ parse_identifier_statement:
 	sta statementTargetKind
 	lda persistentType,x
 	sta statementTargetType
+	lda statementTargetKind
+	cmp #SYMBOL_FUNCTION
+	beq .callStatement
+	cmp #SYMBOL_RUNTIME_FUNCTION
+	beq .callStatement
 	jmp .advance
 .current:
 	lda #SYMBOL_GLOBAL
@@ -525,18 +533,33 @@ parse_identifier_statement:
 	jmp parse_scalar_assignment
 .notScalar:
 	cmp #'['
-	bne .notIndexed
-	jmp parse_indexed_assignment
-.notIndexed:
-	cmp #'('
 	bne .bad
-	jmp parse_call_statement_hook
+	jmp parse_indexed_assignment
+.callStatement:
+	jmp parse_call_statement_expression
 .bad:
 	lda #PARSE_BAD_ASSIGNMENT
 	jmp parser_fail
 .failed:
 	clc
 	rts
+
+;;; Calls are the sole Phase 1 expression statements. The expression entry point
+;;; stops immediately after the outer call closes; therefore `f()+1;` is still
+;;; rejected here rather than silently broadening the language to arbitrary
+;;; expression statements.
+parse_call_statement_expression:
+	jsr parse_call_expression_statement
+	bcs .parsed
+	jmp statement_expression_failed
+.parsed:
+	lda currentTokenKind
+	cmp #';'
+	beq .done
+	lda #PARSE_BAD_STATEMENT
+	jmp parser_fail
+.done:
+	jmp parser_next
 
 parse_scalar_assignment:
 	lda statementTargetArea
@@ -735,45 +758,6 @@ ensure_statement_address_slot:
 	sta statementAddressAllocated
 	sec
 	rts
-
-;;; The statement call form goes through the one call-primary seam already left
-;;; by #55. #57 replaces that seam with pending-call state; this file does not
-;;; learn a temporary argument grammar.
-parse_call_statement_hook:
-	lda statementTargetArea
-	cmp #SYMBOL_AREA_PERSISTENT
-	bne .bad
-	lda statementTargetKind
-	cmp #SYMBOL_FUNCTION
-	beq .call
-	cmp #SYMBOL_RUNTIME_FUNCTION
-	bne .bad
-.call:
-	lda statementTargetIndex
-	sta primarySymbolIndex
-	lda statementTargetArea
-	sta primarySymbolArea
-	lda statementTargetKind
-	sta primarySymbolKind
-	lda statementTargetType
-	sta primarySymbolType
-	lda #EXPR_OK
-	sta expressionError
-	ldx statementTargetIndex
-	jsr expression_call_primary
-	bcs .callDone
-	jmp statement_expression_failed
-.callDone:
-	lda currentTokenKind
-	cmp #';'
-	beq .done
-	lda #PARSE_BAD_STATEMENT
-	jmp parser_fail
-.done:
-	jmp parser_next
-.bad:
-	lda #PARSE_BAD_STATEMENT
-	jmp parser_fail
 
 ;;; Expression failures retain their precise expressionError. Scanner failure is
 ;;; already layered through parserError/scannerError and must not be relabelled.

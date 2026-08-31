@@ -5,6 +5,41 @@ char global_char;
 int global_value;
 unsigned global_unsigned;
 char *global_pointer;
+int call_order;
+
+int add_pair(int a, int b)
+{
+    return a + b;
+}
+
+int return_one()
+{
+    return 1;
+}
+
+int mark_arg(int expected, int value)
+{
+    if (call_order != expected) {
+        return 30000;
+    }
+    call_order = call_order + 1;
+    return value;
+}
+
+int take_char(char value)
+{
+    return value;
+}
+
+int take_unsigned(unsigned value)
+{
+    return value;
+}
+
+int take_pointer(char *value)
+{
+    return value[1];
+}
 
 int main()
 {
@@ -17,6 +52,39 @@ int main()
     int sum;
     int outer;
     int marker;
+
+    call_order = 0;
+    marker = add_pair(mark_arg(0, 1), mark_arg(1, 2));
+    if (marker != 3) {
+        return 100;
+    }
+    if (call_order != 2) {
+        return 101;
+    }
+
+    if (add_pair(3, add_pair(4, 5)) != 12) {
+        return 102;
+    }
+    if (add_pair(return_one(), return_one()) != 2) {
+        return 103;
+    }
+    if (5 + add_pair(1, 2) != 8) {
+        return 104;
+    }
+
+    return_one();
+    if (return_one() != 1) {
+        return 105;
+    }
+    if (take_char(4660) != 52) {
+        return 106;
+    }
+    if (take_unsigned(4660) != 4660) {
+        return 107;
+    }
+    if (take_pointer("AZ") != 'Z') {
+        return 108;
+    }
 
     global_char = 511;
     if (global_char != 255) {

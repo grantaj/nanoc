@@ -622,21 +622,25 @@ expression
 
 Phase 1 has no standard library.
 
-The bootstrap environment predeclares the small I/O surface required by `ass.c`:
+The bootstrap environment predeclares the five byte-stream services required by the assembler and compiler output path:
 
 ```c
 int io_open(char *name, int length);
 int io_read(int handle);
+int io_create(char *name, int length);
+int io_write(int handle, int value);
 int io_close(int handle);
 ```
 
 For the bootstrap runtime:
 
-- `io_open` returns a non-negative handle on success and `-1` on failure;
+- `io_open` opens a source file and returns a non-negative handle on success or `-1` on failure;
 - `io_read` returns a byte value 0 through 255, `-1` for end of file, and `-2` for I/O failure;
+- `io_create` creates/replaces an output file and returns a non-negative handle on success or `-1` on failure;
+- `io_write` writes the low byte of `value` and returns 0 on success or `-1` on failure;
 - `io_close` closes a valid handle and returns 0.
 
-These are runtime services, not language keywords or a general file API. Their C64 implementation and concrete calling convention are defined by `docs/phase1-machine.md`.
+These are runtime services, not language keywords, a standard library or a general file API. Their C64 implementation and concrete handle/device choices are defined by `docs/phase1-machine.md`.
 
 Additional runtime services should not be added to Phase 1 merely for convenience. They must be justified by the compiler or another bootstrap program.
 
@@ -678,9 +682,9 @@ This list is not a judgement that these features are undesirable. It records tha
 
 # 12. Evidence categories
 
-## 12.1 Required by `ass.c`
+## 12.1 Required by `ass.c` and the bootstrap compiler path
 
-Directly exercised by the normalised candidate assembler:
+Directly exercised by the normalised candidate assembler or the compiler output path:
 
 - `char`, `int`, `unsigned` and `char *`;
 - fixed global `char`, `int` and `unsigned` arrays;
@@ -696,7 +700,7 @@ Directly exercised by the normalised candidate assembler:
 - indexing and byte-pointer addition;
 - integer, character and string literals;
 - block comments;
-- the three-function runtime I/O boundary.
+- the five-function byte-stream runtime boundary.
 
 ## 12.2 Deliberate additions for the bootstrap
 
