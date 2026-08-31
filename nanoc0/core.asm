@@ -20,3 +20,4 @@ emit_bss_boundaries:
 	rts
 
 	include "declarations.asm"
+	include "runtime_codegen.asm"
