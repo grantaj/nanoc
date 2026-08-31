@@ -738,6 +738,8 @@ emit_long_conditional_jump:
 	rts
 
 set_true_target:
+	lda #EMIT_LABEL_CMP_TRUE
+	sta emitLabelKind
 	lda compareTrueLabel
 	sta emitLabelValue
 	lda compareTrueLabel+1
@@ -745,6 +747,8 @@ set_true_target:
 	rts
 
 set_false_target:
+	lda #EMIT_LABEL_CMP_FALSE
+	sta emitLabelKind
 	lda compareFalseLabel
 	sta emitLabelValue
 	lda compareFalseLabel+1
@@ -808,6 +812,8 @@ emit_bmi_false:
 	jmp emit_long_conditional_jump
 
 emit_bpl_same_sign:
+	lda #EMIT_LABEL_CMP_SAME_SIGN
+	sta emitLabelKind
 	lda compareSameSignLabel
 	sta emitLabelValue
 	lda compareSameSignLabel+1
@@ -1070,6 +1076,8 @@ emit_signed_relational:
 	bcs .sameSign
 	rts
 .sameSign:
+	lda #EMIT_LABEL_CMP_SAME_SIGN
+	sta emitLabelKind
 	lda compareSameSignLabel
 	sta emitLabelValue
 	lda compareSameSignLabel+1
@@ -1107,6 +1115,8 @@ emit_label_definition:
 	jmp emit_newline
 
 emit_comparison_result_labels:
+	lda #EMIT_LABEL_CMP_TRUE
+	sta emitLabelKind
 	lda compareTrueLabel
 	sta emitLabelValue
 	lda compareTrueLabel+1
@@ -1122,6 +1132,8 @@ emit_comparison_result_labels:
 	bcs .skipFalse
 	rts
 .skipFalse:
+	lda #EMIT_LABEL_CMP_DONE
+	sta emitLabelKind
 	lda compareDoneLabel
 	sta emitLabelValue
 	lda compareDoneLabel+1
@@ -1130,6 +1142,8 @@ emit_comparison_result_labels:
 	bcs .falseLabel
 	rts
 .falseLabel:
+	lda #EMIT_LABEL_CMP_FALSE
+	sta emitLabelKind
 	lda compareFalseLabel
 	sta emitLabelValue
 	lda compareFalseLabel+1
@@ -1145,6 +1159,8 @@ emit_comparison_result_labels:
 	bcs .doneLabel
 	rts
 .doneLabel:
+	lda #EMIT_LABEL_CMP_DONE
+	sta emitLabelKind
 	lda compareDoneLabel
 	sta emitLabelValue
 	lda compareDoneLabel+1
