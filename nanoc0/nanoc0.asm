@@ -53,23 +53,35 @@ nanoc0Entry:
 	lda #SOURCE_LFN_DEFAULT
 	sta sourceLfn
 	jsr open_source
-	bcc .sourceFailed
+	bcs .sourceOpen
+	jmp .sourceFailed
+.sourceOpen:
 
 	jsr open_compiler_output
-	bcc .outputFailed
+	bcs .outputOpen
+	jmp .outputFailed
+.outputOpen:
 
 	ldx #<programHeader
 	ldy #>programHeader
 	jsr emit_runtime_lines
-	bcc .emitFailed
+	bcs .headerEmitted
+	jmp .emitFailed
+.headerEmitted:
 
 	jsr parse_translation_unit
-	bcc .compileFailed
+	bcs .compiled
+	jmp .compileFailed
+.compiled:
 	jsr record_bss_bytes
 	jsr generated_layout_fits
-	bcc .layoutFailed
+	bcs .layoutFits
+	jmp .layoutFailed
+.layoutFits:
 	jsr emit_program_entry
-	bcc .emitFailed
+	bcs .entryEmitted
+	jmp .emitFailed
+.entryEmitted:
 
 	jsr close_source
 	jsr close_compiler_output
