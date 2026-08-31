@@ -116,13 +116,19 @@ xt_compile_runtime_fixture:
 	rts
 .compileFail:
 	;;; Preserve the compiler's layered diagnostic in the normal one-byte native
-	;;; test result. $40.. reports parserError; $80.. reports expressionError when
-	;;; the declaration layer failed specifically at the expression boundary.
+	;;; test result. $20.. reports scannerError; $40.. reports parserError;
+	;;; $80.. reports expressionError at the declaration/expression boundary.
 	lda parserError
+	cmp #PARSE_SCANNER_ERROR
+	beq .scannerDiagnostic
 	cmp #PARSE_EXPRESSION_ERROR
 	bne .parserDiagnostic
 	lda expressionError
 	ora #$80
+	jmp .closeDiagnostic
+.scannerDiagnostic:
+	lda scannerError
+	ora #$20
 	jmp .closeDiagnostic
 .parserDiagnostic:
 	ora #$40
