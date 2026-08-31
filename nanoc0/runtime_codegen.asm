@@ -241,7 +241,9 @@ emit_runtime_init:
 	clc
 	rts
 
-;;; A=path length, X/Y=path. Emit one ordinary ass include statement.
+;;; A=path length, X/Y=path. Emit one ordinary ass include statement. Production
+;;; ass roots local includes at ASS/, so ../ deliberately drops that prefix and
+;;; reaches the repository-level nanoc0 target directory.
 emit_runtime_include:
 	sta runtimeIncludeLength
 	stx runtimeIncludePath
@@ -316,19 +318,19 @@ runtimeStaTmpHighEnd:
 runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"'
 runtimeIncludePrefixEnd:
 
-runtimeMulPath:		byte 'n','a','n','o','c','0','/','t','a','r','g','e','t','/','m','u','l','1','6','.','a','s','m'
+runtimeMulPath:		byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','m','u','l','1','6','.','a','s','m'
 runtimeMulPathEnd:
-runtimeCommonPath:	byte 'n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','o','m','m','o','n','.','a','s','m'
+runtimeCommonPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','o','m','m','o','n','.','a','s','m'
 runtimeCommonPathEnd:
-runtimeOpenPath:	byte 'n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','o','p','e','n','.','a','s','m'
+runtimeOpenPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','o','p','e','n','.','a','s','m'
 runtimeOpenPathEnd:
-runtimeReadPath:	byte 'n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','r','e','a','d','.','a','s','m'
+runtimeReadPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','r','e','a','d','.','a','s','m'
 runtimeReadPathEnd:
-runtimeCreatePath:	byte 'n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','r','e','a','t','e','.','a','s','m'
+runtimeCreatePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','r','e','a','t','e','.','a','s','m'
 runtimeCreatePathEnd:
-runtimeWritePath:	byte 'n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','w','r','i','t','e','.','a','s','m'
+runtimeWritePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','w','r','i','t','e','.','a','s','m'
 runtimeWritePathEnd:
-runtimeClosePath:	byte 'n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','l','o','s','e','.','a','s','m'
+runtimeClosePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','l','o','s','e','.','a','s','m'
 runtimeClosePathEnd:
 
 runtimeInitPrefix:
