@@ -290,7 +290,9 @@ stage_current_call_argument:
 	jmp expression_fail
 .typeOk:
 	jsr ensure_call_stage_slot
-	bcc .failed
+	bcs .stageReady
+	rts
+.stageReady:
 	jsr emit_store_call_stage
 	bcs .stored
 	lda #EXPR_EMIT_ERROR
@@ -299,9 +301,6 @@ stage_current_call_argument:
 	ldx callEmitDepth
 	inc callArgumentIndex,x
 	sec
-	rts
-.failed:
-	clc
 	rts
 
 ;;; ensure_call_stage_slot
@@ -343,7 +342,9 @@ ensure_call_stage_slot:
 ;;; functions have no C definition from which #54 could allocate them.
 complete_current_call:
 	jsr verify_current_call_marker
-	bcc .failed
+	bcs .markerOk
+	rts
+.markerOk:
 	lda callDepth
 	sec
 	sbc #$01
@@ -367,7 +368,9 @@ complete_current_call:
 	cmp #SYMBOL_RUNTIME_FUNCTION
 	bne .copyArguments
 	jsr ensure_runtime_parameter_slots
-	bcc .failed
+	bcs .runtimeReady
+	rts
+.runtimeReady:
 	ldx callEmitCallee
 	lda #$01
 	sta runtimeUsed,x
@@ -410,8 +413,9 @@ complete_current_call:
 	sta expressionMustIndex
 	sta expressionNeedValue
 	jsr parser_next
-	bcc .failed
-
+	bcs .advanced
+	rts
+.advanced:
 	;;; Only the first completed outer call matters for the statement grammar.
 	;;; Later calls in a forbidden larger expression must not overwrite its
 	;;; immediate terminator.
@@ -427,9 +431,6 @@ complete_current_call:
 	sta callStatementSawOuter
 .done:
 	sec
-	rts
-.failed:
-	clc
 	rts
 
 ;;; Runtime function parameters use the same __c_<function>__vNN spelling as C
