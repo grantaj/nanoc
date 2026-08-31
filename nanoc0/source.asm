@@ -9,9 +9,10 @@
 ;;;
 ;;; Nano C may read source and write generated assembler on the same serial
 ;;; device. CHKIN/CHKOUT switch the physical IEC TALK/LISTEN state, so one byte
-;;; records which compiler channel is actually selected. We reselect only when
-;;; the direction changes; source-only scanning therefore remains one ordinary
-;;; CHKIN followed by a stream of CHRIN calls.
+;;; records which compiler channel is actually selected. A direction change is
+;;; explicit: CLRCHN first sends UNTALK/UNLISTEN without closing either logical
+;;; file, then CHKIN or CHKOUT selects the still-open stream. Source-only scanning
+;;; therefore remains one ordinary CHKIN followed by a stream of CHRIN calls.
 ;;;
 ;;; read_source_byte contract:
 ;;;   carry set   A = next source byte
@@ -128,10 +129,14 @@ read_source_byte:
 
 .read:
 	;;; Generated output may have turned the IEC bus around since the previous
-	;;; source byte. Select the still-open source only when that actually happened.
+	;;; source byte. Return the bus to neutral before selecting the still-open
+	;;; source as talker again.
 	lda compilerIoDirection
 	cmp #COMPILER_IO_SOURCE
 	beq .selected
+	jsr CLRCHN
+	lda #COMPILER_IO_NONE
+	sta compilerIoDirection
 	ldx sourceLfn
 	jsr CHKIN
 	bcs .ioError
