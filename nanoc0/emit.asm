@@ -8,8 +8,10 @@
 ;;; compiler's fixed KERNAL output logical file. There is no line/output buffer.
 ;;;
 ;;; Source input and generated output may share one serial device. source.asm
-;;; records the currently selected compiler direction, so CHKOUT is issued only
-;;; when a preceding source read has turned the IEC bus back to TALK.
+;;; records the currently selected compiler direction. On a real direction
+;;; change we CLRCHN first, then CHKOUT the still-open output logical file; this
+;;; mirrors source.asm's CLRCHN/CHKIN transition and leaves steady output as a
+;;; simple stream of CHROUT calls.
 ;;;
 ;;; emit_output_byte preserves X, Y and both compiler scratch pairs because the
 ;;; formatter may be walking text through them. #57 only needs to add the normal
@@ -57,6 +59,9 @@ emit_output_byte:
 	lda compilerIoDirection
 	cmp #COMPILER_IO_OUTPUT
 	beq .selected
+	jsr CLRCHN
+	lda #COMPILER_IO_NONE
+	sta compilerIoDirection
 	ldx #EMIT_OUTPUT_LFN
 	jsr CHKOUT
 	bcs .channelFailed
