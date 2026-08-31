@@ -7,11 +7,11 @@
 ;;; physical newline is first read.  Replaying a pushed-back byte never advances
 ;;; the line a second time.
 ;;;
-;;; The compiler alternates reading C source and writing generated assembler on
-;;; the same serial device. CHKIN/CHKOUT therefore also alternate the physical
-;;; IEC TALK/LISTEN state. Each real source read explicitly reselects this input
-;;; logical file before CHRIN rather than relying on the logical file merely
-;;; remaining open.
+;;; Nano C may read source and write generated assembler on the same serial
+;;; device. CHKIN/CHKOUT switch the physical IEC TALK/LISTEN state, so one byte
+;;; records which compiler channel is actually selected. We reselect only when
+;;; the direction changes; source-only scanning therefore remains one ordinary
+;;; CHKIN followed by a stream of CHRIN calls.
 ;;;
 ;;; read_source_byte contract:
 ;;;   carry set   A = next source byte
@@ -26,6 +26,10 @@ SOURCE_STATE_EOF         = 1
 SOURCE_STATE_IO_ERROR    = 2
 SOURCE_LF                = $0a
 SOURCE_CR                = $0d
+
+COMPILER_IO_NONE         = 0
+COMPILER_IO_SOURCE       = 1
+COMPILER_IO_OUTPUT       = 2
 
 ;;; open_source
 ;;; sourceName/sourceNameLength/sourceDevice identify the source file.
@@ -43,6 +47,8 @@ open_source:
 	sta sourceLine
 
 	jsr CLRCHN
+	lda #COMPILER_IO_NONE
+	sta compilerIoDirection
 	lda sourceNameLength
 	ldx sourceName
 	ldy sourceName+1
@@ -57,10 +63,16 @@ open_source:
 	sta sourceOpen
 	ldx sourceLfn
 	jsr CHKIN
-	bcc .ok
+	bcs .error
+	lda #COMPILER_IO_SOURCE
+	sta compilerIoDirection
+	sec
+	rts
 .error:
 	;; CLOSE is harmless after a failed OPEN and also cleans up a CHKIN failure.
 	jsr CLRCHN
+	lda #COMPILER_IO_NONE
+	sta compilerIoDirection
 	lda sourceLfn
 	jsr CLOSE
 	lda #$00
@@ -69,16 +81,16 @@ open_source:
 	sta sourceState
 	clc
 	rts
-.ok:
-	sec
-	rts
 
 ;;; close_source
-;;; Close only the logical file owned by this source reader.
+;;; Close only the logical file owned by this source reader. CLRCHN also means
+;;; neither compiler stream is selected afterwards.
 close_source:
 	lda sourceOpen
 	beq .done
 	jsr CLRCHN
+	lda #COMPILER_IO_NONE
+	sta compilerIoDirection
 	lda sourceLfn
 	jsr CLOSE
 	lda #$00
@@ -115,11 +127,17 @@ read_source_byte:
 	rts
 
 .read:
-	;;; Generated output may have selected another serial channel since the last
-	;;; byte. Re-select this logical input before asking the device to talk.
+	;;; Generated output may have turned the IEC bus around since the previous
+	;;; source byte. Select the still-open source only when that actually happened.
+	lda compilerIoDirection
+	cmp #COMPILER_IO_SOURCE
+	beq .selected
 	ldx sourceLfn
 	jsr CHKIN
 	bcs .ioError
+	lda #COMPILER_IO_SOURCE
+	sta compilerIoDirection
+.selected:
 	jsr CHRIN
 	sta sourceByte
 	jsr READST
@@ -202,6 +220,7 @@ sourcePushbackByte:	byte 0
 sourceEofPending:	byte 0
 sourceSkipLf:		byte 0
 sourceLine:		word 1
+compilerIoDirection:	byte COMPILER_IO_NONE
 
 ;;; KERNAL read scratch.
 sourceByte:		byte 0
