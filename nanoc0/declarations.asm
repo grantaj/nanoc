@@ -964,7 +964,7 @@ compile_local_initializer:
 ;;; those tests continue to measure declaration state rather than call support.
 ;;; Every production nanoc0 image takes the else path and contains the real
 ;;; explicit statement engine instead.
-ifdef NANOC0_DECLARATION_BODY_SKIP
+	ifdef NANOC0_DECLARATION_BODY_SKIP
 parse_function_statements:
 	lda #$00
 	sta bodyBraceDepth
@@ -1013,9 +1013,9 @@ parse_function_statements:
 	rts
 
 bodyBraceDepth:		byte 0
-else
+	else
 	include "statements.asm"
-endif
+	endif
 
 ;;; currentCount is the slot being constructed until make_current_visible.
 emit_current_checked:
