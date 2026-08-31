@@ -959,60 +959,11 @@ compile_local_initializer:
 	clc
 	rts
 
-;;; #54's declaration/capacity tests intentionally contain calls before #57.
-;;; They define NANOC0_DECLARATION_BODY_SKIP and retain the old brace walker so
-;;; those tests continue to measure declaration state rather than call support.
-;;; Every production nanoc0 image takes the else path and contains the real
-;;; explicit statement engine instead.
+;;; Two pre-#57 declaration/capacity tests still contain calls. Keep their old
+;;; body walker in an explicitly test-only file; production source contains only
+;;; the real statement parser.
 	ifdef NANOC0_DECLARATION_BODY_SKIP
-parse_function_statements:
-	lda #$00
-	sta bodyBraceDepth
-.loop:
-	lda currentTokenKind
-	cmp #TOKEN_EOF
-	beq .unterminated
-	jsr is_type_token
-	bcs .lateLocal
-	lda currentTokenKind
-	cmp #TOKEN_IDENTIFIER
-	bne .notIdentifier
-	jsr lookup_symbol
-	bcs .advance
-	lda #PARSE_UNDECLARED
-	jmp parser_fail
-.notIdentifier:
-	lda currentTokenKind
-	cmp #'{' 
-	beq .openBrace
-	cmp #'}'
-	beq .closeBrace
-.advance:
-	jsr parser_next
-	bcc .failed
-	jmp .loop
-.openBrace:
-	inc bodyBraceDepth
-	beq .unterminated
-	jmp .advance
-.closeBrace:
-	lda bodyBraceDepth
-	beq .functionDone
-	dec bodyBraceDepth
-	jmp .advance
-.functionDone:
-	jmp parser_next
-.lateLocal:
-	lda #PARSE_LATE_LOCAL
-	jmp parser_fail
-.unterminated:
-	lda #PARSE_UNTERMINATED_FUNCTION
-	jmp parser_fail
-.failed:
-	clc
-	rts
-
-bodyBraceDepth:		byte 0
+	include "test_declaration_body_skip.asm"
 	else
 	include "statements.asm"
 	endif
