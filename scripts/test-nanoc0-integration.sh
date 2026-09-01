@@ -41,15 +41,13 @@ report_driver_mailbox() {
 
     case "$stage" in
         1)
-            # During the assembler stage the line/BSS words carry the end
-            # pointers of the two packed fixed symbol tables instead. Persistent
-            # records start at $a000 and end before $bc00; current-scope local
-            # records start at $bc00 and end before $d000.
+            # During the assembler stage the line/BSS words carry the two moving
+            # ends of the shared $a000-$cfff symbol workspace. Persistent records
+            # grow upward; current-scope local records grow downward.
             persistent_used=$((line - 40960))
-            persistent_free=$((48128 - line))
-            local_used=$((bss - 48128))
-            local_free=$((53248 - bss))
-            echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status scope=$detail persistent-used=$persistent_used persistent-free=$persistent_free local-used=$local_used local-free=$local_free" >&2
+            local_used=$((53248 - bss))
+            free_gap=$((bss - line))
+            echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status scope=$detail persistent=$persistent_used local=$local_used free-gap=$free_gap" >&2
             ;;
         2)
             echo "native bootstrap stage=compile-small status=$(nanoc_status_name "$status")($status) line=$line detail=$detail bss=$bss" >&2
@@ -151,4 +149,4 @@ report_ass_from_c_mailbox
 set -- $(od -An -tu1 -N8 "$ASS_FROM_C_RESULT")
 ASS_FROM_C_LOADED=$(($4 + 256 * $5))
 echo "ass-from-c loaded image: $ASS_FROM_C_LOADED bytes"
-echo "native bootstrap oracle: 6905 bytes matched"
+echo "native bootstrap oracle matched"
