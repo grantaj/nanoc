@@ -419,6 +419,7 @@ reset_generated_labels:
 	rts
 
 emitCPrefix:		byte '_','_','c','_',0
+emitCPrefixEnd = emitCPrefix+4
 emitValueSuffix:	byte '_','_','v',0
 emitSpillSuffix:	byte '_','_','s',0
 emitStringPrefix:	byte '_','_','n','c','_','s','t','r','i','n','g',0
