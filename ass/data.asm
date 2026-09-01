@@ -248,7 +248,9 @@ assembleDataList:
 	rts
 
 ;;; nextDataItem
-;;; Return one trimmed comma-separated item as ZP_PTR0/X.
+;;; Return one trimmed comma-separated item as ZP_PTR0/X. Character atoms are
+;;; exactly three bytes in the value grammar, so their middle byte is data even
+;;; when it is a comma or whitespace.
 nextDataItem:
 	ldy dataOffset
 	jsr skipDataSpaces
@@ -260,6 +262,8 @@ nextDataItem:
 	cpy statementArgumentLength
 	beq .last
 	lda (ZP_PTR1),y
+	cmp #39				; apostrophe starts the existing 'c' atom
+	beq .character
 	cmp #','
 	beq .comma
 	cmp #' '
@@ -273,6 +277,21 @@ nextDataItem:
 	inx
 .advance:
 	iny
+	jmp .scan
+.character:
+	;;; Skip opening quote, the one character byte, and the closing quote as one
+	;;; indivisible item. parseValue performs the actual quote validation later.
+	iny
+	cpy statementArgumentLength
+	beq .bad
+	iny
+	cpy statementArgumentLength
+	beq .bad
+	iny
+	tya
+	sec
+	sbc dataOffset
+	tax
 	jmp .scan
 .comma:
 	cpx #$00
