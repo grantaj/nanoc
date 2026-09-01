@@ -7,7 +7,8 @@ FAIL_BUILD_B     = $10
 FAIL_RUN_B       = $20
 FAIL_SMOKE_BYTES = $30
 
-;;; Failure-only workspace mailbox saved with TEST_RESULT by tests/run-test.sh.
+;;; Workspace mailbox saved with TEST_RESULT by tests/run-test.sh while the
+;;; fixed symbol-table split is being measured.
 SH_PERSIST_END      = $03
 SH_PERSIST_NAME_END = $05
 SH_LOCAL_END        = $07
@@ -37,6 +38,10 @@ main:
 	jmp finish
 
 .builtB:
+	;; Capture A's completed production assembly before B reuses the same fixed
+	;; work tables. This is diagnostic only and does not affect the proof below.
+	jsr captureWorkspace
+
 	;; Execute B itself and use it to assemble a tiny known program. Successful
 	;; output proves the generated image is not merely plausible bytes in memory.
 	lda #<smokeName
@@ -52,7 +57,6 @@ main:
 	jsr SELF_HOSTED
 	lda ASSEMBLER_COMMAND_STATUS
 	beq .checkSmoke
-	jsr captureWorkspace
 	lda ASSEMBLER_COMMAND_STATUS
 	ora #FAIL_RUN_B
 	jmp finish
