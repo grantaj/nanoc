@@ -30,8 +30,8 @@ nanoc_status_name() {
 
 report_driver_mailbox() {
     [ -s "$DRIVER_RESULT" ] || return 0
-    set -- $(od -An -tu1 -N9 "$DRIVER_RESULT")
-    [ "$#" -ge 9 ] || return 0
+    set -- $(od -An -tu1 -N11 "$DRIVER_RESULT")
+    [ "$#" -ge 11 ] || return 0
 
     stage=$2
     status=$3
@@ -39,6 +39,7 @@ report_driver_mailbox() {
     detail=$6
     bss=$(($7 + 256 * $8))
     extra=$9
+    hidden=$((${10} + 256 * ${11}))
 
     case "$stage" in
         1)
@@ -48,12 +49,14 @@ report_driver_mailbox() {
                 free_gap=$((bss - line))
                 echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status scope=$detail staged=$staged fixup-bytes=$fixups free-gap=$free_gap" >&2
             else
-                main_used=$((line - 40960))
-                overflow_end=$((detail + 256 * extra))
-                overflow_used=$((overflow_end - 13056))
+                primary_used=$((line - 13056))
+                shared_end=$((detail + 256 * extra))
+                shared_used=$((shared_end - 40960))
                 local_used=$((53248 - bss))
-                persistent_used=$((main_used + overflow_used))
-                echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status persistent=$persistent_used/11520 main=$main_used/8192 overflow=$overflow_used/3328 local=$local_used/4096" >&2
+                shared_free=$((bss - shared_end))
+                hidden_used=$((hidden - 53248))
+                persistent_used=$((primary_used + shared_used + hidden_used))
+                echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status persistent=$persistent_used/27898 primary=$primary_used/3328 shared-global=$shared_used/12288 local=$local_used shared-free=$shared_free hidden=$hidden_used/12282" >&2
             fi
             ;;
         2)

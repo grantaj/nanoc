@@ -15,6 +15,7 @@ INTEGRATION_LINE   = $05
 INTEGRATION_DETAIL = $07
 INTEGRATION_BSS    = $08
 INTEGRATION_EXTRA  = $0a
+INTEGRATION_HIDDEN = $0b
 
 STAGE_BUILD_NANOC0  = 1
 STAGE_COMPILE_SOURCE = 2
@@ -32,6 +33,8 @@ main:
 	sta INTEGRATION_BSS
 	sta INTEGRATION_BSS+1
 	sta INTEGRATION_EXTRA
+	sta INTEGRATION_HIDDEN
+	sta INTEGRATION_HIDDEN+1
 
 	;;; Use the production assembler machinery at low memory to assemble the
 	;;; production nanoc0 source tree into $4000. assemblerEntry itself fixes its
@@ -177,9 +180,10 @@ finish:
 
 ;;; On an assembler-stage failure the compiler diagnostic fields are not live yet.
 ;;; For symbol pressure the line word carries the first persistent end, the BSS
-;;; word carries the local end, and DETAIL/EXTRA carry the visible shared end. For
-;;; work pressure they carry the staged-image and fixup cursors instead. These are
-;;; direct measurements of the fixed C64 workspaces; no host model is involved.
+;;; word carries the local end, DETAIL/EXTRA carry the visible shared end, and
+;;; HIDDEN carries the physical-RAM persistent end. For work pressure they carry
+;;; the staged-image and fixup cursors instead. These are direct measurements of
+;;; the fixed C64 workspaces; no host model is involved.
 capture_ass_workspace:
 	lda INTEGRATION_STATUS
 	cmp #ASSEMBLE_WORK_FULL
@@ -196,6 +200,10 @@ capture_ass_workspace:
 	sta INTEGRATION_BSS
 	lda localSymbolTableEnd+1
 	sta INTEGRATION_BSS+1
+	lda symbolHiddenEnd
+	sta INTEGRATION_HIDDEN
+	lda symbolHiddenEnd+1
+	sta INTEGRATION_HIDDEN+1
 	rts
 .work:
 	lda stagingPtr
@@ -206,6 +214,8 @@ capture_ass_workspace:
 	sta INTEGRATION_DETAIL
 	lda #$00
 	sta INTEGRATION_EXTRA
+	sta INTEGRATION_HIDDEN
+	sta INTEGRATION_HIDDEN+1
 	lda fixupFree
 	sta INTEGRATION_BSS
 	lda fixupFree+1
@@ -226,6 +236,8 @@ capture_nanoc_result:
 	sta INTEGRATION_DETAIL
 	lda #$00
 	sta INTEGRATION_EXTRA
+	sta INTEGRATION_HIDDEN
+	sta INTEGRATION_HIDDEN+1
 	lda NANOC_COMMAND_BSS_BYTES
 	sta INTEGRATION_BSS
 	lda NANOC_COMMAND_BSS_BYTES+1
