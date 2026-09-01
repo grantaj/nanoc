@@ -1,15 +1,21 @@
 ;;; symbols.asm
 ;;;
-;;; Two deliberately small linear symbol tables use the same compact entry.
+;;; Two deliberately small linear symbol tables use the same packed record.
 ;;;
 ;;; Ordinary names live for the whole assembly in the caller-owned persistent
 ;;; table. Dot-prefixed names live only until the next global label in a separate
 ;;; caller-owned scratch table. Starting a new global scope rewinds that scratch
-;;; table by resetting two pointers; nothing is moved or individually freed.
+;;; table by resetting one pointer; nothing is moved or individually freed.
 ;;;
-;;; The table itself says whether a name is global or local, so entries do not
-;;; carry a scope number. Within either table entries grow upward while owned
-;;; name bytes grow downward. The two regions simply meet when that table is full.
+;;; Each record is simply:
+;;;   byte  name length
+;;;   word  value or unresolved-reference head
+;;;   byte  kind
+;;;   byte[] name
+;;;
+;;; The name follows its entry, so storing another two-byte pointer to it would be
+;;; redundant. Records are never moved while live, so symbolEntry remains stable
+;;; for staged fixups. The table itself says whether a name is global or local.
 ;;;
 ;;; The two-byte payload has one meaning at a time:
 ;;;   constant / defined label -> final value
@@ -17,13 +23,12 @@
 ;;; An undefined label has no value yet, and a defined label has no outstanding
 ;;; word references, so keeping both would waste two bytes in every symbol.
 
-SYMBOL_NAME_LO    = 0
-SYMBOL_NAME_HI    = 1
-SYMBOL_LENGTH     = 2
-SYMBOL_PAYLOAD_LO = 3
-SYMBOL_PAYLOAD_HI = 4
-SYMBOL_KIND       = 5
-SYMBOL_SIZE       = 6
+SYMBOL_LENGTH     = 0
+SYMBOL_PAYLOAD_LO = 1
+SYMBOL_PAYLOAD_HI = 2
+SYMBOL_KIND       = 3
+SYMBOL_NAME       = 4
+SYMBOL_HEADER_SIZE = 4
 
 SYMBOL_VALUE_LO = SYMBOL_PAYLOAD_LO
 SYMBOL_VALUE_HI = SYMBOL_PAYLOAD_HI
@@ -39,7 +44,7 @@ SYMBOL_DUPLICATE = $01
 SYMBOL_FULL      = $02
 SYMBOL_NO_SCOPE  = $03
 
-;;; These select one of the two fixed tables; they are not stored in entries.
+;;; These select one of the two fixed tables; they are not stored in records.
 SYMBOL_SCOPE_GLOBAL = $00
 SYMBOL_SCOPE_LOCAL  = $01
 
@@ -51,10 +56,6 @@ resetSymbols:
 	sta symbolTableEnd
 	lda symbolTableStart+1
 	sta symbolTableEnd+1
-	lda symbolTableLimit
-	sta symbolNameEnd
-	lda symbolTableLimit+1
-	sta symbolNameEnd+1
 	jsr resetLocalSymbols
 	lda #$00
 	sta currentScope
@@ -67,10 +68,6 @@ resetLocalSymbols:
 	sta localSymbolTableEnd
 	lda localSymbolTableStart+1
 	sta localSymbolTableEnd+1
-	lda localSymbolTableLimit
-	sta localSymbolNameEnd
-	lda localSymbolTableLimit+1
-	sta localSymbolNameEnd+1
 	rts
 
 ;;; defineConstant
@@ -263,21 +260,21 @@ findSymbolEntry:
 	sta ZP_PTR1+1
 	ldy #SYMBOL_LENGTH
 	lda (ZP_PTR1),y
+	sta symbolRecordLength
 	cmp symbolNameLength
-	beq .lengthMatches
-	jmp .advance
-.lengthMatches:
+	bne .advance
+
 	lda symbolName
 	sta ZP_PTR0
 	lda symbolName+1
 	sta ZP_PTR0+1
-	ldy #SYMBOL_NAME_LO
-	lda (ZP_PTR1),y
-	tax
-	iny
-	lda (ZP_PTR1),y
+	clc
+	lda symbolScan
+	adc #SYMBOL_NAME
+	sta ZP_PTR1
+	lda symbolScan+1
+	adc #$00
 	sta ZP_PTR1+1
-	stx ZP_PTR1
 	ldy #$00
 .compare:
 	lda (ZP_PTR0),y
@@ -312,13 +309,16 @@ findSymbolEntry:
 	rts
 
 .advance:
+	lda symbolRecordLength
+	clc
+	adc #SYMBOL_HEADER_SIZE
+	sta symbolRecordSize
 	clc
 	lda symbolScan
-	adc #SYMBOL_SIZE
+	adc symbolRecordSize
 	sta symbolScan
-	bcc .samePage
+	bcc .next
 	inc symbolScan+1
-.samePage:
 	jmp .next
 
 .notFound:
@@ -330,8 +330,8 @@ findSymbolEntry:
 	rts
 
 ;;; allocateSymbol
-;;; Append one entry to the table selected by the name's lifetime and copy its
-;;; spelling into that table's downward-growing name area.
+;;; Append one packed record to the table selected by the name's lifetime. The
+;;; copied name follows the four-byte header, so allocation is one moving cursor.
 allocateSymbol:
 	lda symbolNameLength
 	bne .hasName
@@ -347,69 +347,50 @@ allocateSymbol:
 	sta symbolAllocEnd
 	lda localSymbolTableEnd+1
 	sta symbolAllocEnd+1
-	lda localSymbolNameEnd
-	sta symbolAllocNameEnd
-	lda localSymbolNameEnd+1
-	sta symbolAllocNameEnd+1
+	lda localSymbolTableLimit
+	sta symbolAllocLimit
+	lda localSymbolTableLimit+1
+	sta symbolAllocLimit+1
 	jmp .measure
 .global:
 	lda symbolTableEnd
 	sta symbolAllocEnd
 	lda symbolTableEnd+1
 	sta symbolAllocEnd+1
-	lda symbolNameEnd
-	sta symbolAllocNameEnd
-	lda symbolNameEnd+1
-	sta symbolAllocNameEnd+1
+	lda symbolTableLimit
+	sta symbolAllocLimit
+	lda symbolTableLimit+1
+	sta symbolAllocLimit+1
 
 .measure:
+	lda symbolNameLength
+	clc
+	adc #SYMBOL_HEADER_SIZE
+	bcs .full
+	sta symbolRecordSize
 	clc
 	lda symbolAllocEnd
-	adc #SYMBOL_SIZE
+	adc symbolRecordSize
 	sta symbolNext
 	lda symbolAllocEnd+1
 	adc #$00
 	sta symbolNext+1
 
-	sec
-	lda symbolAllocNameEnd
-	sbc symbolNameLength
-	sta symbolNewName
-	lda symbolAllocNameEnd+1
-	sbc #$00
-	sta symbolNewName+1
+	lda symbolNext+1
+	cmp symbolAllocLimit+1
+	bcc .room
+	bne .full
+	lda symbolNext
+	cmp symbolAllocLimit
+	bcc .room
+	beq .room
+	jmp .full
 
-	lda symbolNewName+1
-	cmp symbolNext+1
-	bcs .highRoom
-	jmp .full
-.highRoom:
-	bne .room
-	lda symbolNewName
-	cmp symbolNext
-	bcs .room
-	jmp .full
 .room:
 	lda ZP_PTR1
 	pha
 	lda ZP_PTR1+1
 	pha
-
-	lda symbolName
-	sta ZP_PTR0
-	lda symbolName+1
-	sta ZP_PTR0+1
-	lda symbolNewName
-	sta ZP_PTR1
-	lda symbolNewName+1
-	sta ZP_PTR1+1
-	ldy #$00
-.copyName:
-	lda (ZP_PTR0),y
-	sta (ZP_PTR1),y
-	iny
-	cpy symbolNameLength
-	bne .copyName
 
 	lda symbolAllocEnd
 	sta symbolEntry
@@ -417,13 +398,7 @@ allocateSymbol:
 	lda symbolAllocEnd+1
 	sta symbolEntry+1
 	sta ZP_PTR1+1
-	ldy #SYMBOL_NAME_LO
-	lda symbolNewName
-	sta (ZP_PTR1),y
-	iny
-	lda symbolNewName+1
-	sta (ZP_PTR1),y
-	iny
+	ldy #SYMBOL_LENGTH
 	lda symbolNameLength
 	sta (ZP_PTR1),y
 	iny
@@ -447,26 +422,37 @@ allocateSymbol:
 	lda symbolKind
 	sta (ZP_PTR1),y
 
+	lda symbolName
+	sta ZP_PTR0
+	lda symbolName+1
+	sta ZP_PTR0+1
+	clc
+	lda symbolEntry
+	adc #SYMBOL_NAME
+	sta ZP_PTR1
+	lda symbolEntry+1
+	adc #$00
+	sta ZP_PTR1+1
+	ldy #$00
+.copyName:
+	lda (ZP_PTR0),y
+	sta (ZP_PTR1),y
+	iny
+	cpy symbolNameLength
+	bne .copyName
+
 	lda symbolWantedScope
 	beq .commitGlobal
 	lda symbolNext
 	sta localSymbolTableEnd
 	lda symbolNext+1
 	sta localSymbolTableEnd+1
-	lda symbolNewName
-	sta localSymbolNameEnd
-	lda symbolNewName+1
-	sta localSymbolNameEnd+1
 	jmp .committed
 .commitGlobal:
 	lda symbolNext
 	sta symbolTableEnd
 	lda symbolNext+1
 	sta symbolTableEnd+1
-	lda symbolNewName
-	sta symbolNameEnd
-	lda symbolNewName+1
-	sta symbolNameEnd+1
 .committed:
 	pla
 	sta ZP_PTR1+1
@@ -613,17 +599,23 @@ scanLabelsDefined:
 	sta ZP_PTR0
 	lda symbolScan+1
 	sta ZP_PTR0+1
+	ldy #SYMBOL_LENGTH
+	lda (ZP_PTR0),y
+	sta symbolRecordLength
 	ldy #SYMBOL_KIND
 	lda (ZP_PTR0),y
 	cmp #SYMBOL_LABEL_UNDEFINED
 	beq .bad
+	lda symbolRecordLength
+	clc
+	adc #SYMBOL_HEADER_SIZE
+	sta symbolRecordSize
 	clc
 	lda symbolScan
-	adc #SYMBOL_SIZE
+	adc symbolRecordSize
 	sta symbolScan
-	bcc .samePage
+	bcc .next
 	inc symbolScan+1
-.samePage:
 	jmp .next
 .ok:
 	sec
@@ -684,13 +676,16 @@ symbolScope:
 symbolTableStart:	word 0
 symbolTableEnd:		word 0
 symbolTableLimit:	word 0
-symbolNameEnd:		word 0
 
 ;;; Reusable table for dot-prefixed names in the current global-label scope.
 localSymbolTableStart:	word 0
 localSymbolTableEnd:	word 0
 localSymbolTableLimit:	word 0
-localSymbolNameEnd:	word 0
+
+;;; Temporary aliases keep the measurement harness building while its mailbox is
+;;; converted from the old two-cursor layout. They are removed with that harness.
+symbolNameEnd = symbolTableEnd
+localSymbolNameEnd = localSymbolTableEnd
 
 ;;; Zero means no global label has appeared yet. Nonzero means dot-prefixed names
 ;;; have a current scope. It is reset to one at every global definition.
@@ -705,10 +700,11 @@ symbolKind:		byte 0
 
 symbolWantedScope:	byte 0
 symbolNext:		word 0
-symbolNewName:		word 0
 symbolScan:		word 0
 symbolSearchEnd:	word 0
 symbolAllocEnd:		word 0
-symbolAllocNameEnd:	word 0
+symbolAllocLimit:	word 0
+symbolRecordLength:	byte 0
+symbolRecordSize:	byte 0
 referencePtr:		word 0
 referenceNext:		word 0
