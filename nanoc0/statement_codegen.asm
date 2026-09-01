@@ -32,10 +32,9 @@ emit_statement_index_address:
 	lda statementElementType
 	sta reduceLeftType
 
-	lda #exprLoadTmpResultEnd-exprLoadTmpResult
 	ldx #<exprLoadTmpResult
 	ldy #>exprLoadTmpResult
-	jsr emit_text
+	jsr emit_string
 	bcc .releaseFailed
 	jsr emit_index_address
 	php
@@ -65,16 +64,14 @@ load_statement_target_base:
 	jmp emit_load_primary_address
 
 emit_return_value:
-	lda #statementRtsEnd-statementRts
 	ldx #<statementRts
 	ldy #>statementRts
-	jmp emit_text
+	jmp emit_string
 
 emit_store_persistent_value:
-	lda #exprStaSpaceEnd-exprStaSpace
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	ldx statementTargetIndex
 	jsr emit_persistent_name
@@ -84,10 +81,9 @@ emit_store_persistent_value:
 	lda statementTargetType
 	cmp #TYPE_CHAR
 	beq .done
-	lda #exprStxSpaceEnd-exprStxSpace
 	ldx #<exprStxSpace
 	ldy #>exprStxSpace
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	ldx statementTargetIndex
 	jsr emit_persistent_name
@@ -102,18 +98,16 @@ emit_store_persistent_value:
 	rts
 
 emit_statement_address_name:
-	lda #emitCPrefixEnd-emitCPrefix
 	ldx #<emitCPrefix
 	ldy #>emitCPrefix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	ldx currentFunctionIndex
 	jsr emit_persistent_source_name
 	bcc .failed
-	lda #statementAddressSuffixEnd-statementAddressSuffix
 	ldx #<statementAddressSuffix
 	ldy #>statementAddressSuffix
-	jmp emit_text
+	jmp emit_string
 .failed:
 	clc
 	rts
@@ -121,10 +115,9 @@ emit_statement_address_name:
 emit_statement_address_definition:
 	jsr emit_statement_address_name
 	bcc .failed
-	lda #exprBssAssignEnd-exprBssAssign
 	ldx #<exprBssAssign
 	ldy #>exprBssAssign
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda allocOffset
 	sta emitWord
@@ -138,29 +131,25 @@ emit_statement_address_definition:
 	rts
 
 emit_save_statement_address:
-	lda #statementLdaPtrEnd-statementLdaPtr
 	ldx #<statementLdaPtr
 	ldy #>statementLdaPtr
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
-	lda #exprStaSpaceEnd-exprStaSpace
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	jsr emit_statement_address_name
 	bcc .failed
 	jsr emit_newline
 	bcc .failed
-	lda #statementLdaPtrHighEnd-statementLdaPtrHigh
 	ldx #<statementLdaPtrHigh
 	ldy #>statementLdaPtrHigh
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
-	lda #exprStaSpaceEnd-exprStaSpace
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	jsr emit_statement_address_name
 	bcc .failed
@@ -174,47 +163,41 @@ emit_save_statement_address:
 emit_indexed_store:
 	jsr emit_save_right_tmp
 	bcc .failed
-	lda #exprLdaSpaceEnd-exprLdaSpace
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	jsr emit_statement_address_name
 	bcc .failed
 	jsr emit_newline
 	bcc .failed
-	lda #statementStaPtrEnd-statementStaPtr
 	ldx #<statementStaPtr
 	ldy #>statementStaPtr
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
-	lda #exprLdaSpaceEnd-exprLdaSpace
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	jsr emit_statement_address_name
 	bcc .failed
 	jsr emit_plus_one_newline
 	bcc .failed
-	lda #statementStaPtrHighEnd-statementStaPtrHigh
 	ldx #<statementStaPtrHigh
 	ldy #>statementStaPtrHigh
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 
 	lda statementElementType
 	cmp #TYPE_CHAR
 	beq .char
-	lda #statementStoreWordEnd-statementStoreWord
 	ldx #<statementStoreWord
 	ldy #>statementStoreWord
-	jmp emit_text
+	jmp emit_string
 .char:
-	lda #statementStoreCharEnd-statementStoreChar
 	ldx #<statementStoreChar
 	ldy #>statementStoreChar
-	jmp emit_text
+	jmp emit_string
 .failed:
 	clc
 	rts
@@ -224,12 +207,10 @@ emit_indexed_store:
 ;;; destination is an absolute JMP; the relative BNE reaches only __nc_near_NNNN
 ;;; emitted adjacent to the branch.
 emit_statement_false_jump:
-	lda #statementTruthTestEnd-statementTruthTest
 	ldx #<statementTruthTest
 	ldy #>statementTruthTest
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
-	lda #exprBneEnd-exprBne
 	ldx #<exprBne
 	ldy #>exprBne
 	jmp emit_long_conditional_jump
@@ -241,33 +222,24 @@ emit_statement_false_jump:
 ;;; Fixed emitted fragments
 ;;; ---------------------------------------------------------------------------
 
-statementRts:		byte $09,'r','t','s',$0a
-statementRtsEnd:
-statementAddressSuffix:	byte '_','_','a'
-statementAddressSuffixEnd:
-statementLdaPtr:		byte $09,'l','d','a',' ','N','C','_','P','T','R',$0a
-statementLdaPtrEnd:
-statementLdaPtrHigh:	byte $09,'l','d','a',' ','N','C','_','P','T','R','+','1',$0a
-statementLdaPtrHighEnd:
-statementStaPtr:		byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a
-statementStaPtrEnd:
-statementStaPtrHigh:	byte $09,'s','t','a',' ','N','C','_','P','T','R','+','1',$0a
-statementStaPtrHighEnd:
+statementRts:		byte $09,'r','t','s',$0a,0
+statementAddressSuffix:	byte '_','_','a',0
+statementLdaPtr:		byte $09,'l','d','a',' ','N','C','_','P','T','R',$0a,0
+statementLdaPtrHigh:	byte $09,'l','d','a',' ','N','C','_','P','T','R','+','1',$0a,0
+statementStaPtr:		byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a,0
+statementStaPtrHigh:	byte $09,'s','t','a',' ','N','C','_','P','T','R','+','1',$0a,0
 statementTruthTest:
 	byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
 	byte $09,'t','x','a',$0a
-	byte $09,'o','r','a',' ','N','C','_','T','M','P',$0a
-statementTruthTestEnd:
+	byte $09,'o','r','a',' ','N','C','_','T','M','P',$0a,0
 statementStoreChar:
 	byte $09,'l','d','y',' ','#','$','0','0',$0a
 	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a
-	byte $09,'s','t','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
-statementStoreCharEnd:
+	byte $09,'s','t','a',' ','(','N','C','_','P','T','R',')',',','y',$0a,0
 statementStoreWord:
 	byte $09,'l','d','y',' ','#','$','0','0',$0a
 	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a
 	byte $09,'s','t','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
 	byte $09,'i','n','y',$0a
 	byte $09,'l','d','a',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'s','t','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
-statementStoreWordEnd:
+	byte $09,'s','t','a',' ','(','N','C','_','P','T','R',')',',','y',$0a,0
