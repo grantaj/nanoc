@@ -44,6 +44,15 @@ main:
 	lda #>ASSEMBLER_SYMBOLS_END
 	sta symbolTableLimit+1
 
+	lda #<ASSEMBLER_LOCAL_SYMBOLS
+	sta localSymbolTableStart
+	lda #>ASSEMBLER_LOCAL_SYMBOLS
+	sta localSymbolTableStart+1
+	lda #<ASSEMBLER_LOCAL_SYMBOLS_END
+	sta localSymbolTableLimit
+	lda #>ASSEMBLER_LOCAL_SYMBOLS_END
+	sta localSymbolTableLimit+1
+
 	lda #<ASSEMBLER_STAGING
 	sta stagingStart
 	lda #>ASSEMBLER_STAGING
@@ -146,12 +155,9 @@ finish:
 	jmp .halt
 
 ;;; On an assembler-stage failure the compiler diagnostic fields are not live yet.
-;;; Reuse those mailbox bytes for the two symbol-arena cursors and current scope:
-;;;   INTEGRATION_LINE = symbolTableEnd
-;;;   INTEGRATION_BSS  = symbolNameEnd
-;;;   INTEGRATION_DETAIL = currentScope
-;;; The host can turn those raw addresses into entry/name/free byte counts without
-;;; reproducing any assembler semantics.
+;;; Reuse those mailbox bytes for the persistent symbol-table cursors. This is
+;;; diagnostic state only; local symbols now live in their own reusable scratch
+;;; table and therefore should not accumulate over the whole assembly.
 capture_ass_workspace:
 	lda symbolTableEnd
 	sta INTEGRATION_LINE
