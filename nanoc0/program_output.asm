@@ -44,10 +44,9 @@ emit_current_symbol:
 
 emit_static_byte:
 	sta programStaticByte
-	lda #programBytePrefixEnd-programBytePrefix
 	ldx #<programBytePrefix
 	ldy #>programBytePrefix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda programStaticByte
 	jsr emit_hex_byte
@@ -62,10 +61,9 @@ emit_static_byte:
 emit_bss_boundaries:
 	jsr emit_runtime_support
 	bcc .failed
-	lda #programBssEndPrefixEnd-programBssEndPrefix
 	ldx #<programBssEndPrefix
 	ldy #>programBssEndPrefix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda bssOffset
 	sta emitWord
@@ -79,10 +77,9 @@ emit_bss_boundaries:
 	rts
 
 emit_program_bss_assignment:
-	lda #programBssAssignEnd-programBssAssign
 	ldx #<programBssAssign
 	ldy #>programBssAssign
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda allocOffset
 	sta emitWord
@@ -95,12 +92,9 @@ emit_program_bss_assignment:
 	clc
 	rts
 
-programBytePrefix:	byte $09,'b','y','t','e',' ','$'
-programBytePrefixEnd:
-programBssAssign:	byte ' ','=',' ','N','C','_','B','S','S','+','$'
-programBssAssignEnd:
-programBssEndPrefix:	byte '_','_','n','c','_','b','s','s','_','e','n','d',' ','=',' ','N','C','_','B','S','S','+','$'
-programBssEndPrefixEnd:
+programBytePrefix:	byte $09,'b','y','t','e',' ','$',0
+programBssAssign:	byte ' ','=',' ','N','C','_','B','S','S','+','$',0
+programBssEndPrefix:	byte '_','_','n','c','_','b','s','s','_','e','n','d',' ','=',' ','N','C','_','B','S','S','+','$',0
 
 programStorageKind:	byte 0
 programSavedSymbol:	byte 0
