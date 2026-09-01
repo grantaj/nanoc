@@ -1443,7 +1443,7 @@ int close_source_tree()
 
 int scan_argument(char start)
 {
-    int i;
+    char i;
     char quote;
     char last;
     char c;
