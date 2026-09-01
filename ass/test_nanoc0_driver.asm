@@ -55,7 +55,8 @@ main:
 	lda #>ASSEMBLER_LOCAL_SYMBOLS_END
 	sta localSymbolTableLimit+1
 
-	;;; The ladder uses exactly the production fixed low-RAM persistent spill.
+	;;; The ladder uses exactly the production persistent ranges, including the
+	;;; final physical-RAM arena underneath I/O/KERNAL.
 	lda #<ASSEMBLER_SYMBOL_OVERFLOW
 	sta symbolOverflowStart
 	lda #>ASSEMBLER_SYMBOL_OVERFLOW
@@ -64,6 +65,14 @@ main:
 	sta symbolOverflowLimit
 	lda #>ASSEMBLER_SYMBOL_OVERFLOW_END
 	sta symbolOverflowLimit+1
+	lda #<ASSEMBLER_SYMBOL_HIDDEN
+	sta symbolHiddenStart
+	lda #>ASSEMBLER_SYMBOL_HIDDEN
+	sta symbolHiddenStart+1
+	lda #<ASSEMBLER_SYMBOL_HIDDEN_END
+	sta symbolHiddenLimit
+	lda #>ASSEMBLER_SYMBOL_HIDDEN_END
+	sta symbolHiddenLimit+1
 
 	lda #<ASSEMBLER_STAGING
 	sta stagingStart
@@ -167,8 +176,8 @@ finish:
 	jmp .halt
 
 ;;; On an assembler-stage failure the compiler diagnostic fields are not live yet.
-;;; For symbol pressure the line word carries the main persistent end, the BSS
-;;; word carries the local end, and DETAIL/EXTRA carry the continuation end. For
+;;; For symbol pressure the line word carries the first persistent end, the BSS
+;;; word carries the local end, and DETAIL/EXTRA carry the visible shared end. For
 ;;; work pressure they carry the staged-image and fixup cursors instead. These are
 ;;; direct measurements of the fixed C64 workspaces; no host model is involved.
 capture_ass_workspace:
