@@ -8,10 +8,9 @@
 ;;; sequences a reader would write by hand.
 
 emit_load_literal:
-	lda #exprLdaImmEnd-exprLdaImm
 	ldx #<exprLdaImm
 	ldy #>exprLdaImm
-	jsr emit_text
+	jsr emit_string
 	bcs .lowPrefix
 	rts
 .lowPrefix:
@@ -24,10 +23,9 @@ emit_load_literal:
 	bcs .high
 	rts
 .high:
-	lda #exprLdxImmEnd-exprLdxImm
 	ldx #<exprLdxImm
 	ldy #>exprLdxImm
-	jsr emit_text
+	jsr emit_string
 	bcs .highPrefix
 	rts
 .highPrefix:
@@ -39,10 +37,9 @@ emit_load_literal:
 	jmp emit_newline
 
 emit_load_literal_address:
-	lda #exprLdaLowImmEnd-exprLdaLowImm
 	ldx #<exprLdaLowImm
 	ldy #>exprLdaLowImm
-	jsr emit_text
+	jsr emit_string
 	bcs .lowName
 	rts
 .lowName:
@@ -55,10 +52,9 @@ emit_load_literal_address:
 	bcs .high
 	rts
 .high:
-	lda #exprLdxHighImmEnd-exprLdxHighImm
 	ldx #<exprLdxHighImm
 	ldy #>exprLdxHighImm
-	jsr emit_text
+	jsr emit_string
 	bcs .highName
 	rts
 .highName:
@@ -74,10 +70,9 @@ emit_load_primary_scalar:
 	cmp #SYMBOL_AREA_CURRENT
 	beq .current
 
-	lda #exprLdaSpaceEnd-exprLdaSpace
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
-	jsr emit_text
+	jsr emit_string
 	bcs .persistentLowName
 	rts
 .persistentLowName:
@@ -93,10 +88,9 @@ emit_load_primary_scalar:
 	lda primarySymbolType
 	cmp #TYPE_CHAR
 	beq emit_zero_high
-	lda #exprLdxSpaceEnd-exprLdxSpace
 	ldx #<exprLdxSpace
 	ldy #>exprLdxSpace
-	jsr emit_text
+	jsr emit_string
 	bcs .persistentHighName
 	rts
 .persistentHighName:
@@ -108,10 +102,9 @@ emit_load_primary_scalar:
 	jmp emit_plus_one_newline
 
 .current:
-	lda #exprLdaSpaceEnd-exprLdaSpace
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
-	jsr emit_text
+	jsr emit_string
 	bcs .currentLowName
 	rts
 .currentLowName:
@@ -127,10 +120,9 @@ emit_load_primary_scalar:
 	lda primarySymbolType
 	cmp #TYPE_CHAR
 	beq emit_zero_high
-	lda #exprLdxSpaceEnd-exprLdxSpace
 	ldx #<exprLdxSpace
 	ldy #>exprLdxSpace
-	jsr emit_text
+	jsr emit_string
 	bcs .currentHighName
 	rts
 .currentHighName:
@@ -142,16 +134,14 @@ emit_load_primary_scalar:
 	jmp emit_plus_one_newline
 
 emit_zero_high:
-	lda #exprLdxZeroEnd-exprLdxZero
 	ldx #<exprLdxZero
 	ldy #>exprLdxZero
-	jmp emit_text
+	jmp emit_string
 
 emit_load_primary_address:
-	lda #exprLdaLowImmEnd-exprLdaLowImm
 	ldx #<exprLdaLowImm
 	ldy #>exprLdaLowImm
-	jsr emit_text
+	jsr emit_string
 	bcs .lowName
 	rts
 .lowName:
@@ -164,10 +154,9 @@ emit_load_primary_address:
 	bcs .high
 	rts
 .high:
-	lda #exprLdxHighImmEnd-exprLdxHighImm
 	ldx #<exprLdxHighImm
 	ldy #>exprLdxHighImm
-	jsr emit_text
+	jsr emit_string
 	bcs .highName
 	rts
 .highName:
@@ -179,10 +168,9 @@ emit_load_primary_address:
 	jmp emit_newline
 
 emit_plus_one_newline:
-	lda #exprPlusOneEnd-exprPlusOne
 	ldx #<exprPlusOne
 	ldy #>exprPlusOne
-	jsr emit_text
+	jsr emit_string
 	bcs .done
 	rts
 .done:
@@ -196,10 +184,9 @@ emit_spill_definition:
 	bcs .assign
 	rts
 .assign:
-	lda #exprBssAssignEnd-exprBssAssign
 	ldx #<exprBssAssign
 	ldy #>exprBssAssign
-	jsr emit_text
+	jsr emit_string
 	bcs .offset
 	rts
 .offset:
@@ -215,10 +202,9 @@ emit_spill_definition:
 
 emit_store_spill:
 	sta emitSpillIndex
-	lda #exprStaSpaceEnd-exprStaSpace
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
-	jsr emit_text
+	jsr emit_string
 	bcs .lowName
 	rts
 .lowName:
@@ -231,10 +217,9 @@ emit_store_spill:
 	bcs .high
 	rts
 .high:
-	lda #exprStxSpaceEnd-exprStxSpace
 	ldx #<exprStxSpace
 	ldy #>exprStxSpace
-	jsr emit_text
+	jsr emit_string
 	bcs .highName
 	rts
 .highName:
@@ -248,10 +233,9 @@ emit_store_spill:
 ;;; X=current-function symbol index; target value already lives in A/X.
 emit_store_current_value:
 	stx emitSavedIndex
-	lda #exprStaSpaceEnd-exprStaSpace
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
-	jsr emit_text
+	jsr emit_string
 	bcs .lowName
 	ldx emitSavedIndex
 	rts
@@ -271,10 +255,9 @@ emit_store_current_value:
 	lda currentType,x
 	cmp #TYPE_CHAR
 	beq .done
-	lda #exprStxSpaceEnd-exprStxSpace
 	ldx #<exprStxSpace
 	ldy #>exprStxSpace
-	jsr emit_text
+	jsr emit_string
 	bcs .highName
 	ldx emitSavedIndex
 	rts
@@ -295,10 +278,9 @@ emit_store_current_value:
 	rts
 
 emit_unary_minus:
-	lda #exprNegateEnd-exprNegate
 	ldx #<exprNegate
 	ldy #>exprNegate
-	jmp emit_text
+	jmp emit_string
 
 ;;; Keep relative branches in this selector local. Every Phase 1 operator class
 ;;; is named explicitly; an unknown operator is an internal failure, not an
@@ -353,16 +335,14 @@ emit_binary_reduction:
 ;;; A/X is the right operand. Preserve it in the machine-contract scratch pair
 ;;; while the left spill is loaded.
 emit_save_right_tmp:
-	lda #exprSaveRightEnd-exprSaveRight
 	ldx #<exprSaveRight
 	ldy #>exprSaveRight
-	jmp emit_text
+	jmp emit_string
 
 emit_lda_reduce_spill:
-	lda #exprLdaSpaceEnd-exprLdaSpace
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
-	jsr emit_text
+	jsr emit_string
 	bcs .name
 	rts
 .name:
@@ -374,10 +354,9 @@ emit_lda_reduce_spill:
 	jmp emit_newline
 
 emit_lda_reduce_spill_high:
-	lda #exprLdaSpaceEnd-exprLdaSpace
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
-	jsr emit_text
+	jsr emit_string
 	bcs .name
 	rts
 .name:
@@ -397,10 +376,9 @@ emit_add_reduction:
 	bcs .addLow
 	rts
 .addLow:
-	lda #exprAddLowEnd-exprAddLow
 	ldx #<exprAddLow
 	ldy #>exprAddLow
-	jsr emit_text
+	jsr emit_string
 	bcs .leftHigh
 	rts
 .leftHigh:
@@ -408,10 +386,9 @@ emit_add_reduction:
 	bcs .addHigh
 	rts
 .addHigh:
-	lda #exprAddHighEnd-exprAddHigh
 	ldx #<exprAddHigh
 	ldy #>exprAddHigh
-	jmp emit_text
+	jmp emit_string
 
 emit_sub_reduction:
 	jsr emit_save_right_tmp
@@ -422,10 +399,9 @@ emit_sub_reduction:
 	bcs .subLow
 	rts
 .subLow:
-	lda #exprSubLowEnd-exprSubLow
 	ldx #<exprSubLow
 	ldy #>exprSubLow
-	jsr emit_text
+	jsr emit_string
 	bcs .leftHigh
 	rts
 .leftHigh:
@@ -433,10 +409,9 @@ emit_sub_reduction:
 	bcs .subHigh
 	rts
 .subHigh:
-	lda #exprSubHighEnd-exprSubHigh
 	ldx #<exprSubHigh
 	ldy #>exprSubHigh
-	jmp emit_text
+	jmp emit_string
 
 emit_and_reduction:
 	jsr emit_save_right_tmp
@@ -447,10 +422,9 @@ emit_and_reduction:
 	bcs .andLow
 	rts
 .andLow:
-	lda #exprAndLowEnd-exprAndLow
 	ldx #<exprAndLow
 	ldy #>exprAndLow
-	jsr emit_text
+	jsr emit_string
 	bcs .leftHigh
 	rts
 .leftHigh:
@@ -458,10 +432,9 @@ emit_and_reduction:
 	bcs .andHigh
 	rts
 .andHigh:
-	lda #exprAndHighEnd-exprAndHigh
 	ldx #<exprAndHigh
 	ldy #>exprAndHigh
-	jmp emit_text
+	jmp emit_string
 
 emit_or_reduction:
 	jsr emit_save_right_tmp
@@ -472,10 +445,9 @@ emit_or_reduction:
 	bcs .orLow
 	rts
 .orLow:
-	lda #exprOrLowEnd-exprOrLow
 	ldx #<exprOrLow
 	ldy #>exprOrLow
-	jsr emit_text
+	jsr emit_string
 	bcs .leftHigh
 	rts
 .leftHigh:
@@ -483,10 +455,9 @@ emit_or_reduction:
 	bcs .orHigh
 	rts
 .orHigh:
-	lda #exprOrHighEnd-exprOrHigh
 	ldx #<exprOrHigh
 	ldy #>exprOrHigh
-	jmp emit_text
+	jmp emit_string
 
 ;;; __nc_mul16 uses the frozen helper convention: left operand in NC_TMP,
 ;;; right operand in A/X, result in A/X. Record the helper at the exact point
@@ -494,10 +465,9 @@ emit_or_reduction:
 emit_mul_reduction:
 	lda #$01
 	sta multiplyUsed
-	lda #exprMulSaveLowEnd-exprMulSaveLow
 	ldx #<exprMulSaveLow
 	ldy #>exprMulSaveLow
-	jsr emit_text
+	jsr emit_string
 	bcs .leftLow
 	rts
 .leftLow:
@@ -505,10 +475,9 @@ emit_mul_reduction:
 	bcs .saveLow
 	rts
 .saveLow:
-	lda #exprStaTmpEnd-exprStaTmp
 	ldx #<exprStaTmp
 	ldy #>exprStaTmp
-	jsr emit_text
+	jsr emit_string
 	bcs .leftHigh
 	rts
 .leftHigh:
@@ -516,10 +485,9 @@ emit_mul_reduction:
 	bcs .tail
 	rts
 .tail:
-	lda #exprMulTailEnd-exprMulTail
 	ldx #<exprMulTail
 	ldy #>exprMulTail
-	jmp emit_text
+	jmp emit_string
 
 emit_shl_reduction:
 	lda #$01
@@ -547,10 +515,9 @@ emit_shift_reduction:
 	lda emitLabelValue+1
 	sta shiftDoneLabel+1
 
-	lda #exprShiftCountEnd-exprShiftCount
 	ldx #<exprShiftCount
 	ldy #>exprShiftCount
-	jsr emit_text
+	jsr emit_string
 	bcs .leftLow
 	rts
 .leftLow:
@@ -558,10 +525,9 @@ emit_shift_reduction:
 	bcs .saveLow
 	rts
 .saveLow:
-	lda #exprStaTmpEnd-exprStaTmp
 	ldx #<exprStaTmp
 	ldy #>exprStaTmp
-	jsr emit_text
+	jsr emit_string
 	bcs .leftHigh
 	rts
 .leftHigh:
@@ -569,24 +535,21 @@ emit_shift_reduction:
 	bcs .saveHigh
 	rts
 .saveHigh:
-	lda #exprStaTmpHighEnd-exprStaTmpHigh
 	ldx #<exprStaTmpHigh
 	ldy #>exprStaTmpHigh
-	jsr emit_text
+	jsr emit_string
 	bcs .zeroCheck
 	rts
 .zeroCheck:
-	lda #exprCpyZeroEnd-exprCpyZero
 	ldx #<exprCpyZero
 	ldy #>exprCpyZero
-	jsr emit_text
+	jsr emit_string
 	bcs .zeroBranch
 	rts
 .zeroBranch:
-	lda #exprBeqEnd-exprBeq
 	ldx #<exprBeq
 	ldy #>exprBeq
-	jsr emit_text
+	jsr emit_string
 	bcs .doneName
 	rts
 .doneName:
@@ -613,23 +576,20 @@ emit_shift_reduction:
 .bodyChoice:
 	lda shiftLeftFlag
 	beq .right
-	lda #exprShiftLeftBodyEnd-exprShiftLeftBody
 	ldx #<exprShiftLeftBody
 	ldy #>exprShiftLeftBody
 	jmp .body
 .right:
-	lda #exprShiftRightBodyEnd-exprShiftRightBody
 	ldx #<exprShiftRightBody
 	ldy #>exprShiftRightBody
 .body:
-	jsr emit_text
+	jsr emit_string
 	bcs .loopBranch
 	rts
 .loopBranch:
-	lda #exprBneEnd-exprBne
 	ldx #<exprBne
 	ldy #>exprBne
-	jsr emit_text
+	jsr emit_string
 	bcs .loopName
 	rts
 .loopName:
@@ -653,10 +613,9 @@ emit_shift_reduction:
 	bcs .result
 	rts
 .result:
-	lda #exprLoadTmpResultEnd-exprLoadTmpResult
 	ldx #<exprLoadTmpResult
 	ldy #>exprLoadTmpResult
-	jmp emit_text
+	jmp emit_string
 
 ;;; ---------------------------------------------------------------------------
 ;;; Comparisons
@@ -667,7 +626,7 @@ emit_shift_reduction:
 ;;; not ask whether the real target happens to fit in a relative branch.
 ;;;
 ;;; Caller places the real target in emitLabelValue and passes the *opposite*
-;;; short-branch fragment in A/X/Y. The generated shape is:
+;;; NUL-terminated short-branch fragment in X/Y. The generated shape is:
 ;;;
 ;;;     b<opposite> nearby
 ;;;     jmp target
@@ -676,7 +635,6 @@ emit_shift_reduction:
 ;;; emitLabelKind describes the real target. The helper temporarily spells its
 ;;; own adjacent label as __nc_near_NNNN, then restores the caller's role.
 emit_long_conditional_jump:
-	sta conditionalBranchLength
 	stx conditionalBranchPtr
 	sty conditionalBranchPtr+1
 	lda emitLabelValue
@@ -691,10 +649,9 @@ emit_long_conditional_jump:
 	lda emitLabelValue+1
 	sta conditionalSkipLabel+1
 
-	lda conditionalBranchLength
 	ldx conditionalBranchPtr
 	ldy conditionalBranchPtr+1
-	jsr emit_text
+	jsr emit_string
 	bcs .skipName
 	rts
 .skipName:
@@ -760,56 +717,48 @@ set_false_target:
 
 emit_bcc_true:
 	jsr set_true_target
-	lda #exprBcsEnd-exprBcs
 	ldx #<exprBcs
 	ldy #>exprBcs
 	jmp emit_long_conditional_jump
 
 emit_bcc_false:
 	jsr set_false_target
-	lda #exprBcsEnd-exprBcs
 	ldx #<exprBcs
 	ldy #>exprBcs
 	jmp emit_long_conditional_jump
 
 emit_bne_true:
 	jsr set_true_target
-	lda #exprBeqEnd-exprBeq
 	ldx #<exprBeq
 	ldy #>exprBeq
 	jmp emit_long_conditional_jump
 
 emit_bne_false:
 	jsr set_false_target
-	lda #exprBeqEnd-exprBeq
 	ldx #<exprBeq
 	ldy #>exprBeq
 	jmp emit_long_conditional_jump
 
 emit_beq_true:
 	jsr set_true_target
-	lda #exprBneEnd-exprBne
 	ldx #<exprBne
 	ldy #>exprBne
 	jmp emit_long_conditional_jump
 
 emit_beq_false:
 	jsr set_false_target
-	lda #exprBneEnd-exprBne
 	ldx #<exprBne
 	ldy #>exprBne
 	jmp emit_long_conditional_jump
 
 emit_bmi_true:
 	jsr set_true_target
-	lda #exprBplEnd-exprBpl
 	ldx #<exprBpl
 	ldy #>exprBpl
 	jmp emit_long_conditional_jump
 
 emit_bmi_false:
 	jsr set_false_target
-	lda #exprBplEnd-exprBpl
 	ldx #<exprBpl
 	ldy #>exprBpl
 	jmp emit_long_conditional_jump
@@ -821,7 +770,6 @@ emit_bpl_same_sign:
 	sta emitLabelValue
 	lda compareSameSignLabel+1
 	sta emitLabelValue+1
-	lda #exprBmiEnd-exprBmi
 	ldx #<exprBmi
 	ldy #>exprBmi
 	jmp emit_long_conditional_jump
@@ -877,10 +825,9 @@ emit_equality:
 	bcs .lowCompare
 	rts
 .lowCompare:
-	lda #exprCmpTmpEnd-exprCmpTmp
 	ldx #<exprCmpTmp
 	ldy #>exprCmpTmp
-	jsr emit_text
+	jsr emit_string
 	bcs .lowBranch
 	rts
 .lowBranch:
@@ -898,10 +845,9 @@ emit_equality:
 	bcs .highCompare
 	rts
 .highCompare:
-	lda #exprCmpTmpHighEnd-exprCmpTmpHigh
 	ldx #<exprCmpTmpHigh
 	ldy #>exprCmpTmpHigh
-	jsr emit_text
+	jsr emit_string
 	bcs .highBranch
 	rts
 .highBranch:
@@ -934,10 +880,9 @@ emit_unsigned_relational:
 	bcs .highCompare
 	rts
 .highCompare:
-	lda #exprCmpTmpHighEnd-exprCmpTmpHigh
 	ldx #<exprCmpTmpHigh
 	ldy #>exprCmpTmpHigh
-	jsr emit_text
+	jsr emit_string
 	bcs .choose
 	rts
 .choose:
@@ -961,10 +906,9 @@ emit_unsigned_relational:
 	bcs .leLowCompare
 	rts
 .leLowCompare:
-	lda #exprCmpTmpEnd-exprCmpTmp
 	ldx #<exprCmpTmp
 	ldy #>exprCmpTmp
-	jsr emit_text
+	jsr emit_string
 	bcs .leLowBranch
 	rts
 .leLowBranch:
@@ -996,10 +940,9 @@ emit_unsigned_relational:
 	bcs .geLowCompare
 	rts
 .geLowCompare:
-	lda #exprCmpTmpEnd-exprCmpTmp
 	ldx #<exprCmpTmp
 	ldy #>exprCmpTmp
-	jsr emit_text
+	jsr emit_string
 	bcs .geLowBranch
 	rts
 .geLowBranch:
@@ -1037,10 +980,9 @@ emit_signed_relational:
 	bcs .signCompare
 	rts
 .signCompare:
-	lda #exprEorTmpHighEnd-exprEorTmpHigh
 	ldx #<exprEorTmpHigh
 	ldy #>exprEorTmpHigh
-	jsr emit_text
+	jsr emit_string
 	bcs .sameSignLabel
 	rts
 .sameSignLabel:
@@ -1092,10 +1034,9 @@ emit_signed_relational:
 	jmp emit_unsigned_relational
 
 emit_jump_label:
-	lda #exprJmpEnd-exprJmp
 	ldx #<exprJmp
 	ldy #>exprJmp
-	jsr emit_text
+	jsr emit_string
 	bcs .name
 	rts
 .name:
@@ -1128,10 +1069,9 @@ emit_comparison_result_labels:
 	bcs .trueValue
 	rts
 .trueValue:
-	lda #exprTrueValueEnd-exprTrueValue
 	ldx #<exprTrueValue
 	ldy #>exprTrueValue
-	jsr emit_text
+	jsr emit_string
 	bcs .skipFalse
 	rts
 .skipFalse:
@@ -1155,10 +1095,9 @@ emit_comparison_result_labels:
 	bcs .falseValue
 	rts
 .falseValue:
-	lda #exprFalseValueEnd-exprFalseValue
 	ldx #<exprFalseValue
 	ldy #>exprFalseValue
-	jsr emit_text
+	jsr emit_string
 	bcs .doneLabel
 	rts
 .doneLabel:
@@ -1182,10 +1121,9 @@ emit_index_address:
 	lda reduceLeftType
 	cmp #TYPE_CHAR
 	beq .leftLow
-	lda #exprScaleIndexEnd-exprScaleIndex
 	ldx #<exprScaleIndex
 	ldy #>exprScaleIndex
-	jsr emit_text
+	jsr emit_string
 	bcs .leftLow
 	rts
 .leftLow:
@@ -1193,10 +1131,9 @@ emit_index_address:
 	bcs .addressLow
 	rts
 .addressLow:
-	lda #exprIndexLowEnd-exprIndexLow
 	ldx #<exprIndexLow
 	ldy #>exprIndexLow
-	jsr emit_text
+	jsr emit_string
 	bcs .leftHigh
 	rts
 .leftHigh:
@@ -1204,10 +1141,9 @@ emit_index_address:
 	bcs .addressHigh
 	rts
 .addressHigh:
-	lda #exprIndexHighEnd-exprIndexHigh
 	ldx #<exprIndexHigh
 	ldy #>exprIndexHigh
-	jmp emit_text
+	jmp emit_string
 
 emit_index_load:
 	jsr emit_index_address
@@ -1217,44 +1153,47 @@ emit_index_load:
 	lda reduceLeftType
 	cmp #TYPE_CHAR
 	beq .char
-	lda #exprWordIndirectEnd-exprWordIndirect
 	ldx #<exprWordIndirect
 	ldy #>exprWordIndirect
-	jmp emit_text
+	jmp emit_string
 .char:
-	lda #exprCharIndirectEnd-exprCharIndirect
 	ldx #<exprCharIndirect
 	ldy #>exprCharIndirect
-	jmp emit_text
+	jmp emit_string
 
 ;;; ---------------------------------------------------------------------------
 ;;; Fixed target-source fragments
 ;;; ---------------------------------------------------------------------------
+;;;
+;;; The End labels are retained temporarily because a few focused test/formatter
+;;; callers still use the old explicit-length seam. Each End points before the
+;;; NUL, so those callers see exactly the same bytes while production uses
+;;; emit_string.
 
 exprLdaImm:		byte $09,'l','d','a',' ','#','$'
-exprLdaImmEnd:
+exprLdaImmEnd:		byte 0
 exprLdxImm:		byte $09,'l','d','x',' ','#','$'
-exprLdxImmEnd:
+exprLdxImmEnd:		byte 0
 exprLdaLowImm:		byte $09,'l','d','a',' ','#','<'
-exprLdaLowImmEnd:
+exprLdaLowImmEnd:	byte 0
 exprLdxHighImm:		byte $09,'l','d','x',' ','#','>'
-exprLdxHighImmEnd:
+exprLdxHighImmEnd:	byte 0
 exprLdaSpace:		byte $09,'l','d','a',' '
-exprLdaSpaceEnd:
+exprLdaSpaceEnd:		byte 0
 exprLdxSpace:		byte $09,'l','d','x',' '
-exprLdxSpaceEnd:
+exprLdxSpaceEnd:		byte 0
 exprStaSpace:		byte $09,'s','t','a',' '
-exprStaSpaceEnd:
+exprStaSpaceEnd:		byte 0
 exprStxSpace:		byte $09,'s','t','x',' '
-exprStxSpaceEnd:
+exprStxSpaceEnd:		byte 0
 exprLdxZero:		byte $09,'l','d','x',' ','#','$','0','0',$0a
-exprLdxZeroEnd:
+exprLdxZeroEnd:		byte 0
 exprPlusOne:		byte '+','1'
-exprPlusOneEnd:
+exprPlusOneEnd:		byte 0
 exprBssAssign:		byte ' ','=',' ','N','C','_','B','S','S','+','$'
-exprBssAssignEnd:
+exprBssAssignEnd:	byte 0
 exprBytePrefix:		byte $09,'b','y','t','e',' '
-exprBytePrefixEnd:
+exprBytePrefixEnd:	byte 0
 
 exprNegate:
 	byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
@@ -1267,127 +1206,127 @@ exprNegate:
 	byte $09,'s','b','c',' ','N','C','_','T','M','P','+','1',$0a
 	byte $09,'t','a','x',$0a
 	byte $09,'t','y','a',$0a
-exprNegateEnd:
+exprNegateEnd:		byte 0
 
 exprSaveRight:
 	byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
 	byte $09,'s','t','x',' ','N','C','_','T','M','P','+','1',$0a
-exprSaveRightEnd:
+exprSaveRightEnd:	byte 0
 exprAddLow:
 	byte $09,'c','l','c',$0a
 	byte $09,'a','d','c',' ','N','C','_','T','M','P',$0a
 	byte $09,'t','a','y',$0a
-exprAddLowEnd:
+exprAddLowEnd:		byte 0
 exprAddHigh:
 	byte $09,'a','d','c',' ','N','C','_','T','M','P','+','1',$0a
 	byte $09,'t','a','x',$0a
 	byte $09,'t','y','a',$0a
-exprAddHighEnd:
+exprAddHighEnd:		byte 0
 exprSubLow:
 	byte $09,'s','e','c',$0a
 	byte $09,'s','b','c',' ','N','C','_','T','M','P',$0a
 	byte $09,'t','a','y',$0a
-exprSubLowEnd:
+exprSubLowEnd:		byte 0
 exprSubHigh:
 	byte $09,'s','b','c',' ','N','C','_','T','M','P','+','1',$0a
 	byte $09,'t','a','x',$0a
 	byte $09,'t','y','a',$0a
-exprSubHighEnd:
+exprSubHighEnd:		byte 0
 exprAndLow:
 	byte $09,'a','n','d',' ','N','C','_','T','M','P',$0a
 	byte $09,'t','a','y',$0a
-exprAndLowEnd:
+exprAndLowEnd:		byte 0
 exprAndHigh:
 	byte $09,'a','n','d',' ','N','C','_','T','M','P','+','1',$0a
 	byte $09,'t','a','x',$0a
 	byte $09,'t','y','a',$0a
-exprAndHighEnd:
+exprAndHighEnd:		byte 0
 exprOrLow:
 	byte $09,'o','r','a',' ','N','C','_','T','M','P',$0a
 	byte $09,'t','a','y',$0a
-exprOrLowEnd:
+exprOrLowEnd:		byte 0
 exprOrHigh:
 	byte $09,'o','r','a',' ','N','C','_','T','M','P','+','1',$0a
 	byte $09,'t','a','x',$0a
 	byte $09,'t','y','a',$0a
-exprOrHighEnd:
+exprOrHighEnd:		byte 0
 
 exprMulSaveLow:		byte $09,'t','a','y',$0a
-exprMulSaveLowEnd:
+exprMulSaveLowEnd:	byte 0
 exprStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
-exprStaTmpEnd:
+exprStaTmpEnd:		byte 0
 exprStaTmpHigh:		byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',$0a
-exprStaTmpHighEnd:
+exprStaTmpHighEnd:	byte 0
 exprMulTail:
 	byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',$0a
 	byte $09,'t','y','a',$0a
 	byte $09,'j','s','r',' ','_','_','n','c','_','m','u','l','1','6',$0a
-exprMulTailEnd:
+exprMulTailEnd:		byte 0
 
 exprShiftCount:		byte $09,'t','a','y',$0a
-exprShiftCountEnd:
+exprShiftCountEnd:	byte 0
 exprCpyZero:		byte $09,'c','p','y',' ','#','$','0','0',$0a
-exprCpyZeroEnd:
+exprCpyZeroEnd:		byte 0
 exprShiftLeftBody:
 	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
 	byte $09,'r','o','l',' ','N','C','_','T','M','P','+','1',$0a
 	byte $09,'d','e','y',$0a
-exprShiftLeftBodyEnd:
+exprShiftLeftBodyEnd:	byte 0
 exprShiftRightBody:
 	byte $09,'l','s','r',' ','N','C','_','T','M','P','+','1',$0a
 	byte $09,'r','o','r',' ','N','C','_','T','M','P',$0a
 	byte $09,'d','e','y',$0a
-exprShiftRightBodyEnd:
+exprShiftRightBodyEnd:	byte 0
 exprLoadTmpResult:
 	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a
 	byte $09,'l','d','x',' ','N','C','_','T','M','P','+','1',$0a
-exprLoadTmpResultEnd:
+exprLoadTmpResultEnd:	byte 0
 
 exprCmpTmp:		byte $09,'c','m','p',' ','N','C','_','T','M','P',$0a
-exprCmpTmpEnd:
+exprCmpTmpEnd:		byte 0
 exprCmpTmpHigh:		byte $09,'c','m','p',' ','N','C','_','T','M','P','+','1',$0a
-exprCmpTmpHighEnd:
+exprCmpTmpHighEnd:	byte 0
 exprEorTmpHigh:		byte $09,'e','o','r',' ','N','C','_','T','M','P','+','1',$0a
-exprEorTmpHighEnd:
+exprEorTmpHighEnd:	byte 0
 exprBcs:		byte $09,'b','c','s',' '
-exprBcsEnd:
+exprBcsEnd:		byte 0
 exprBne:		byte $09,'b','n','e',' '
-exprBneEnd:
+exprBneEnd:		byte 0
 exprBeq:		byte $09,'b','e','q',' '
-exprBeqEnd:
+exprBeqEnd:		byte 0
 exprBmi:		byte $09,'b','m','i',' '
-exprBmiEnd:
+exprBmiEnd:		byte 0
 exprBpl:		byte $09,'b','p','l',' '
-exprBplEnd:
+exprBplEnd:		byte 0
 exprJmp:		byte $09,'j','m','p',' '
-exprJmpEnd:
+exprJmpEnd:		byte 0
 exprTrueValue:
 	byte $09,'l','d','a',' ','#','$','0','1',$0a
 	byte $09,'l','d','x',' ','#','$','0','0',$0a
-exprTrueValueEnd:
+exprTrueValueEnd:	byte 0
 exprFalseValue:
 	byte $09,'l','d','a',' ','#','$','0','0',$0a
 	byte $09,'l','d','x',' ','#','$','0','0',$0a
-exprFalseValueEnd:
+exprFalseValueEnd:	byte 0
 
 exprScaleIndex:
 	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
 	byte $09,'r','o','l',' ','N','C','_','T','M','P','+','1',$0a
-exprScaleIndexEnd:
+exprScaleIndexEnd:	byte 0
 exprIndexLow:
 	byte $09,'c','l','c',$0a
 	byte $09,'a','d','c',' ','N','C','_','T','M','P',$0a
 	byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a
-exprIndexLowEnd:
+exprIndexLowEnd:	byte 0
 exprIndexHigh:
 	byte $09,'a','d','c',' ','N','C','_','T','M','P','+','1',$0a
 	byte $09,'s','t','a',' ','N','C','_','P','T','R','+','1',$0a
-exprIndexHighEnd:
+exprIndexHighEnd:	byte 0
 exprCharIndirect:
 	byte $09,'l','d','y',' ','#','$','0','0',$0a
 	byte $09,'l','d','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
 	byte $09,'l','d','x',' ','#','$','0','0',$0a
-exprCharIndirectEnd:
+exprCharIndirectEnd:	byte 0
 exprWordIndirect:
 	byte $09,'l','d','y',' ','#','$','0','0',$0a
 	byte $09,'l','d','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
@@ -1396,10 +1335,9 @@ exprWordIndirect:
 	byte $09,'l','d','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
 	byte $09,'t','a','x',$0a
 	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a
-exprWordIndirectEnd:
+exprWordIndirectEnd:	byte 0
 
 ;;; Scratch used only while formatting generated control flow.
-conditionalBranchLength:	byte 0
 conditionalBranchPtr:		word 0
 conditionalTargetLabel:	word 0
 conditionalSkipLabel:		word 0
