@@ -5,8 +5,10 @@
 ;;; This is one explicit bounded state machine, not recursive descent. The
 ;;; generated program's current value is always in A/X. A binary left operand
 ;;; that must survive later source is emitted to a reusable fixed per-function
-;;; spill slot. The compiler retains no expression tree, RPN stream or generic
-;;; intermediate representation.
+;;; spill slot. A simple literal right operand may instead reduce immediately in
+;;; A/X when precedence proves there is nothing later that needs the left value.
+;;; The compiler retains no expression tree, RPN stream or generic intermediate
+;;; representation.
 ;;;
 ;;; The important state is deliberately small:
 ;;;
@@ -18,9 +20,11 @@
 ;;;   expressionMustIndex    non-char array address is only valid for [index]
 ;;;   callDepth              live pending calls, handled by calls.asm
 ;;;
-;;; expression_codegen.asm contains the literal 6502 sequences emitted by
-;;; reductions. Keeping those sequences separate makes the parser itself readable
-;;; without introducing an abstraction between parsing and code generation.
+;;; expression_codegen.asm contains the ordinary literal 6502 sequences emitted
+;;; by reductions. expression_immediate.asm contains the few literal-RHS forms
+;;; that can operate directly on A/X. Keeping those sequences separate makes the
+;;; parser itself readable without introducing an abstraction between parsing
+;;; and code generation.
 ;;;
 ;;; Function calls use OP_CALL on this same operator stack. Commas and the call's
 ;;; closing ')' reduce only the current argument back to that marker; calls.asm
@@ -48,6 +52,10 @@ EXPR_STACK_CAPACITY   = 16
 EXPR_LITERAL_CAPACITY = 16
 EXPR_LITERAL_BYTES    = 512
 EXPR_LITERAL_ROW      = 16
+
+IMMEDIATE_BINARY_NONE     = 0
+IMMEDIATE_BINARY_CAPTURED = 1
+IMMEDIATE_BINARY_REDUCED  = 2
 
 ;;; Mutable expression tables are compiler work RAM, not loaded data. Define the
 ;;; fixed map before parser code references it so native ass sees constants, not
@@ -229,6 +237,21 @@ parse_expression:
 	bcs .precedenceDone
 	rts
 .precedenceDone:
+	;;; Advancing the source does not disturb target A/X. Looking at one literal
+	;;; here lets the common `value op constant` case reduce before we allocate a
+	;;; spill, while ordinary RHS expressions still take the old path unchanged.
+	jsr parser_next
+	bcs .rightStarted
+	rts
+.rightStarted:
+	jsr try_immediate_binary
+	bcs .immediateChecked
+	rts
+.immediateChecked:
+	lda immediateBinaryState
+	cmp #IMMEDIATE_BINARY_REDUCED
+	beq .immediateReduced
+
 	jsr spill_current_value
 	bcs .leftSpilled
 	rts
@@ -237,13 +260,32 @@ parse_expression:
 	bcs .binaryPushed
 	rts
 .binaryPushed:
-	jsr parser_next
-	bcs .binaryAdvanced
-	rts
-.binaryAdvanced:
+	lda immediateBinaryState
+	cmp #IMMEDIATE_BINARY_CAPTURED
+	beq .capturedLiteral
 	lda #$01
 	sta expressionNeedValue
 	jmp .value
+
+.capturedLiteral:
+	;;; A tighter operator followed the literal. We already consumed that literal
+	;;; while looking ahead, so materialise it now and resume the normal machine.
+	jsr emit_load_literal
+	bcs .capturedLoaded
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
+.capturedLoaded:
+	lda reduceRightType
+	sta expressionValueType
+	lda #$00
+	sta expressionIndexable
+	sta expressionMustIndex
+	jmp .primaryActions
+
+.immediateReduced:
+	;;; currentToken is already the token after the literal and A/X contains the
+	;;; reduction result.
+	jmp .operator
 
 .closeGroup:
 	lda #OP_GROUP
@@ -653,6 +695,102 @@ push_pending_binary:
 	sec
 	rts
 
+;;; try_immediate_binary
+;;; currentToken is the first RHS token and A/X still contains the left value.
+;;; For +, -, & and |, one literal can be reduced immediately when the following
+;;; token does not bind more tightly. If a tighter operator follows, remember the
+;;; consumed literal so parse_expression can materialise it after taking the
+;;; ordinary spill path.
+try_immediate_binary:
+	lda #IMMEDIATE_BINARY_NONE
+	sta immediateBinaryState
+
+	lda pendingOperator
+	cmp #OP_ADD
+	beq .supported
+	cmp #OP_SUB
+	beq .supported
+	cmp #OP_AND
+	beq .supported
+	cmp #OP_OR
+	beq .supported
+	sec
+	rts
+
+.supported:
+	lda currentTokenKind
+	cmp #TOKEN_INTEGER
+	beq .integer
+	cmp #TOKEN_CHARACTER
+	beq .character
+	sec
+	rts
+
+.integer:
+	lda currentTokenValue
+	sta expressionLiteralValue
+	lda currentTokenValue+1
+	sta expressionLiteralValue+1
+	lda currentTokenType
+	cmp #TOKEN_TYPE_UNSIGNED
+	bne .signed
+	lda #TYPE_UNSIGNED
+	jmp .typeDone
+.signed:
+	lda #TYPE_INT
+.typeDone:
+	sta reduceRightType
+	jmp .captured
+
+.character:
+	lda currentTokenValue
+	sta expressionLiteralValue
+	lda #$00
+	sta expressionLiteralValue+1
+	lda #TYPE_INT
+	sta reduceRightType
+
+.captured:
+	lda #IMMEDIATE_BINARY_CAPTURED
+	sta immediateBinaryState
+	jsr parser_next
+	bcs .advanced
+	rts
+.advanced:
+	;;; Keep postfix handling on the ordinary path. A literal followed by '[' is
+	;;; invalid today, and the normal expression machine should remain the one
+	;;; place that diagnoses it.
+	lda currentTokenKind
+	cmp #'['
+	beq .done
+	jsr binary_operator_for_token
+	bcc .reduce
+	jsr operator_precedence
+	cpy pendingPrecedence
+	bcc .reduce
+	beq .reduce
+.done:
+	sec
+	rts
+
+.reduce:
+	lda pendingOperator
+	sta reduceOperator
+	lda expressionValueType
+	sta reduceLeftType
+	jsr validate_binary_types
+	bcc .failed
+	jsr emit_immediate_binary_reduction
+	bcs .emitted
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
+.emitted:
+	lda #IMMEDIATE_BINARY_REDUCED
+	sta immediateBinaryState
+	jmp finish_binary_result
+.failed:
+	rts
+
 ;;; Unary minus is right-associative because consecutive '-' markers remain
 ;;; stacked until a primary arrives, then reduce from the top.
 reduce_unary_operators:
@@ -1021,6 +1159,14 @@ reduce_top_binary:
 .emitted:
 	dec operatorCount
 	dec expressionSpillDepth
+	jmp finish_binary_result
+.bad:
+	lda #EXPR_EXPECTED_VALUE
+	jmp expression_fail
+
+;;; Both the ordinary spill reduction and the immediate-literal reduction finish
+;;; with the same type/indexability bookkeeping.
+finish_binary_result:
 	lda reduceResultType
 	sta expressionValueType
 	lda #$00
@@ -1036,9 +1182,6 @@ reduce_top_binary:
 .done:
 	sec
 	rts
-.bad:
-	lda #EXPR_EXPECTED_VALUE
-	jmp expression_fail
 
 ;;; Work only with the four Phase 1 scalar types. char promotes to int. Operator
 ;;; classes are spelled out explicitly; their meaning does not depend on OP_*
@@ -1341,6 +1484,7 @@ emit_one_literal:
 ;;; The output side is kept in separate readable slabs. Calls remain direct;
 ;;; there is no intermediate representation or template-dispatch layer.
 	include "expression_codegen.asm"
+	include "expression_immediate.asm"
 	include "expression_codegen_state.asm"
 	include "calls.asm"
 
@@ -1362,6 +1506,7 @@ expressionElementType:	byte TYPE_CHAR
 expressionError:	byte EXPR_OK
 pendingOperator:	byte 0
 pendingPrecedence:	byte 0
+immediateBinaryState:	byte IMMEDIATE_BINARY_NONE
 wantedMarker:		byte 0
 reduceOperator:		byte 0
 reduceSpill:		byte 0
