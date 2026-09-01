@@ -11,11 +11,13 @@
 ;;;   $3005        returned ASSEMBLE_* status
 ;;;
 ;;; Everything else is fixed, caller-visible C64 memory geometry. There is no
-;;; allocator: the path buffer, line buffer, symbol tables, and staged
+;;; allocator: the path buffer, line buffer, symbol workspace, and staged
 ;;; representation occupy explicit non-overlapping ranges.
 ;;;
-;;; Assembly-lifetime symbols use $a000-$bbff. Dot-prefixed local names use the
-;;; $bc00-$cfff scratch table, which is simply rewound at each global label.
+;;; The 12 KiB symbol workspace is used from both ends. Assembly-lifetime names
+;;; grow upward from $a000. Dot-prefixed names for the current global-label scope
+;;; grow downward from $d000 and are discarded by rewinding that pointer at the
+;;; next global label. The workspace is full only if the two ends meet.
 ;;; ass selects the normal C64 mapping with BASIC hidden and KERNAL/I/O visible
 ;;; while it runs, then restores the caller's original $01 value.
 
@@ -26,15 +28,18 @@ ASSEMBLER_COMMAND_LENGTH = $3002
 ASSEMBLER_COMMAND_TARGET = $3003
 ASSEMBLER_COMMAND_STATUS = $3005
 
-ASSEMBLER_PATH_BUFFER       = $3100
-ASSEMBLER_LINE_BUFFER       = $3200
-ASSEMBLER_SYMBOLS           = $a000
-ASSEMBLER_SYMBOLS_END       = $bc00
-ASSEMBLER_LOCAL_SYMBOLS     = $bc00
-ASSEMBLER_LOCAL_SYMBOLS_END = $d000
-ASSEMBLER_STAGING           = $6000
-ASSEMBLER_STAGING_END       = $a000
+ASSEMBLER_PATH_BUFFER    = $3100
+ASSEMBLER_LINE_BUFFER    = $3200
+ASSEMBLER_SYMBOLS        = $a000
+ASSEMBLER_SYMBOLS_END    = $d000
+ASSEMBLER_STAGING        = $6000
+ASSEMBLER_STAGING_END    = $a000
 SELFHOST_SOURCE_DIRECTORY_LENGTH = 4
+
+;;; Temporary names retained while the direct assembler fixtures are converted
+;;; from the former physically split symbol tables to the shared range.
+ASSEMBLER_LOCAL_SYMBOLS     = ASSEMBLER_SYMBOLS
+ASSEMBLER_LOCAL_SYMBOLS_END = ASSEMBLER_SYMBOLS_END
 
 ;;; assemblerEntry
 ;;; Configure the fixed workspaces, copy the small command block into the
@@ -49,20 +54,15 @@ assemblerEntry:
 
 	lda #<ASSEMBLER_SYMBOLS
 	sta symbolTableStart
+	sta localSymbolTableStart
 	lda #>ASSEMBLER_SYMBOLS
 	sta symbolTableStart+1
+	sta localSymbolTableStart+1
 	lda #<ASSEMBLER_SYMBOLS_END
 	sta symbolTableLimit
+	sta localSymbolTableLimit
 	lda #>ASSEMBLER_SYMBOLS_END
 	sta symbolTableLimit+1
-
-	lda #<ASSEMBLER_LOCAL_SYMBOLS
-	sta localSymbolTableStart
-	lda #>ASSEMBLER_LOCAL_SYMBOLS
-	sta localSymbolTableStart+1
-	lda #<ASSEMBLER_LOCAL_SYMBOLS_END
-	sta localSymbolTableLimit
-	lda #>ASSEMBLER_LOCAL_SYMBOLS_END
 	sta localSymbolTableLimit+1
 
 	lda #<ASSEMBLER_STAGING
