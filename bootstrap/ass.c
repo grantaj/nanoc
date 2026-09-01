@@ -123,12 +123,12 @@ int ass_image_length;
 unsigned ass_origin;
 
 char source_line[256];
-int source_line_length;
+char source_line_length;
 char source_path[256];
-int source_handle[5];
+char source_handle[5];
 int source_depth;
 char *source_directory;
-int source_directory_length;
+char source_directory_length;
 
 int symbol_name_offset[896];
 char symbol_name_length[896];
@@ -138,7 +138,7 @@ char symbol_kind[896];
 char symbol_name_bytes[9344];
 int symbol_count;
 int symbol_name_used;
-int current_scope;
+char current_scope;
 
 char fixup_kind[640];
 int fixup_stage[640];
@@ -170,7 +170,7 @@ char captured_prefix;
 
 unsigned atom_value;
 int atom_symbol;
-int atom_used;
+char atom_used;
 char atom_kind;
 
 /* Fixup kinds. */
@@ -180,11 +180,11 @@ char FIXUP_WORD = 2;
 char FIXUP_RELATIVE = 3;
 char FIXUP_DATA_BYTE = 4;
 
-int origin_allowed;
+char origin_allowed;
 
 /* ---------------- Small text/value helpers ---------------- */
 
-int upper_char(int c)
+int upper_char(char c)
 {
     if (c >= 'a') {
         if (c <= 'z') {
@@ -194,9 +194,9 @@ int upper_char(int c)
     return c;
 }
 
-int same_text(char *a, int a_length, char *b, int b_length)
+int same_text(char *a, char a_length, char *b, char b_length)
 {
-    int i;
+    char i;
 
     if (a_length != b_length) {
         return 0;
@@ -212,7 +212,7 @@ int same_text(char *a, int a_length, char *b, int b_length)
     return 1;
 }
 
-int apply_byte_prefix(unsigned value, int prefix)
+int apply_byte_prefix(unsigned value, char prefix)
 {
     value = value & 65535;
     if (prefix == VALUE_PREFIX_LOW) {
@@ -221,7 +221,7 @@ int apply_byte_prefix(unsigned value, int prefix)
     return (value >> 8) & 255;
 }
 
-int hex_nibble(int c)
+int hex_nibble(char c)
 {
     c = upper_char(c);
     if (c >= '0') {
@@ -239,7 +239,7 @@ int hex_nibble(int c)
 
 /* ---------------- Exceptional forward fixups ---------------- */
 
-int append_fixup(int kind, int stage, int symbol, unsigned addend, int prefix)
+int append_fixup(char kind, int stage, int symbol, unsigned addend, char prefix)
 {
     int n;
 
@@ -285,7 +285,7 @@ int trim_fixups()
 int resolve_fixups_for_symbol(int symbol)
 {
     int i;
-    int kind;
+    char kind;
     unsigned value;
     int stage;
     int relative;
@@ -334,7 +334,7 @@ int resolve_fixups_for_symbol(int symbol)
 
 /* ---------------- Linear owned-name symbol table ---------------- */
 
-int scope_for_name(char *name, int length)
+int scope_for_name(char *name, char length)
 {
     if (length == 0) {
         return -1;
@@ -348,13 +348,13 @@ int scope_for_name(char *name, int length)
     return 0;
 }
 
-int find_symbol(char *name, int length)
+int find_symbol(char *name, char length)
 {
     int wanted_scope;
     int i;
-    int j;
+    char j;
     int offset;
-    int same;
+    char same;
 
     wanted_scope = scope_for_name(name, length);
     if (wanted_scope < 0) {
@@ -384,11 +384,11 @@ int find_symbol(char *name, int length)
     return -1;
 }
 
-int allocate_symbol(char *name, int length, int kind, unsigned payload)
+int allocate_symbol(char *name, char length, char kind, unsigned payload)
 {
     int scope;
     int n;
-    int i;
+    char i;
 
     scope = scope_for_name(name, length);
     if (scope < 0) {
@@ -419,7 +419,7 @@ int allocate_symbol(char *name, int length, int kind, unsigned payload)
     return n;
 }
 
-int intern_label(char *name, int length)
+int intern_label(char *name, char length)
 {
     int symbol;
 
@@ -436,7 +436,7 @@ int intern_label(char *name, int length)
     return allocate_symbol(name, length, SYMBOL_LABEL_UNDEFINED, 0);
 }
 
-int define_constant(char *name, int length, unsigned value)
+int define_constant(char *name, char length, unsigned value)
 {
     int symbol;
 
@@ -473,11 +473,11 @@ int patch_word_chain(int head, unsigned value)
     return ASSEMBLE_OK;
 }
 
-int define_label(char *name, int length, unsigned value)
+int define_label(char *name, char length, unsigned value)
 {
     int symbol;
     int old_head;
-    int status;
+    char status;
 
     symbol = find_symbol(name, length);
     if (symbol == -2) {
@@ -512,9 +512,9 @@ int define_label(char *name, int length, unsigned value)
 
 /* ---------------- Tiny assembler value grammar ---------------- */
 
-int parse_atom(char *text, int length)
+int parse_atom(char *text, char length)
 {
-    int i;
+    char i;
     int digit;
     unsigned value;
     int symbol;
@@ -643,15 +643,15 @@ int parse_atom(char *text, int length)
     return VALUE_OK;
 }
 
-int parse_value(char *text, int length)
+int parse_value(char *text, char length)
 {
-    int position;
-    int status;
-    int first_kind;
+    char position;
+    char status;
+    char first_kind;
     unsigned first_value;
     int first_symbol;
-    int operation;
-    int second_kind;
+    char operation;
+    char second_kind;
 
     captured_symbol = -1;
     captured_addend = 0;
@@ -741,10 +741,10 @@ int parse_value(char *text, int length)
 
 /* ---------------- Shared 6502 instruction metadata ---------------- */
 
-int find_mnemonic(char *name, int length)
+int find_mnemonic(char *name, char length)
 {
-    int candidate;
-    int offset;
+    char candidate;
+    char offset;
 
     if (length != 3) {
         return -1;
@@ -765,7 +765,7 @@ int find_mnemonic(char *name, int length)
     return -1;
 }
 
-int find_opcode(int mnemonic, int mode)
+int find_opcode(char mnemonic, char mode)
 {
     int opcode;
 
@@ -783,7 +783,7 @@ int find_opcode(int mnemonic, int mode)
 
 /* ---------------- Final-size staging ---------------- */
 
-int stage_byte(int value)
+int stage_byte(char value)
 {
     if (ass_image_length >= 11264) {
         return ASSEMBLE_WORK_FULL;
@@ -797,7 +797,7 @@ int stage_plain_word_reference(int symbol)
 {
     int stage;
     int old_head;
-    int status;
+    char status;
 
     stage = ass_image_length;
     old_head = symbol_payload[symbol];
@@ -815,10 +815,10 @@ int stage_plain_word_reference(int symbol)
     return ASSEMBLE_OK;
 }
 
-int stage_resolved_instruction(int opcode, int mode, unsigned value)
+int stage_resolved_instruction(char opcode, char mode, unsigned value)
 {
-    int width;
-    int status;
+    char width;
+    char status;
 
     width = mode_width[mode];
     if (width == 1) {
@@ -845,11 +845,11 @@ int stage_resolved_instruction(int opcode, int mode, unsigned value)
     return ASSEMBLE_OK;
 }
 
-int stage_resolved_relative(int opcode, unsigned target)
+int stage_resolved_relative(char opcode, unsigned target)
 {
     unsigned base;
     int relative;
-    int status;
+    char status;
 
     base = (ass_origin + ass_image_length + 2) & 65535;
     relative = relative_byte(target, base);
@@ -865,17 +865,17 @@ int stage_resolved_relative(int opcode, unsigned target)
 }
 
 int stage_unresolved_instruction(
-    int opcode,
-    int mode,
+    char opcode,
+    char mode,
     int symbol,
     unsigned addend,
-    int prefix
+    char prefix
 )
 {
-    int width;
+    char width;
     int stage;
-    int status;
-    int kind;
+    char status;
+    char kind;
 
     width = mode_width[mode];
     status = stage_byte(opcode);
@@ -918,7 +918,7 @@ int stage_unresolved_instruction(
 
 /* ---------------- Instruction parsing and assembly ---------------- */
 
-int short_mode_for_index(int index)
+int short_mode_for_index(char index)
 {
     if (index == 1) {
         return MODE_ZERO_PAGE_X;
@@ -929,7 +929,7 @@ int short_mode_for_index(int index)
     return MODE_ZERO_PAGE;
 }
 
-int long_mode_for_index(int index)
+int long_mode_for_index(char index)
 {
     if (index == 1) {
         return MODE_ABSOLUTE_X;
@@ -940,10 +940,10 @@ int long_mode_for_index(int index)
     return MODE_ABSOLUTE;
 }
 
-int assemble_mode_value(int mnemonic, int mode, char *text, int length)
+int assemble_mode_value(char mnemonic, char mode, char *text, char length)
 {
     int opcode;
-    int status;
+    char status;
 
     opcode = find_opcode(mnemonic, mode);
     if (opcode < 0) {
@@ -975,14 +975,14 @@ int assemble_mode_value(int mnemonic, int mode, char *text, int length)
     return ASSEMBLE_BAD_INSTRUCTION;
 }
 
-int assemble_direct_value(int mnemonic, char *text, int length, int index)
+int assemble_direct_value(char mnemonic, char *text, char length, char index)
 {
-    int status;
-    int short_mode;
-    int long_mode;
+    char status;
+    char short_mode;
+    char long_mode;
     int short_opcode;
     int long_opcode;
-    int mode;
+    char mode;
     int opcode;
 
     if (index == 0) {
@@ -1047,12 +1047,12 @@ int assemble_direct_value(int mnemonic, char *text, int length, int index)
     );
 }
 
-int assemble_instruction(char *name, int name_length, char *argument, int argument_length)
+int assemble_instruction(char *name, char name_length, char *argument, char argument_length)
 {
     int mnemonic;
     int opcode;
-    int index;
-    int core_length;
+    char index;
+    char core_length;
 
     mnemonic = find_mnemonic(name, name_length);
     if (mnemonic < 0) {
@@ -1166,11 +1166,11 @@ int assemble_instruction(char *name, int name_length, char *argument, int argume
 
 /* ---------------- Data declarations ---------------- */
 
-int stage_data_value(char *text, int length, int width)
+int stage_data_value(char *text, char length, char width)
 {
-    int status;
+    char status;
     int stage;
-    int kind;
+    char kind;
 
     status = parse_value(text, length);
     if (status == VALUE_OK) {
@@ -1228,13 +1228,13 @@ int stage_data_value(char *text, int length, int width)
     return ASSEMBLE_BAD_DATA;
 }
 
-int assemble_data_list(char *argument, int length, int width)
+int assemble_data_list(char *argument, char length, char width)
 {
-    int cursor;
-    int item_start;
-    int item_end;
-    int status;
-    int c;
+    char cursor;
+    char item_start;
+    char item_end;
+    char status;
+    char c;
 
     cursor = 0;
     while (cursor < length) {
@@ -1295,10 +1295,10 @@ int assemble_data_list(char *argument, int length, int width)
     return ASSEMBLE_OK;
 }
 
-int assemble_string(char *argument, int length)
+int assemble_string(char *argument, char length)
 {
-    int i;
-    int status;
+    char i;
+    char status;
 
     if (length < 2) {
         return ASSEMBLE_BAD_DATA;
@@ -1323,13 +1323,13 @@ int assemble_string(char *argument, int length)
 
 /* ---------------- Source traversal ---------------- */
 
-int open_include(char *argument, int length)
+int open_include(char *argument, char length)
 {
-    int input_start;
-    int input_length;
-    int output;
-    int i;
-    int parent_path;
+    char input_start;
+    char input_length;
+    char output;
+    char i;
+    char parent_path;
     int handle;
 
     if (length < 3) {
@@ -1395,7 +1395,7 @@ int open_include(char *argument, int length)
 int read_source_line()
 {
     int c;
-    int handle;
+    char handle;
 
     source_line_length = 0;
     handle = source_handle[source_depth];
@@ -1441,12 +1441,12 @@ int close_source_tree()
 
 /* ---------------- Statement recognition ---------------- */
 
-int scan_argument(int start)
+int scan_argument(char start)
 {
-    int i;
-    int quote;
-    int last;
-    int c;
+    char i;
+    char quote;
+    char last;
+    char c;
 
     i = start;
     quote = 0;
@@ -1497,9 +1497,9 @@ int scan_argument(int start)
     return last - start;
 }
 
-int process_label(char *name, int length)
+int process_label(char *name, char length)
 {
-    int status;
+    char status;
     unsigned value;
 
     if (length == 0) {
@@ -1511,10 +1511,10 @@ int process_label(char *name, int length)
             return ASSEMBLE_SCOPE_ERROR;
         }
     } else {
-        current_scope = current_scope + 1;
-        if (current_scope > 255) {
+        if (current_scope == 255) {
             return ASSEMBLE_SCOPE_ERROR;
         }
+        current_scope = current_scope + 1;
     }
 
     origin_allowed = 0;
@@ -1523,9 +1523,9 @@ int process_label(char *name, int length)
     return status;
 }
 
-int process_symbol(char *name, int name_length, char *argument, int argument_length)
+int process_symbol(char *name, char name_length, char *argument, char argument_length)
 {
-    int status;
+    char status;
 
     if (name_length == 1) {
         if (name[0] == '*') {
@@ -1557,9 +1557,9 @@ int process_symbol(char *name, int name_length, char *argument, int argument_len
 
 int process_instruction_like(
     char *name,
-    int name_length,
+    char name_length,
     char *argument,
-    int argument_length
+    char argument_length
 )
 {
     if (same_text(name, name_length, "include", 7) != 0) {
@@ -1583,12 +1583,12 @@ int process_instruction_like(
 
 int process_source_line()
 {
-    int cursor;
-    int name_start;
-    int name_length;
-    int argument_start;
-    int argument_length;
-    int status;
+    char cursor;
+    char name_start;
+    char name_length;
+    char argument_start;
+    char argument_length;
+    char status;
 
     cursor = 0;
 
@@ -1693,7 +1693,7 @@ int process_source_line()
 
 /* ---------------- Whole assembly ---------------- */
 
-int reset_assembler(unsigned default_origin, char *directory, int directory_length)
+int reset_assembler(unsigned default_origin, char *directory, char directory_length)
 {
     ass_image_length = 0;
     ass_origin = default_origin & 65535;
@@ -1738,15 +1738,15 @@ int all_fixups_resolved()
 
 int ass_assemble(
     char *root_name,
-    int root_name_length,
+    char root_name_length,
     char *directory,
-    int directory_length,
+    char directory_length,
     unsigned default_origin
 )
 {
     int handle;
     int line_status;
-    int status;
+    char status;
 
     reset_assembler(default_origin, directory, directory_length);
 

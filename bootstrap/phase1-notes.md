@@ -99,9 +99,9 @@ The experiment therefore justified one deliberate addition to the first candidat
 
 This is a better minimal language than forcing two distinct jobs through one type merely to save one keyword and one signedness bit in the compiler.
 
-That target-width cleanup is now complete in `ass.c`: origins, parsed machine values, symbol payloads, fixup addends and the helper parameters/locals that carry them are explicitly `unsigned`; search/status values remain signed `int`.
+The later C64-width audit made the complementary rule explicit: `char` is the natural type for facts that a 6502 programmer would keep in one byte, including bounded source lengths, modes, kinds, prefixes, widths, booleans, character values and indexes that cannot reach 256. Signed `int` remains for negative sentinels and indexes that genuinely exceed 255; `unsigned` remains for full-width machine values such as addresses, parsed values, symbol payloads and fixup addends.
 
-The important point is that no wider host integer is now required to express the assembler's logic. The modern host compiler remains only the independent behaviour check.
+The important point is that the declarations now describe the target machine rather than merely avoiding wider host arithmetic. No wider host integer is required to express the assembler's logic, and values are not given two bytes simply because host C makes that convenient. The modern host compiler remains only the independent behaviour check.
 
 ## Hexadecimal literals
 
