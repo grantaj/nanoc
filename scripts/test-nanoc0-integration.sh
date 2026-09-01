@@ -29,7 +29,9 @@ echo "production nanoc0 loaded image: $((bytes - 2)) bytes"
 
 # current ass -> production nanoc0 -> small Phase 1 C -> generated ass, then the
 # same native compiler instance -> exact committed bootstrap/ass.c -> ass source.
-VICE_TIMEOUT=180 VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
+# If current ass rejects a production compiler line, print its streamed line from
+# the native line buffer so CI identifies the exact machine-level incompatibility.
+TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=180 VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
     VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc0_driver.prg" nanoc0-driver
 
