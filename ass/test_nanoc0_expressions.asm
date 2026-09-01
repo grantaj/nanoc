@@ -1,6 +1,7 @@
 	include "../test.inc"
 
 XT_GENERATED_ENTRY = $0800
+XT_TEST_ENTRY      = $2c00
 
 ;;; Arena cursors saved with TEST_RESULT. They are diagnostics only: the result
 ;;; byte remains the authority, while a SYMBOL_FULL failure says which fixed
@@ -9,14 +10,10 @@ XT_PERSIST_END = $03
 XT_OVERFLOW_END = $05
 XT_LOCAL_END = $07
 
-;;; The production assembler occupies $4000 upward. It assembles the source
-;;; emitted by nanoc0/test_expression_compile.asm into $0800, then this test
-;;; executes those generated instructions and publishes their native result.
-;;;
-;;; If assembly itself fails, return the assembler status directly. The status
-;;; constants are already meaningful diagnostics, so wrapping them in a test-only
-;;; error code would only hide useful information.
-	* = ASSEMBLER_TEST_ENTRY
+;;; Keep the small test harness below ass's command block. The production
+;;; assembler itself begins at exactly $4000 and therefore ends below its fixed
+;;; $6000 staging buffer. Generated expression code starts at $0800.
+	* = XT_TEST_ENTRY
 
 main:
 	lda #<generatedName
@@ -62,4 +59,5 @@ captureArenas:
 generatedName:	byte 'E','X','P','R','O','U','T','.','A','S','M'
 generatedNameEnd:
 
+	* = ASSEMBLER_TEST_ENTRY
 	include "ass.asm"
