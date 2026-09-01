@@ -1339,11 +1339,12 @@ emit_one_literal:
 ;;; ---------------------------------------------------------------------------
 
 ;;; One bounded operator stack. Group/index/call markers use the same arrays as
-;;; binary operators so nesting needs no recursive parser state.
+;;; binary operators so nesting needs no recursive parser state. The three
+;;; 16-byte arrays are compiler work RAM immediately after currentTokenText.
 operatorCount:		byte 0
-operatorKind:		ds EXPR_STACK_CAPACITY
-operatorSpill:		ds EXPR_STACK_CAPACITY
-operatorType:		ds EXPR_STACK_CAPACITY
+operatorKind = $b0c0
+operatorSpill = $b0d0
+operatorType = $b0e0
 expressionSpillDepth:	byte 0
 spillAllocatedCount:	byte 0
 expressionNeedValue:	byte 0
@@ -1367,12 +1368,13 @@ primarySymbolType:	byte TYPE_INT
 expressionLiteralValue:	word 0
 
 ;;; Narrow deferred literal pool. Offsets/lengths are 16-bit so this storage is
-;;; independent of the scanner's reusable token width.
+;;; independent of the scanner's reusable token width. The mutable tables and
+;;; bytes continue the compiler work-RAM map; only counters/scratch are loaded.
 literalCount:		byte 0
 literalBytesUsed:	word 0
-literalOffset:		ds EXPR_LITERAL_CAPACITY*2
-literalLength:		ds EXPR_LITERAL_CAPACITY*2
-literalBytes:		ds EXPR_LITERAL_BYTES
+literalOffset = $b0f0
+literalLength = $b110
+literalBytes = $b130
 currentLiteralIndex:	byte 0
 literalNewEnd:		word 0
 literalEmitIndex:	byte 0
