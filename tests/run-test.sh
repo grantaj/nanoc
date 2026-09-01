@@ -87,7 +87,7 @@ if [ "${TEST_DEBUG_WORKSPACE:-0}" -ne 0 ]; then
         persistent_name_end=$(($4 + 256 * $5))
         local_end=$(($6 + 256 * $7))
         local_name_end=$(($8 + 256 * $9))
-        echo "symbol workspace: persistent entry-bytes=$((persistent_end - 40960)) name-bytes=$((49152 - persistent_name_end)) free=$((persistent_name_end - persistent_end)); local entry-bytes=$((local_end - 49152)) name-bytes=$((53248 - local_name_end)) free=$((local_name_end - local_end))" >&2
+        echo "symbol workspace: persistent entry-bytes=$((persistent_end - 40960)) name-bytes=$((47104 - persistent_name_end)) free=$((persistent_name_end - persistent_end)); local entry-bytes=$((local_end - 47104)) name-bytes=$((53248 - local_name_end)) free=$((local_name_end - local_end))" >&2
     fi
 fi
 if [ "${TEST_DEBUG_SOURCE_LINE:-0}" -ne 0 ] && [ -s "$SOURCE_LINE_FILE" ]; then
