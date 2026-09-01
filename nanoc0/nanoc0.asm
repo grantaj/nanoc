@@ -29,11 +29,27 @@ NANOC_TARGET_LIMIT  = $d000
 
 ;;; Keep the native command entry fixed while putting the compiler modules first
 ;;; in source order. That matters to ass: constants such as the KERNAL jump-table
-;;; names are then defined before the driver below uses them. A three-byte 6502
-;;; trampoline is simpler than teaching the assembler a special forward-constant
-;;; rule merely to accommodate this source file.
+;;; names are then defined before compilerMain uses them.
+;;;
+;;; The compiler's bounded work RAM uses the area under BASIC ROM. Like ass, the
+;;; public native entry therefore owns the C64 memory map explicitly: BASIC is
+;;; hidden while KERNAL and I/O remain visible, then the caller's $01 value is
+;;; restored. PHA/PLA preserve only the returned status byte across that restore;
+;;; the hardware stack is never C storage.
 nanoc0Entry:
-	jmp compilerMain
+	lda $01
+	sta compilerMemoryConfig
+	lda #$36
+	sta $01
+	jsr compilerMain
+	pha
+	lda compilerMemoryConfig
+	sta $01
+	pla
+	rts
+
+compilerMemoryConfig:
+	byte 0
 
 	include "declarations.asm"
 	include "program_output.asm"
