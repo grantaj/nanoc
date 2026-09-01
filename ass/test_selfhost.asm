@@ -7,6 +7,12 @@ FAIL_BUILD_B     = $10
 FAIL_RUN_B       = $20
 FAIL_SMOKE_BYTES = $30
 
+;;; Failure-only workspace mailbox saved with TEST_RESULT by tests/run-test.sh.
+SH_PERSIST_END      = $03
+SH_PERSIST_NAME_END = $05
+SH_LOCAL_END        = $07
+SH_LOCAL_NAME_END   = $09
+
 	* = ASSEMBLER_TEST_ENTRY
 
 main:
@@ -25,6 +31,8 @@ main:
 	jsr assemblerEntry
 	cmp #ASSEMBLE_OK
 	beq .builtB
+	jsr captureWorkspace
+	lda ASSEMBLER_COMMAND_STATUS
 	ora #FAIL_BUILD_B
 	jmp finish
 
@@ -44,6 +52,8 @@ main:
 	jsr SELF_HOSTED
 	lda ASSEMBLER_COMMAND_STATUS
 	beq .checkSmoke
+	jsr captureWorkspace
+	lda ASSEMBLER_COMMAND_STATUS
 	ora #FAIL_RUN_B
 	jmp finish
 
@@ -65,6 +75,25 @@ finish:
 	sta TEST_RESULT
 .halt:
 	jmp .halt
+
+captureWorkspace:
+	lda symbolTableEnd
+	sta SH_PERSIST_END
+	lda symbolTableEnd+1
+	sta SH_PERSIST_END+1
+	lda symbolNameEnd
+	sta SH_PERSIST_NAME_END
+	lda symbolNameEnd+1
+	sta SH_PERSIST_NAME_END+1
+	lda localSymbolTableEnd
+	sta SH_LOCAL_END
+	lda localSymbolTableEnd+1
+	sta SH_LOCAL_END+1
+	lda localSymbolNameEnd
+	sta SH_LOCAL_NAME_END
+	lda localSymbolNameEnd+1
+	sta SH_LOCAL_NAME_END+1
+	rts
 
 ;;; The self-host test mounts the repository root. These are already in the C64
 ;;; upper-case filename form expected by VICE's host filesystem device.
