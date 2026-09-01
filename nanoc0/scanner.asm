@@ -652,8 +652,8 @@ scan_number:
 .hexDigit:
 	jsr accumulate_hex_digit
 	bcs .hexMore
-	lda #LEX_INTEGER_OVERFLOW
-	jmp set_lex_error
+	lda #EXPR_LITERAL_POOL_OVERFLOW
+	jmp expression_fail
 .hexMore:
 	jsr read_source_byte
 	bcc .hexEndSource
@@ -986,13 +986,15 @@ scan_greater:
 	lda #LEX_IO_ERROR
 	jmp set_lex_error
 
-;;; Exactly one reusable current token.
+;;; Exactly one reusable current token. The 192-byte text itself is mutable
+;;; compiler work RAM, not loaded data; only the small scalar token state lives
+;;; in the image. $b000 starts the explicit compiler-private workspace.
 currentTokenKind:	byte TOKEN_EOF
 currentTokenType:	byte TOKEN_TYPE_NONE
 currentTokenValue:	word 0
 currentTokenLength:	byte 0
 currentTokenLine:	word 1
-currentTokenText:		ds TOKEN_TEXT_CAPACITY
+currentTokenText = $b000
 scannerError:		byte LEX_OK
 
 ;;; Small scanner scratch; none of it survives as token history.
