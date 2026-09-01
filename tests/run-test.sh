@@ -83,9 +83,22 @@ print_workspace() {
     fi
 }
 
+print_arenas() {
+    set -- $(od -An -tu1 -N7 "$RESULT_FILE")
+    if [ "$#" -ge 7 ]; then
+        persistent_end=$(($2 + 256 * $3))
+        overflow_end=$(($4 + 256 * $5))
+        local_end=$(($6 + 256 * $7))
+        echo "symbol arenas: persistent=$((persistent_end - 40960))/11776 overflow=$((overflow_end - 13056))/3328 local=$((53248 - local_end))/512" >&2
+    fi
+}
+
 if [ "$RESULT" -eq 255 ]; then
     if [ "${TEST_DEBUG_WORKSPACE:-0}" -ne 0 ] || [ "$NAME" = selfhost ]; then
         print_workspace
+    fi
+    if [ "$NAME" = nanoc0-expressions ]; then
+        print_arenas
     fi
     echo "PASS $NAME"
     exit 0
@@ -94,6 +107,9 @@ fi
 echo "FAIL $NAME: code $RESULT" >&2
 if [ "${TEST_DEBUG_WORKSPACE:-0}" -ne 0 ] || [ "$NAME" = selfhost ]; then
     print_workspace
+fi
+if [ "$NAME" = nanoc0-expressions ]; then
+    print_arenas
 fi
 if [ "${TEST_DEBUG_SOURCE_LINE:-0}" -ne 0 ] && [ -s "$SOURCE_LINE_FILE" ]; then
     printf 'native source line: ' >&2
