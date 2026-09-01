@@ -380,7 +380,7 @@ emit_bss_boundaries:
 	bcc .failed
 	jsr xt_emit_checker
 	bcc .failed
-	jsr xt_emit_mul16
+	jsr emit_runtime_helpers
 	bcc .failed
 	sec
 	rts
@@ -388,9 +388,8 @@ emit_bss_boundaries:
 	clc
 	rts
 
-;;; emit_text has an 8-bit length by design. The helper is larger than one
-;;; fragment, so stream it as two natural source chunks instead of widening the
-;;; formatter for a test-only constant block.
+;;; Kept as test source history for now; the fixture above deliberately uses
+;;; production emit_runtime_helpers instead of this private copy.
 xt_emit_mul16:
 	lda #xtMul16Part2-xtMul16
 	ldx #<xtMul16
@@ -704,7 +703,7 @@ xtMul16Part2:
 	byte $09,'t','x','a',$0a
 	byte $09,'a','d','c',' ','N','C','_','T','M','P','+','1',$0a
 	byte $09,'t','a','x',$0a
-	byte '_','_','n','c','_','m','u','l','1','6','_','n','o','a','d','d',':',$0a
+	byte '_','_','n','c','_','_','m','u','l','1','6','_','n','o','a','d','d',':',$0a
 	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
 	byte $09,'r','o','l',' ','N','C','_','T','M','P','+','1',$0a
 	byte $09,'l','s','r',' ','N','C','_','P','T','R','+','1',$0a
@@ -750,3 +749,4 @@ xtCheckLabel:		word 0
 xtOutputOpen:		byte 0
 
 	include "declarations.asm"
+	include "runtime_codegen.asm"
