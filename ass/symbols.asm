@@ -23,11 +23,11 @@
 ;;; An undefined label has no value yet, and a defined label has no outstanding
 ;;; word references, so keeping both would waste two bytes in every symbol.
 
-SYMBOL_LENGTH     = 0
-SYMBOL_PAYLOAD_LO = 1
-SYMBOL_PAYLOAD_HI = 2
-SYMBOL_KIND       = 3
-SYMBOL_NAME       = 4
+SYMBOL_LENGTH      = 0
+SYMBOL_PAYLOAD_LO  = 1
+SYMBOL_PAYLOAD_HI  = 2
+SYMBOL_KIND        = 3
+SYMBOL_NAME        = 4
 SYMBOL_HEADER_SIZE = 4
 
 SYMBOL_VALUE_LO = SYMBOL_PAYLOAD_LO
@@ -317,8 +317,9 @@ findSymbolEntry:
 	lda symbolScan
 	adc symbolRecordSize
 	sta symbolScan
-	bcc .next
+	bcc .samePage
 	inc symbolScan+1
+.samePage:
 	jmp .next
 
 .notFound:
@@ -366,7 +367,9 @@ allocateSymbol:
 	lda symbolNameLength
 	clc
 	adc #SYMBOL_HEADER_SIZE
-	bcs .full
+	bcc .sizeReady
+	jmp .full
+.sizeReady:
 	sta symbolRecordSize
 	clc
 	lda symbolAllocEnd
@@ -379,7 +382,9 @@ allocateSymbol:
 	lda symbolNext+1
 	cmp symbolAllocLimit+1
 	bcc .room
-	bne .full
+	beq .sameLimitPage
+	jmp .full
+.sameLimitPage:
 	lda symbolNext
 	cmp symbolAllocLimit
 	bcc .room
@@ -614,8 +619,9 @@ scanLabelsDefined:
 	lda symbolScan
 	adc symbolRecordSize
 	sta symbolScan
-	bcc .next
+	bcc .samePage
 	inc symbolScan+1
+.samePage:
 	jmp .next
 .ok:
 	sec
