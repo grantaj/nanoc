@@ -53,6 +53,16 @@ main:
 	lda #>ASSEMBLER_LOCAL_SYMBOLS_END
 	sta localSymbolTableLimit+1
 
+	;;; The ladder uses exactly the production fixed low-RAM persistent spill.
+	lda #<ASSEMBLER_SYMBOL_OVERFLOW
+	sta symbolOverflowStart
+	lda #>ASSEMBLER_SYMBOL_OVERFLOW
+	sta symbolOverflowStart+1
+	lda #<ASSEMBLER_SYMBOL_OVERFLOW_END
+	sta symbolOverflowLimit
+	lda #>ASSEMBLER_SYMBOL_OVERFLOW_END
+	sta symbolOverflowLimit+1
+
 	lda #<ASSEMBLER_STAGING
 	sta stagingStart
 	lda #>ASSEMBLER_STAGING
