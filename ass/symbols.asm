@@ -70,9 +70,9 @@ resetSymbols:
 ;;; Rewind current-scope scratch to the top of the shared workspace. No bytes are
 ;;; cleared; the pointer alone defines which local records are live.
 resetLocalSymbols:
-	lda localSymbolTableLimit
+	lda symbolTableLimit
 	sta localSymbolTableEnd
-	lda localSymbolTableLimit+1
+	lda symbolTableLimit+1
 	sta localSymbolTableEnd+1
 	rts
 
@@ -231,9 +231,9 @@ findSymbolEntry:
 	sta symbolScan
 	lda localSymbolTableEnd+1
 	sta symbolScan+1
-	lda localSymbolTableLimit
+	lda symbolTableLimit
 	sta symbolSearchEnd
-	lda localSymbolTableLimit+1
+	lda symbolTableLimit+1
 	sta symbolSearchEnd+1
 	jmp .save
 .global:
@@ -339,7 +339,7 @@ findSymbolEntry:
 
 ;;; allocateSymbol
 ;;; Persistent records append upward from symbolTableStart. Local records prepend
-;;; downward from localSymbolTableLimit. Both remain stable while live; allocation
+;;; downward from symbolTableLimit. Both remain stable while live; allocation
 ;;; fails only if the proposed record would cross the other table's current end.
 allocateSymbol:
 	lda symbolNameLength
@@ -607,9 +607,9 @@ allLocalLabelsDefined:
 	sta symbolScan
 	lda localSymbolTableEnd+1
 	sta symbolScan+1
-	lda localSymbolTableLimit
+	lda symbolTableLimit
 	sta symbolSearchEnd
-	lda localSymbolTableLimit+1
+	lda symbolTableLimit+1
 	sta symbolSearchEnd+1
 
 scanLabelsDefined:
@@ -699,17 +699,17 @@ symbolScope:
 	clc
 	rts
 
-;;; Lower edge and current end of assembly-lifetime records.
+;;; Shared workspace lower edge, persistent end, and fixed upper edge.
 symbolTableStart:	word 0
 symbolTableEnd:		word 0
-
-;;; Compatibility configuration while callers are converted to one shared range.
-;;; symbolTableLimit/localSymbolTableStart are no longer consulted by symbols.asm.
 symbolTableLimit:	word 0
-localSymbolTableStart:	word 0
 
-;;; Current lower edge and fixed upper edge of current-scope local records.
+;;; Current lower edge of the local records growing down from symbolTableLimit.
 localSymbolTableEnd:	word 0
+
+;;; Compatibility variables while old direct fixtures stop configuring a
+;;; separate local range. symbols.asm does not consult either value.
+localSymbolTableStart:	word 0
 localSymbolTableLimit:	word 0
 
 ;;; Zero means no global label has appeared yet. Nonzero means dot-prefixed names
