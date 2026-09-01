@@ -997,16 +997,26 @@ exprBeq:		byte $09,'b','e','q',' '
 exprBeqEnd:		byte 0
 exprJmp:		byte $09,'j','m','p',' '
 exprJmpEnd:		byte 0
-exprCallEq16:		string "\tjsr __nc_eq16"
-exprCallNe16:		string "\tjsr __nc_ne16"
-exprCallSlt16:		string "\tjsr __nc_slt16"
-exprCallSle16:		string "\tjsr __nc_sle16"
-exprCallSgt16:		string "\tjsr __nc_sgt16"
-exprCallSge16:		string "\tjsr __nc_sge16"
-exprCallUlt16:		string "\tjsr __nc_ult16"
-exprCallUle16:		string "\tjsr __nc_ule16"
-exprCallUgt16:		string "\tjsr __nc_ugt16"
-exprCallUge16:		string "\tjsr __nc_uge16"
+exprCallEq16:		byte $09
+			string "jsr __nc_eq16"
+exprCallNe16:		byte $09
+			string "jsr __nc_ne16"
+exprCallSlt16:		byte $09
+			string "jsr __nc_slt16"
+exprCallSle16:		byte $09
+			string "jsr __nc_sle16"
+exprCallSgt16:		byte $09
+			string "jsr __nc_sgt16"
+exprCallSge16:		byte $09
+			string "jsr __nc_sge16"
+exprCallUlt16:		byte $09
+			string "jsr __nc_ult16"
+exprCallUle16:		byte $09
+			string "jsr __nc_ule16"
+exprCallUgt16:		byte $09
+			string "jsr __nc_ugt16"
+exprCallUge16:		byte $09
+			string "jsr __nc_uge16"
 
 exprScaleIndex:
 	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
