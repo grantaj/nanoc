@@ -22,7 +22,6 @@ emit_runtime_support:
 
 	lda multiplyUsed
 	beq .runtimeCheck
-	lda #runtimeMulPathEnd-runtimeMulPath
 	ldx #<runtimeMulPath
 	ldy #>runtimeMulPath
 	jsr emit_runtime_include
@@ -31,7 +30,6 @@ emit_runtime_support:
 .runtimeCheck:
 	jsr runtime_any_used
 	bcc .done
-	lda #runtimeCommonPathEnd-runtimeCommonPath
 	ldx #<runtimeCommonPath
 	ldy #>runtimeCommonPath
 	jsr emit_runtime_include
@@ -39,7 +37,6 @@ emit_runtime_support:
 
 	lda runtimeUsed
 	beq .read
-	lda #runtimeOpenPathEnd-runtimeOpenPath
 	ldx #<runtimeOpenPath
 	ldy #>runtimeOpenPath
 	jsr emit_runtime_include
@@ -47,7 +44,6 @@ emit_runtime_support:
 .read:
 	lda runtimeUsed+1
 	beq .create
-	lda #runtimeReadPathEnd-runtimeReadPath
 	ldx #<runtimeReadPath
 	ldy #>runtimeReadPath
 	jsr emit_runtime_include
@@ -55,7 +51,6 @@ emit_runtime_support:
 .create:
 	lda runtimeUsed+2
 	beq .write
-	lda #runtimeCreatePathEnd-runtimeCreatePath
 	ldx #<runtimeCreatePath
 	ldy #>runtimeCreatePath
 	jsr emit_runtime_include
@@ -63,7 +58,6 @@ emit_runtime_support:
 .write:
 	lda runtimeUsed+3
 	beq .close
-	lda #runtimeWritePathEnd-runtimeWritePath
 	ldx #<runtimeWritePath
 	ldy #>runtimeWritePath
 	jsr emit_runtime_include
@@ -71,7 +65,6 @@ emit_runtime_support:
 .close:
 	lda runtimeUsed+4
 	beq .done
-	lda #runtimeClosePathEnd-runtimeClosePath
 	ldx #<runtimeClosePath
 	ldy #>runtimeClosePath
 	jsr emit_runtime_include
@@ -111,7 +104,6 @@ prepare_runtime_storage:
 	sta allocSize+1
 	jsr allocate_bss
 	bcc .failed
-	lda #runtimeModeNameEnd-runtimeModeName
 	ldx #<runtimeModeName
 	ldy #>runtimeModeName
 	jsr emit_runtime_definition
@@ -123,7 +115,6 @@ prepare_runtime_storage:
 	sta allocSize+1
 	jsr allocate_bss
 	bcc .failed
-	lda #runtimeEofNameEnd-runtimeEofName
 	ldx #<runtimeEofName
 	ldy #>runtimeEofName
 	jsr emit_runtime_definition
@@ -135,7 +126,6 @@ prepare_runtime_storage:
 	sta allocSize+1
 	jsr allocate_bss
 	bcc .failed
-	lda #runtimeHandleNameEnd-runtimeHandleName
 	ldx #<runtimeHandleName
 	ldy #>runtimeHandleName
 	jsr emit_runtime_definition
@@ -149,7 +139,6 @@ prepare_runtime_storage:
 	sta allocSize+1
 	jsr allocate_bss
 	bcc .failed
-	lda #runtimeNameBufferNameEnd-runtimeNameBufferName
 	ldx #<runtimeNameBufferName
 	ldy #>runtimeNameBufferName
 	jsr emit_runtime_definition
@@ -161,15 +150,14 @@ prepare_runtime_storage:
 	clc
 	rts
 
-;;; A=generated symbol-name length, X/Y=address. allocOffset is the allocation
+;;; X/Y=address of a fixed generated symbol name. allocOffset is the allocation
 ;;; just committed.
 emit_runtime_definition:
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
-	lda #runtimeBssAssignEnd-runtimeBssAssign
 	ldx #<runtimeBssAssign
 	ldy #>runtimeBssAssign
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda allocOffset
 	sta emitWord
@@ -189,37 +177,33 @@ emit_runtime_init:
 	ldy #>runtimeInitPrefix
 	jsr emit_runtime_lines
 	bcc .failed
-	lda #runtimeLdaImmediateEnd-runtimeLdaImmediate
 	ldx #<runtimeLdaImmediate
 	ldy #>runtimeLdaImmediate
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda zeroRequiredEnd
 	jsr emit_hex_byte
 	bcc .failed
 	jsr emit_newline
 	bcc .failed
-	lda #runtimeStaTmpEnd-runtimeStaTmp
 	ldx #<runtimeStaTmp
 	ldy #>runtimeStaTmp
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	jsr emit_newline
 	bcc .failed
-	lda #runtimeLdaImmediateEnd-runtimeLdaImmediate
 	ldx #<runtimeLdaImmediate
 	ldy #>runtimeLdaImmediate
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda zeroRequiredEnd+1
 	jsr emit_hex_byte
 	bcc .failed
 	jsr emit_newline
 	bcc .failed
-	lda #runtimeStaTmpHighEnd-runtimeStaTmpHigh
 	ldx #<runtimeStaTmpHigh
 	ldy #>runtimeStaTmpHigh
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	jsr emit_newline
 	bcc .failed
@@ -241,22 +225,19 @@ emit_runtime_init:
 	clc
 	rts
 
-;;; A=path length, X/Y=path. Emit one ordinary ass include statement. Production
-;;; ass roots local includes at ASS/, so ../ deliberately drops that prefix and
-;;; reaches the repository-level nanoc0 target directory.
+;;; X/Y=address of a fixed NUL-terminated path. Emit one ordinary ass include
+;;; statement. Production ass roots local includes at ASS/, so ../ deliberately
+;;; drops that prefix and reaches the repository-level nanoc0 target directory.
 emit_runtime_include:
-	sta runtimeIncludeLength
 	stx runtimeIncludePath
 	sty runtimeIncludePath+1
-	lda #runtimeIncludePrefixEnd-runtimeIncludePrefix
 	ldx #<runtimeIncludePrefix
 	ldy #>runtimeIncludePrefix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
-	lda runtimeIncludeLength
 	ldx runtimeIncludePath
 	ldy runtimeIncludePath+1
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda #'"'
 	jsr emit_output_byte
@@ -299,39 +280,23 @@ emit_runtime_lines:
 	clc
 	rts
 
-runtimeModeName:	byte '_','_','n','c','_','i','o','_','m','o','d','e'
-runtimeModeNameEnd:
-runtimeEofName:		byte '_','_','n','c','_','i','o','_','e','o','f'
-runtimeEofNameEnd:
-runtimeHandleName:	byte '_','_','n','c','_','i','o','_','h','a','n','d','l','e'
-runtimeHandleNameEnd:
-runtimeNameBufferName:	byte '_','_','n','c','_','i','o','_','n','a','m','e'
-runtimeNameBufferNameEnd:
-runtimeBssAssign:	byte ' ','=',' ','N','C','_','B','S','S','+','$'
-runtimeBssAssignEnd:
-runtimeLdaImmediate:	byte $09,'l','d','a',' ','#','$'
-runtimeLdaImmediateEnd:
-runtimeStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P'
-runtimeStaTmpEnd:
-runtimeStaTmpHigh:	byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1'
-runtimeStaTmpHighEnd:
-runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"'
-runtimeIncludePrefixEnd:
+runtimeModeName:	byte '_','_','n','c','_','i','o','_','m','o','d','e',0
+runtimeEofName:		byte '_','_','n','c','_','i','o','_','e','o','f',0
+runtimeHandleName:	byte '_','_','n','c','_','i','o','_','h','a','n','d','l','e',0
+runtimeNameBufferName:	byte '_','_','n','c','_','i','o','_','n','a','m','e',0
+runtimeBssAssign:	byte ' ','=',' ','N','C','_','B','S','S','+','$',0
+runtimeLdaImmediate:	byte $09,'l','d','a',' ','#','$',0
+runtimeStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',0
+runtimeStaTmpHigh:	byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',0
+runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"',0
 
-runtimeMulPath:		byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','m','u','l','1','6','.','a','s','m'
-runtimeMulPathEnd:
-runtimeCommonPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','o','m','m','o','n','.','a','s','m'
-runtimeCommonPathEnd:
-runtimeOpenPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','o','p','e','n','.','a','s','m'
-runtimeOpenPathEnd:
-runtimeReadPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','r','e','a','d','.','a','s','m'
-runtimeReadPathEnd:
-runtimeCreatePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','r','e','a','t','e','.','a','s','m'
-runtimeCreatePathEnd:
-runtimeWritePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','w','r','i','t','e','.','a','s','m'
-runtimeWritePathEnd:
-runtimeClosePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','l','o','s','e','.','a','s','m'
-runtimeClosePathEnd:
+runtimeMulPath:		byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','m','u','l','1','6','.','a','s','m',0
+runtimeCommonPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','o','m','m','o','n','.','a','s','m',0
+runtimeOpenPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','o','p','e','n','.','a','s','m',0
+runtimeReadPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','r','e','a','d','.','a','s','m',0
+runtimeCreatePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','r','e','a','t','e','.','a','s','m',0
+runtimeWritePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','w','r','i','t','e','.','a','s','m',0
+runtimeClosePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','l','o','s','e','.','a','s','m',0
 
 runtimeInitPrefix:
 	string "__nc_init:"
@@ -378,5 +343,4 @@ runtimeInitReturnText:
 	string "	rts"
 	byte 0
 
-runtimeIncludeLength:	byte 0
 runtimeIncludePath:	word 0
