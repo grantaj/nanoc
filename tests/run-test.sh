@@ -10,8 +10,9 @@ NAME=${2:-$(basename "$PRG" .prg)}
 MONITOR_FILE="$BUILD_DIR/$NAME.mon"
 RESULT_FILE="$BUILD_DIR/$NAME.result"
 LOG_FILE="$BUILD_DIR/$NAME.vice.log"
+SOURCE_LINE_FILE="$BUILD_DIR/$NAME.source-line"
 
-rm -f "$MONITOR_FILE" "$RESULT_FILE" "$LOG_FILE"
+rm -f "$MONITOR_FILE" "$RESULT_FILE" "$LOG_FILE" "$SOURCE_LINE_FILE"
 
 # A CBM PRG carries its little-endian load address in its first two bytes.
 # Start the test there rather than imposing a host-side entry address.
@@ -25,11 +26,11 @@ watch store 0002
 g $ENTRY
 EOF
 
-# Integration tests can ask VICE to show ass's current streamed source line when
+# Integration tests can ask VICE to save ass's current streamed source line when
 # a native assembly fails. This is diagnostic only; the C64 result byte remains
 # the test authority.
 if [ "${TEST_DEBUG_SOURCE_LINE:-0}" -ne 0 ]; then
-    echo "m 3200 327f" >> "$MONITOR_FILE"
+    echo "bsave \"$SOURCE_LINE_FILE\" 0 3200 3280" >> "$MONITOR_FILE"
 fi
 
 cat >> "$MONITOR_FILE" <<EOF
@@ -79,5 +80,9 @@ if [ "$RESULT" -eq 255 ]; then
 fi
 
 echo "FAIL $NAME: code $RESULT" >&2
+if [ "${TEST_DEBUG_SOURCE_LINE:-0}" -ne 0 ] && [ -s "$SOURCE_LINE_FILE" ]; then
+    printf 'native source line: ' >&2
+    tr '\000' '\n' < "$SOURCE_LINE_FILE" | sed -n '1p' >&2
+fi
 cat "$LOG_FILE" >&2
 exit 1
