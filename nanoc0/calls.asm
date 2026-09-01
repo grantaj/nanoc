@@ -20,6 +20,16 @@ CALL_STACK_CAPACITY    = 4
 CALL_ARGUMENT_CAPACITY = 8
 CALL_FRAME_BYTES       = 3
 
+;;; Pending-call arrays are compiler work RAM immediately after the expression
+;;; literal pool. They contain no initial data, and their fixed addresses are
+;;; declared before use for the one-pass native assembler.
+callCallee            = $b330
+callArgumentIndex     = $b334
+callOperatorBase      = $b338
+callStageAllocated    = $b33c
+runtimeParamAllocated = $b340
+runtimeUsed           = $b345
+
 ;;; reset_call_translation_state
 ;;; Runtime parameter slots, runtime use and compiler-private support use belong
 ;;; to the whole generated translation unit.
@@ -484,21 +494,8 @@ ensure_runtime_parameter_slots:
 ;;; Pending-call compiler state
 ;;; ---------------------------------------------------------------------------
 
-;;; The bounded arrays live in compiler work RAM immediately after the expression
-;;; literal pool. They contain no initial data and therefore do not belong in the
-;;; loaded image.
+;;; The bounded arrays use the fixed compiler work-RAM constants declared above.
 callDepth:		byte 0
-callCallee = $b330
-callArgumentIndex = $b334
-callOperatorBase = $b338
-
-;;; Per caller function, one byte per nesting depth records how many reusable
-;;; two-byte staging words have actually been allocated at that depth.
-callStageAllocated = $b33c
-
-;;; Runtime parameter storage is translation-unit state, not caller state.
-runtimeParamAllocated = $b340
-runtimeUsed = $b345
 
 ;;; Transient call/codegen scratch.
 callBeginCallee:	byte 0
