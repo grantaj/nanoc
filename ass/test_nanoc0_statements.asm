@@ -8,10 +8,9 @@ ST_FAIL_STATEMENT_ASSEMBLE = $30
 ST_FAIL_STATEMENT_VALUE    = $40
 
 ;;; Failure-only workspace mailbox saved with TEST_RESULT by tests/run-test.sh.
+;;; Packed tables need one end pointer each.
 ST_PERSIST_END = $03
-ST_PERSIST_NAME_END = $05
-ST_LOCAL_END = $07
-ST_LOCAL_NAME_END = $09
+ST_LOCAL_END   = $05
 
 	* = ASSEMBLER_TEST_ENTRY
 
@@ -89,18 +88,10 @@ captureWorkspace:
 	sta ST_PERSIST_END
 	lda symbolTableEnd+1
 	sta ST_PERSIST_END+1
-	lda symbolNameEnd
-	sta ST_PERSIST_NAME_END
-	lda symbolNameEnd+1
-	sta ST_PERSIST_NAME_END+1
 	lda localSymbolTableEnd
 	sta ST_LOCAL_END
 	lda localSymbolTableEnd+1
 	sta ST_LOCAL_END+1
-	lda localSymbolNameEnd
-	sta ST_LOCAL_NAME_END
-	lda localSymbolNameEnd+1
-	sta ST_LOCAL_NAME_END+1
 	rts
 
 returnGeneratedName:	byte 'R','E','T','8','O','U','T','.','A','S','M'
