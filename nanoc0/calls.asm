@@ -36,6 +36,7 @@ runtimeUsed           = $b345
 reset_call_translation_state:
 	ldx #$00
 	lda #$00
+	sta compareUsed
 	sta multiplyUsed
 .loop:
 	sta runtimeParamAllocated,x
