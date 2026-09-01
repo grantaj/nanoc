@@ -14,8 +14,8 @@
 ;;; allocator: the path buffer, line buffer, symbol tables, and staged
 ;;; representation occupy explicit non-overlapping ranges.
 ;;;
-;;; Assembly-lifetime symbols use $a000-$b7ff. Dot-prefixed local names use the
-;;; $b800-$cfff scratch table, which is simply rewound at each global label.
+;;; Assembly-lifetime symbols use $a000-$bfff. Dot-prefixed local names use the
+;;; $c000-$cfff scratch table, which is simply rewound at each global label.
 ;;; ass selects the normal C64 mapping with BASIC hidden and KERNAL/I/O visible
 ;;; while it runs, then restores the caller's original $01 value.
 
@@ -29,8 +29,8 @@ ASSEMBLER_COMMAND_STATUS = $3005
 ASSEMBLER_PATH_BUFFER       = $3100
 ASSEMBLER_LINE_BUFFER       = $3200
 ASSEMBLER_SYMBOLS           = $a000
-ASSEMBLER_SYMBOLS_END       = $b800
-ASSEMBLER_LOCAL_SYMBOLS     = $b800
+ASSEMBLER_SYMBOLS_END       = $c000
+ASSEMBLER_LOCAL_SYMBOLS     = $c000
 ASSEMBLER_LOCAL_SYMBOLS_END = $d000
 ASSEMBLER_STAGING           = $6000
 ASSEMBLER_STAGING_END       = $a000
