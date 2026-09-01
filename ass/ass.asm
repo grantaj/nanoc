@@ -12,17 +12,16 @@
 ;;;
 ;;; Everything else is fixed, caller-visible C64 memory geometry. There is no
 ;;; allocator: the path buffer, line buffer, symbol arenas, and staged
-;;; representation occupy explicit non-overlapping ranges.
+;;; representation occupy explicit ranges.
 ;;;
-;;; Assembly-lifetime names append from $a000 through $bfff, then continue in the
-;;; otherwise idle $3300-$3fff pages below the assembler image. Dot-prefixed names
-;;; for the current global-label scope have sixteen fixed pages at $c000-$cfff;
-;;; they grow downward from $d000 and are discarded by rewinding one pointer at
-;;; the next global label. The 4 KiB capacity is a direct fixed C64 budget; the
-;;; statement acceptance fixture exceeded 2042/2048 bytes in one real function
-;;; scope, while assembler self-hosting uses 6513 bytes of persistent symbols.
-;;; The three ranges have explicit lifetimes and boundaries; none is dynamically
-;;; allocated.
+;;; Assembly-lifetime names first fill the otherwise idle $3300-$3fff pages below
+;;; the assembler image. They then continue upward from $a000. Dot-prefixed names
+;;; for the current global-label scope grow downward from $d000 in that same upper
+;;; RAM. The two live frontiers may touch but never cross. Starting a new global
+;;; label rewinds the local frontier to $d000, immediately returning all of that
+;;; scope's bytes while persistent records stay put. This lifetime sharing gives
+;;; large early functions room for locals and later source room for globals without
+;;; compaction, relocation, or an allocator.
 ;;; ass selects the normal C64 mapping with BASIC hidden and KERNAL/I/O visible
 ;;; while it runs, then restores the caller's original $01 value.
 
@@ -35,11 +34,11 @@ ASSEMBLER_COMMAND_STATUS = $3005
 
 ASSEMBLER_PATH_BUFFER          = $3100
 ASSEMBLER_LINE_BUFFER          = $3200
-ASSEMBLER_SYMBOL_OVERFLOW      = $3300
-ASSEMBLER_SYMBOL_OVERFLOW_END  = $4000
-ASSEMBLER_SYMBOLS              = $a000
-ASSEMBLER_SYMBOLS_END          = $c000
-ASSEMBLER_LOCAL_SYMBOLS        = $c000
+ASSEMBLER_SYMBOLS              = $3300
+ASSEMBLER_SYMBOLS_END          = $4000
+ASSEMBLER_SYMBOL_OVERFLOW      = $a000
+ASSEMBLER_SYMBOL_OVERFLOW_END  = $d000
+ASSEMBLER_LOCAL_SYMBOLS        = $a000
 ASSEMBLER_LOCAL_SYMBOLS_END    = $d000
 ASSEMBLER_STAGING              = $6000
 ASSEMBLER_STAGING_END          = $a000
