@@ -317,28 +317,31 @@ source_has_zero_arg_main:
 	clc
 	rts
 
+;;; emit_runtime_lines writes these bytes verbatim. The indentation inside the
+;;; instruction strings is therefore a real tab, just like the runtime slabs in
+;;; runtime_codegen.asm; a backslash followed by 't' would reach ass literally.
 programHeader:
 	string "* = $0800"
 	string "NC_TMP = $fc"
 	string "NC_PTR = $fe"
 	string "NC_BSS = $4800"
 	string "__nc_start:"
-	string "\tjmp __nc_entry"
+	string "	jmp __nc_entry"
 	byte 0
 
 programMainEntry:
 	string "__nc_entry:"
-	string "\tjsr __nc_init"
-	string "\tjsr __c_main"
-	string "\trts"
+	string "	jsr __nc_init"
+	string "	jsr __c_main"
+	string "	rts"
 	byte 0
 
 programPlainEntry:
 	string "__nc_entry:"
-	string "\tjsr __nc_init"
-	string "\tlda #$00"
-	string "\ttax"
-	string "\trts"
+	string "	jsr __nc_init"
+	string "	lda #$00"
+	string "	tax"
+	string "	rts"
 	byte 0
 
 compilerOutputOpen:	byte 0
