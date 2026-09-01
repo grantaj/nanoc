@@ -32,9 +32,10 @@ emit_statement_index_address:
 	lda statementElementType
 	sta reduceLeftType
 
+	lda #exprLoadTmpResultEnd-exprLoadTmpResult
 	ldx #<exprLoadTmpResult
 	ldy #>exprLoadTmpResult
-	jsr emit_string
+	jsr emit_text
 	bcc .releaseFailed
 	jsr emit_index_address
 	php
@@ -69,9 +70,10 @@ emit_return_value:
 	jmp emit_string
 
 emit_store_persistent_value:
+	lda #exprStaSpaceEnd-exprStaSpace
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
-	jsr emit_string
+	jsr emit_text
 	bcc .failed
 	ldx statementTargetIndex
 	jsr emit_persistent_name
@@ -81,9 +83,10 @@ emit_store_persistent_value:
 	lda statementTargetType
 	cmp #TYPE_CHAR
 	beq .done
+	lda #exprStxSpaceEnd-exprStxSpace
 	ldx #<exprStxSpace
 	ldy #>exprStxSpace
-	jsr emit_string
+	jsr emit_text
 	bcc .failed
 	ldx statementTargetIndex
 	jsr emit_persistent_name
@@ -115,9 +118,10 @@ emit_statement_address_name:
 emit_statement_address_definition:
 	jsr emit_statement_address_name
 	bcc .failed
+	lda #exprBssAssignEnd-exprBssAssign
 	ldx #<exprBssAssign
 	ldy #>exprBssAssign
-	jsr emit_string
+	jsr emit_text
 	bcc .failed
 	lda allocOffset
 	sta emitWord
@@ -135,9 +139,10 @@ emit_save_statement_address:
 	ldy #>statementLdaPtr
 	jsr emit_string
 	bcc .failed
+	lda #exprStaSpaceEnd-exprStaSpace
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
-	jsr emit_string
+	jsr emit_text
 	bcc .failed
 	jsr emit_statement_address_name
 	bcc .failed
@@ -147,9 +152,10 @@ emit_save_statement_address:
 	ldy #>statementLdaPtrHigh
 	jsr emit_string
 	bcc .failed
+	lda #exprStaSpaceEnd-exprStaSpace
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
-	jsr emit_string
+	jsr emit_text
 	bcc .failed
 	jsr emit_statement_address_name
 	bcc .failed
@@ -163,9 +169,10 @@ emit_save_statement_address:
 emit_indexed_store:
 	jsr emit_save_right_tmp
 	bcc .failed
+	lda #exprLdaSpaceEnd-exprLdaSpace
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
-	jsr emit_string
+	jsr emit_text
 	bcc .failed
 	jsr emit_statement_address_name
 	bcc .failed
@@ -175,9 +182,10 @@ emit_indexed_store:
 	ldy #>statementStaPtr
 	jsr emit_string
 	bcc .failed
+	lda #exprLdaSpaceEnd-exprLdaSpace
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
-	jsr emit_string
+	jsr emit_text
 	bcc .failed
 	jsr emit_statement_address_name
 	bcc .failed
@@ -211,6 +219,7 @@ emit_statement_false_jump:
 	ldy #>statementTruthTest
 	jsr emit_string
 	bcc .failed
+	lda #exprBneEnd-exprBne
 	ldx #<exprBne
 	ldy #>exprBne
 	jmp emit_long_conditional_jump
