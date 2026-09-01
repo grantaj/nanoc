@@ -74,13 +74,7 @@ fi
 
 RESULT=$(od -An -tu1 -N1 "$RESULT_FILE" | tr -d '[:space:]')
 
-if [ "$RESULT" -eq 255 ]; then
-    echo "PASS $NAME"
-    exit 0
-fi
-
-echo "FAIL $NAME: code $RESULT" >&2
-if [ "${TEST_DEBUG_WORKSPACE:-0}" -ne 0 ] || [ "$NAME" = selfhost ]; then
+print_workspace() {
     set -- $(od -An -tu1 -N9 "$RESULT_FILE")
     if [ "$#" -ge 9 ]; then
         persistent_end=$(($2 + 256 * $3))
@@ -89,6 +83,19 @@ if [ "${TEST_DEBUG_WORKSPACE:-0}" -ne 0 ] || [ "$NAME" = selfhost ]; then
         local_name_end=$(($8 + 256 * $9))
         echo "symbol workspace: persistent entry-bytes=$((persistent_end - 40960)) name-bytes=$((48128 - persistent_name_end)) free=$((persistent_name_end - persistent_end)); local entry-bytes=$((local_end - 48128)) name-bytes=$((53248 - local_name_end)) free=$((local_name_end - local_end))" >&2
     fi
+}
+
+if [ "$RESULT" -eq 255 ]; then
+    if [ "${TEST_DEBUG_WORKSPACE:-0}" -ne 0 ] || [ "$NAME" = selfhost ]; then
+        print_workspace
+    fi
+    echo "PASS $NAME"
+    exit 0
+fi
+
+echo "FAIL $NAME: code $RESULT" >&2
+if [ "${TEST_DEBUG_WORKSPACE:-0}" -ne 0 ] || [ "$NAME" = selfhost ]; then
+    print_workspace
 fi
 if [ "${TEST_DEBUG_SOURCE_LINE:-0}" -ne 0 ] && [ -s "$SOURCE_LINE_FILE" ]; then
     printf 'native source line: ' >&2
