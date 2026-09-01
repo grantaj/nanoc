@@ -7,9 +7,30 @@ FAIL_BUILD_NANOC0  = $10
 FAIL_COMPILE_SOURCE = $20
 FAIL_COMPILE_ASS    = $30
 
+;;; Small integration mailbox saved by tests/run-test.sh along with TEST_RESULT.
+;;; It is diagnostic/reporting state only; the result byte remains authoritative.
+INTEGRATION_STAGE  = $03
+INTEGRATION_STATUS = $04
+INTEGRATION_LINE   = $05
+INTEGRATION_DETAIL = $07
+INTEGRATION_BSS    = $08
+
+STAGE_BUILD_NANOC0  = 1
+STAGE_COMPILE_SOURCE = 2
+STAGE_COMPILE_ASS    = 3
+
 	* = $0800
 
 main:
+	lda #$00
+	sta INTEGRATION_STAGE
+	sta INTEGRATION_STATUS
+	sta INTEGRATION_LINE
+	sta INTEGRATION_LINE+1
+	sta INTEGRATION_DETAIL
+	sta INTEGRATION_BSS
+	sta INTEGRATION_BSS+1
+
 	;;; Use the production assembler machinery at low memory to assemble the
 	;;; production nanoc0 source tree into $4000. assemblerEntry itself fixes its
 	;;; include root to ASS/ for self-hosting, so this test supplies the already-
@@ -59,7 +80,10 @@ main:
 	lda #>NANOC0_IMAGE
 	sta assemblyPtr+1
 
+	lda #STAGE_BUILD_NANOC0
+	sta INTEGRATION_STAGE
 	jsr assembleFile
+	sta INTEGRATION_STATUS
 	cmp #ASSEMBLE_OK
 	beq .compilerReady
 	ora #FAIL_BUILD_NANOC0
@@ -80,7 +104,10 @@ main:
 	sta NANOC_COMMAND_OUTPUT+1
 	lda #smallOutputNameEnd-smallOutputName
 	sta NANOC_COMMAND_OUTPUT_LENGTH
+	lda #STAGE_COMPILE_SOURCE
+	sta INTEGRATION_STAGE
 	jsr NANOC0_IMAGE
+	jsr capture_nanoc_result
 	lda NANOC_COMMAND_STATUS
 	beq .smallReady
 	ora #FAIL_COMPILE_SOURCE
@@ -101,7 +128,10 @@ main:
 	sta NANOC_COMMAND_OUTPUT+1
 	lda #assOutputNameEnd-assOutputName
 	sta NANOC_COMMAND_OUTPUT_LENGTH
+	lda #STAGE_COMPILE_ASS
+	sta INTEGRATION_STAGE
 	jsr NANOC0_IMAGE
+	jsr capture_nanoc_result
 	lda NANOC_COMMAND_STATUS
 	beq .pass
 	ora #FAIL_COMPILE_ASS
@@ -112,6 +142,24 @@ finish:
 	sta TEST_RESULT
 .halt:
 	jmp .halt
+
+;;; Preserve the production compiler command result in low RAM before the next
+;;; operation can reuse the command block. These are exactly the facts a person
+;;; needs when the native ladder fails, plus BSS bytes for the successful build.
+capture_nanoc_result:
+	lda NANOC_COMMAND_STATUS
+	sta INTEGRATION_STATUS
+	lda NANOC_COMMAND_LINE
+	sta INTEGRATION_LINE
+	lda NANOC_COMMAND_LINE+1
+	sta INTEGRATION_LINE+1
+	lda NANOC_COMMAND_DETAIL
+	sta INTEGRATION_DETAIL
+	lda NANOC_COMMAND_BSS_BYTES
+	sta INTEGRATION_BSS
+	lda NANOC_COMMAND_BSS_BYTES+1
+	sta INTEGRATION_BSS+1
+	rts
 
 nanoc0Name:
 	byte 'N','A','N','O','C','0','/','N','A','N','O','C','0','.','A','S','M'
