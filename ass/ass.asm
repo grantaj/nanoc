@@ -11,10 +11,11 @@
 ;;;   $3005        returned ASSEMBLE_* status
 ;;;
 ;;; Everything else is fixed, caller-visible C64 memory geometry. There is no
-;;; allocator: the path buffer, line buffer, symbol table, and staged
+;;; allocator: the path buffer, line buffer, symbol tables, and staged
 ;;; representation occupy explicit non-overlapping ranges.
 ;;;
-;;; Symbols use the RAM under BASIC ROM plus the ordinary RAM through $cfff.
+;;; Assembly-lifetime symbols use $a000-$c7ff. Dot-prefixed local names use the
+;;; $c800-$cfff scratch table, which is simply rewound at each global label.
 ;;; ass selects the normal C64 mapping with BASIC hidden and KERNAL/I/O visible
 ;;; while it runs, then restores the caller's original $01 value.
 
@@ -25,12 +26,14 @@ ASSEMBLER_COMMAND_LENGTH = $3002
 ASSEMBLER_COMMAND_TARGET = $3003
 ASSEMBLER_COMMAND_STATUS = $3005
 
-ASSEMBLER_PATH_BUFFER = $3100
-ASSEMBLER_LINE_BUFFER = $3200
-ASSEMBLER_SYMBOLS      = $a000
-ASSEMBLER_SYMBOLS_END  = $d000
-ASSEMBLER_STAGING      = $6000
-ASSEMBLER_STAGING_END  = $a000
+ASSEMBLER_PATH_BUFFER       = $3100
+ASSEMBLER_LINE_BUFFER       = $3200
+ASSEMBLER_SYMBOLS           = $a000
+ASSEMBLER_SYMBOLS_END       = $c800
+ASSEMBLER_LOCAL_SYMBOLS     = $c800
+ASSEMBLER_LOCAL_SYMBOLS_END = $d000
+ASSEMBLER_STAGING           = $6000
+ASSEMBLER_STAGING_END       = $a000
 SELFHOST_SOURCE_DIRECTORY_LENGTH = 4
 
 ;;; assemblerEntry
@@ -52,6 +55,15 @@ assemblerEntry:
 	sta symbolTableLimit
 	lda #>ASSEMBLER_SYMBOLS_END
 	sta symbolTableLimit+1
+
+	lda #<ASSEMBLER_LOCAL_SYMBOLS
+	sta localSymbolTableStart
+	lda #>ASSEMBLER_LOCAL_SYMBOLS
+	sta localSymbolTableStart+1
+	lda #<ASSEMBLER_LOCAL_SYMBOLS_END
+	sta localSymbolTableLimit
+	lda #>ASSEMBLER_LOCAL_SYMBOLS_END
+	sta localSymbolTableLimit+1
 
 	lda #<ASSEMBLER_STAGING
 	sta stagingStart
