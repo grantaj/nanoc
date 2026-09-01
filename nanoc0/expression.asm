@@ -697,10 +697,10 @@ push_pending_binary:
 
 ;;; try_immediate_binary
 ;;; currentToken is the first RHS token and A/X still contains the left value.
-;;; For +, -, & and |, one literal can be reduced immediately when the following
-;;; token does not bind more tightly. If a tighter operator follows, remember the
-;;; consumed literal so parse_expression can materialise it after taking the
-;;; ordinary spill path.
+;;; For direct arithmetic/bitwise operations and comparisons, one literal can be
+;;; reduced immediately when the following token does not bind more tightly. If a
+;;; tighter operator follows, remember the consumed literal so parse_expression can
+;;; materialise it after taking the ordinary spill path.
 try_immediate_binary:
 	lda #IMMEDIATE_BINARY_NONE
 	sta immediateBinaryState
@@ -713,6 +713,18 @@ try_immediate_binary:
 	cmp #OP_AND
 	beq .supported
 	cmp #OP_OR
+	beq .supported
+	cmp #OP_LT
+	beq .supported
+	cmp #OP_LE
+	beq .supported
+	cmp #OP_GT
+	beq .supported
+	cmp #OP_GE
+	beq .supported
+	cmp #OP_EQ
+	beq .supported
+	cmp #OP_NE
 	beq .supported
 	sec
 	rts
