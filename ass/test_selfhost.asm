@@ -8,11 +8,10 @@ FAIL_RUN_B       = $20
 FAIL_SMOKE_BYTES = $30
 
 ;;; Workspace mailbox saved with TEST_RESULT by tests/run-test.sh while the
-;;; fixed symbol-table split is being measured.
-SH_PERSIST_END      = $03
-SH_PERSIST_NAME_END = $05
-SH_LOCAL_END        = $07
-SH_LOCAL_NAME_END   = $09
+;;; fixed symbol-table split is being measured. Packed tables need one end
+;;; pointer each; usage is simply end minus the fixed table start.
+SH_PERSIST_END = $03
+SH_LOCAL_END   = $05
 
 	* = ASSEMBLER_TEST_ENTRY
 
@@ -85,18 +84,10 @@ captureWorkspace:
 	sta SH_PERSIST_END
 	lda symbolTableEnd+1
 	sta SH_PERSIST_END+1
-	lda symbolNameEnd
-	sta SH_PERSIST_NAME_END
-	lda symbolNameEnd+1
-	sta SH_PERSIST_NAME_END+1
 	lda localSymbolTableEnd
 	sta SH_LOCAL_END
 	lda localSymbolTableEnd+1
 	sta SH_LOCAL_END+1
-	lda localSymbolNameEnd
-	sta SH_LOCAL_NAME_END
-	lda localSymbolNameEnd+1
-	sta SH_LOCAL_NAME_END+1
 	rts
 
 ;;; The self-host test mounts the repository root. These are already in the C64
