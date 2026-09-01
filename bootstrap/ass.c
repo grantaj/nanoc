@@ -271,6 +271,17 @@ int relative_byte(unsigned target, unsigned base)
     return -1;
 }
 
+int trim_fixups()
+{
+    while (fixup_count > 0) {
+        if (fixup_kind[fixup_count - 1] != FIXUP_NONE) {
+            return ASSEMBLE_OK;
+        }
+        fixup_count = fixup_count - 1;
+    }
+    return ASSEMBLE_OK;
+}
+
 int resolve_fixups_for_symbol(int symbol)
 {
     int i;
@@ -318,7 +329,7 @@ int resolve_fixups_for_symbol(int symbol)
         }
         i = i + 1;
     }
-    return ASSEMBLE_OK;
+    return trim_fixups();
 }
 
 /* ---------------- Linear owned-name symbol table ---------------- */
