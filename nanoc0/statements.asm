@@ -778,12 +778,14 @@ statement_expression_failed:
 ;;; Fixed control stack: each of 16 frames has one kind byte and two 16-bit label
 ;;; slots. The one-byte depth is separate. IF_TRUE versus IF_ELSE is explicit in
 ;;; the kind byte; no enum ordering carries semantics. BLOCK uses only kind.
+;;; These 80 mutable bytes follow the call workspace at $b34a; they are not
+;;; loaded data.
 controlDepth:		byte 0
-controlKind:		ds CONTROL_STACK_CAPACITY
-controlLabel0Lo:	ds CONTROL_STACK_CAPACITY
-controlLabel0Hi:	ds CONTROL_STACK_CAPACITY
-controlLabel1Lo:	ds CONTROL_STACK_CAPACITY
-controlLabel1Hi:	ds CONTROL_STACK_CAPACITY
+controlKind = $b34a
+controlLabel0Lo = $b35a
+controlLabel0Hi = $b36a
+controlLabel1Lo = $b37a
+controlLabel1Hi = $b38a
 
 statementTargetIndex:	byte 0
 statementTargetArea:	byte SYMBOL_AREA_NONE
