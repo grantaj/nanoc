@@ -23,6 +23,9 @@ jobs:
       - name: Validate candidate Phase 1 C assembler
         run: sh scripts/test-ass-c.sh
 
+      - name: Run targeted nanoc0 expression test
+        run: TEST_DEBUG_SOURCE_LINE=1 make test-nanoc0-expressions
+
       - name: Run C64-native tests
         run: make test
 
