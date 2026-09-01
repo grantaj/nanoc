@@ -234,15 +234,15 @@ symbol_fail:
 	sta ZP_PTR0
 	lda param2+1
 	sta ZP_PTR0+1
-	lda #<sourceDirectory
-	ldx #>sourceDirectory
+	lda #<bootstrapSourceDirectory
+	ldx #>bootstrapSourceDirectory
 	jsr store_word
 
 	lda param3
 	sta ZP_PTR0
 	lda param3+1
 	sta ZP_PTR0+1
-	lda #sourceDirectoryEnd-sourceDirectory
+	lda #bootstrapSourceDirectoryEnd-bootstrapSourceDirectory
 	ldx #$00
 	jsr store_word
 
@@ -455,9 +455,9 @@ generatedSourceEnd:
 rootName:
 	byte 'A','S','S','/','A','S','S','_','4','0','0','0','.','A','S','M'
 rootNameEnd:
-sourceDirectory:
+bootstrapSourceDirectory:
 	byte 'A','S','S','/'
-sourceDirectoryEnd:
+bootstrapSourceDirectoryEnd:
 
 assAssembleName:	byte '_','_','c','_','a','s','s','_','a','s','s','e','m','b','l','e'
 assAssembleNameEnd:
