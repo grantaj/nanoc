@@ -1273,10 +1273,9 @@ emit_one_literal:
 	beq .done
 	lda literalEmitColumn
 	bne .comma
-	lda #exprBytePrefixEnd-exprBytePrefix
 	ldx #<exprBytePrefix
 	ldy #>exprBytePrefix
-	jsr emit_text
+	jsr emit_string
 	bcs .bytePrefixDone
 	rts
 .bytePrefixDone:
