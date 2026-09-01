@@ -273,7 +273,9 @@ findSymbolEntry:
 
 	;;; A global miss in the main table gets one ordinary second-table scan.
 	lda symbolSearchLast
-	bne .notFound
+	beq .searchOverflow
+	jmp .notFound
+.searchOverflow:
 	lda #$01
 	sta symbolSearchLast
 	lda symbolOverflowStart
@@ -458,7 +460,9 @@ allocateSymbol:
 	;;; fixtures. Otherwise append there exactly as in the main persistent table.
 	lda symbolOverflowStart
 	ora symbolOverflowStart+1
-	beq .full
+	bne .overflowConfigured
+	jmp .full
+.overflowConfigured:
 	clc
 	lda symbolOverflowEnd
 	adc symbolRecordSize
@@ -472,7 +476,9 @@ allocateSymbol:
 	lda symbolNext+1
 	cmp symbolOverflowLimit+1
 	bcc .overflowRoom
-	bne .full
+	beq .overflowSamePage
+	jmp .full
+.overflowSamePage:
 	lda symbolNext
 	cmp symbolOverflowLimit
 	bcc .overflowRoom
