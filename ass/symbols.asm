@@ -10,10 +10,13 @@
 ;;; resolved, then rewinds the local pointer to the top of its range. There is no
 ;;; allocator, no compaction, and nothing is individually freed.
 ;;;
-;;; A caller may provide one fixed second persistent range. That second range may
+;;; A caller may provide a second visible persistent range. That range may
 ;;; overlap the local range: persistent records grow upward while current-scope
 ;;; records grow downward, and allocation fails before the live frontiers cross.
-;;; Production ass first fills $3300-$3fff, then shares $a000-$cfff this way.
+;;; A final optional persistent range may live in RAM hidden by C64 ROM/I/O.
+;;; Production ass fills $3300-$3fff, shares $a000-$cfff by lifetime, then spills
+;;; globals into RAM under $d000-$fff9. Hidden RAM is exposed only while its own
+;;; record is being accessed.
 ;;;
 ;;; Each record is simply:
 ;;;   byte  name length
@@ -58,7 +61,9 @@ SYMBOL_SCOPE_LOCAL  = $01
 
 ;;; resetSymbols
 ;;; Empty all tables. The local arena remains unavailable until the first global
-;;; label gives dot-prefixed names a scope.
+;;; label gives dot-prefixed names a scope. C64 writes to a ROM-covered address
+;;; land in the underlying RAM, so prepare a harmless NMI vector there before any
+;;; hidden-symbol access maps KERNAL out.
 resetSymbols:
 	lda symbolTableStart
 	sta symbolTableEnd
@@ -68,6 +73,18 @@ resetSymbols:
 	sta symbolOverflowEnd
 	lda symbolOverflowStart+1
 	sta symbolOverflowEnd+1
+	lda symbolHiddenStart
+	sta symbolHiddenEnd
+	lda symbolHiddenStart+1
+	sta symbolHiddenEnd+1
+	lda symbolHiddenStart
+	ora symbolHiddenStart+1
+	beq .noHidden
+	lda #<symbolHiddenNmi
+	sta $fffa
+	lda #>symbolHiddenNmi
+	sta $fffb
+.noHidden:
 	jsr resetLocalSymbols
 	lda #$00
 	sta currentScope
@@ -153,10 +170,7 @@ defineLabel:
 	cmp #SYMBOL_LABEL_UNDEFINED
 	bne .duplicate
 
-	lda symbolEntry
-	sta ZP_PTR0
-	lda symbolEntry+1
-	sta ZP_PTR0+1
+	jsr beginSymbolEntryAccess
 	ldy #SYMBOL_VALUE_LO
 	lda assemblyPtr
 	sta (ZP_PTR0),y
@@ -166,6 +180,8 @@ defineLabel:
 	ldy #SYMBOL_KIND
 	lda #SYMBOL_LABEL_DEFINED
 	sta (ZP_PTR0),y
+	jsr endSymbolEntryAccess
+	lda #SYMBOL_LABEL_DEFINED
 	sta symbolKind
 	lda assemblyPtr
 	sta symbolValue
@@ -223,8 +239,9 @@ prepareLabelLifetime:
 	rts
 
 ;;; findSymbolEntry
-;;; Ordinary names are searched through both persistent ranges. Dot-prefixed
-;;; names are searched only through the live local records. ZP_PTR1 is preserved.
+;;; Ordinary names are searched through the visible persistent ranges first, then
+;;; through the optional hidden range. Dot-prefixed names search only the live
+;;; local records. ZP_PTR1 is preserved.
 findSymbolEntry:
 	jsr symbolScope
 	bcs .scopeReady
@@ -272,7 +289,16 @@ findSymbolEntry:
 	;;; A global miss in the main table gets one ordinary second-table scan.
 	lda symbolSearchLast
 	beq .searchOverflow
-	jmp .notFound
+	lda symbolWantedScope
+	bne .notFound
+	jsr findHiddenSymbolEntry
+	bcc .notFound
+	pla
+	sta ZP_PTR1+1
+	pla
+	sta ZP_PTR1
+	sec
+	rts
 .searchOverflow:
 	lda #$01
 	sta symbolSearchLast
@@ -334,6 +360,8 @@ findSymbolEntry:
 	ldy #SYMBOL_KIND
 	lda (ZP_PTR1),y
 	sta symbolKind
+	lda #$00
+	sta symbolEntryHidden
 	pla
 	sta ZP_PTR1+1
 	pla
@@ -363,11 +391,103 @@ findSymbolEntry:
 	clc
 	rts
 
+;;; findHiddenSymbolEntry
+;;; Search the final persistent range with all RAM visible. Code, zero page,
+;;; stack, source buffers, and staging are outside $d000-$ffff and remain visible.
+;;; symbolEntryHidden records whether later payload writes need the same window.
+findHiddenSymbolEntry:
+	lda symbolHiddenStart
+	ora symbolHiddenStart+1
+	bne .configured
+	clc
+	rts
+.configured:
+	jsr enterHiddenSymbols
+	lda symbolHiddenStart
+	sta symbolScan
+	lda symbolHiddenStart+1
+	sta symbolScan+1
+.next:
+	lda symbolScan
+	cmp symbolHiddenEnd
+	bne .entry
+	lda symbolScan+1
+	cmp symbolHiddenEnd+1
+	beq .notFound
+.entry:
+	lda symbolScan
+	sta ZP_PTR1
+	lda symbolScan+1
+	sta ZP_PTR1+1
+	ldy #SYMBOL_LENGTH
+	lda (ZP_PTR1),y
+	sta symbolRecordLength
+	cmp symbolNameLength
+	bne .advance
+	lda symbolName
+	sta ZP_PTR0
+	lda symbolName+1
+	sta ZP_PTR0+1
+	clc
+	lda symbolScan
+	adc #SYMBOL_NAME
+	sta ZP_PTR1
+	lda symbolScan+1
+	adc #$00
+	sta ZP_PTR1+1
+	ldy #$00
+.compare:
+	lda (ZP_PTR0),y
+	cmp (ZP_PTR1),y
+	bne .advance
+	iny
+	cpy symbolNameLength
+	bne .compare
+
+	lda symbolScan
+	sta symbolEntry
+	sta ZP_PTR1
+	lda symbolScan+1
+	sta symbolEntry+1
+	sta ZP_PTR1+1
+	ldy #SYMBOL_PAYLOAD_LO
+	lda (ZP_PTR1),y
+	sta symbolValue
+	sta symbolRefs
+	iny
+	lda (ZP_PTR1),y
+	sta symbolValue+1
+	sta symbolRefs+1
+	ldy #SYMBOL_KIND
+	lda (ZP_PTR1),y
+	sta symbolKind
+	lda #$01
+	sta symbolEntryHidden
+	jsr leaveHiddenSymbols
+	sec
+	rts
+.advance:
+	lda symbolRecordLength
+	clc
+	adc #SYMBOL_HEADER_SIZE
+	sta symbolRecordSize
+	clc
+	lda symbolScan
+	adc symbolRecordSize
+	sta symbolScan
+	bcc .next
+	inc symbolScan+1
+	jmp .next
+.notFound:
+	jsr leaveHiddenSymbols
+	clc
+	rts
+
 ;;; allocateSymbol
 ;;; Persistent records append upward in their first range, then in the optional
-;;; second range. Local records prepend downward in their own range. The second
-;;; persistent range may overlap the local range; the two live ends may touch but
-;;; never cross. Every record remains stable while live; no compaction occurs.
+;;; visible second range. Local records prepend downward in their own range. If a
+;;; global record no longer fits visibly, the same packed record is appended to
+;;; the optional hidden persistent range. Every record remains stable while live.
 allocateSymbol:
 	lda symbolNameLength
 	bne .hasName
@@ -378,6 +498,8 @@ allocateSymbol:
 	jmp .noScope
 .hasScope:
 	sta symbolWantedScope
+	lda #$00
+	sta symbolAllocHidden
 	lda symbolNameLength
 	clc
 	adc #SYMBOL_HEADER_SIZE
@@ -442,7 +564,7 @@ allocateSymbol:
 	adc #$00
 	sta symbolNext+1
 	bcc .globalNoOverflow
-	jmp .globalOverflow
+	jmp .full
 .globalNoOverflow:
 
 	;;; The new persistent main record may touch, but not cross, its fixed limit.
@@ -467,8 +589,8 @@ allocateSymbol:
 	jmp .write
 
 .globalOverflow:
-	;;; Zero start/limit leaves the optional second range disabled for small direct
-	;;; fixtures. Otherwise append there exactly as in the main persistent table.
+	;;; Zero start/limit leaves the visible second range disabled for small direct
+	;;; fixtures. A configured hidden range can still accept the global record.
 	lda symbolOverflowStart
 	ora symbolOverflowStart+1
 	bne .overflowConfigured
@@ -497,7 +619,8 @@ allocateSymbol:
 	jmp .full
 
 	;;; The production second persistent range shares upper RAM with locals.
-	;;; Touching the current local frontier is safe; crossing it is not.
+	;;; Touching the current local frontier is safe; crossing it spills globals to
+	;;; hidden RAM rather than stealing current-scope storage.
 .overflowWithinLimit:
 	lda symbolNext+1
 	cmp localSymbolTableEnd+1
@@ -523,6 +646,10 @@ allocateSymbol:
 	pha
 	lda ZP_PTR1+1
 	pha
+	lda symbolAllocHidden
+	beq .memoryReady
+	jsr enterHiddenSymbols
+.memoryReady:
 
 	lda symbolAllocEnd
 	sta symbolEntry
@@ -575,6 +702,8 @@ allocateSymbol:
 
 	lda symbolWantedScope
 	bne .commitLocal
+	lda symbolAllocHidden
+	bne .commitHidden
 	lda symbolAllocOverflow
 	bne .commitOverflow
 	lda symbolNext
@@ -588,19 +717,70 @@ allocateSymbol:
 	lda symbolNext+1
 	sta symbolOverflowEnd+1
 	jmp .committed
+.commitHidden:
+	lda symbolNext
+	sta symbolHiddenEnd
+	lda symbolNext+1
+	sta symbolHiddenEnd+1
+	jmp .committed
 .commitLocal:
 	lda symbolNext
 	sta localSymbolTableEnd
 	lda symbolNext+1
 	sta localSymbolTableEnd+1
 .committed:
+	lda symbolAllocHidden
+	sta symbolEntryHidden
+	beq .restorePointer
+	jsr leaveHiddenSymbols
+.restorePointer:
 	pla
 	sta ZP_PTR1+1
 	pla
 	sta ZP_PTR1
 	lda #SYMBOL_OK
 	rts
+
 .full:
+	;;; Only assembly-lifetime symbols may spill beneath ROM. Local scope remains
+	;;; bounded by the visible lifetime-shared arena.
+	lda symbolWantedScope
+	bne .reallyFull
+	lda symbolHiddenStart
+	ora symbolHiddenStart+1
+	beq .reallyFull
+	clc
+	lda symbolHiddenEnd
+	adc symbolRecordSize
+	sta symbolNext
+	lda symbolHiddenEnd+1
+	adc #$00
+	sta symbolNext+1
+	bcc .hiddenNoWrap
+	jmp .reallyFull
+.hiddenNoWrap:
+	lda symbolNext+1
+	cmp symbolHiddenLimit+1
+	bcc .hiddenRoom
+	beq .hiddenSamePage
+	jmp .reallyFull
+.hiddenSamePage:
+	lda symbolNext
+	cmp symbolHiddenLimit
+	bcc .hiddenRoom
+	beq .hiddenRoom
+	jmp .reallyFull
+.hiddenRoom:
+	lda symbolHiddenEnd
+	sta symbolAllocEnd
+	lda symbolHiddenEnd+1
+	sta symbolAllocEnd+1
+	lda #$01
+	sta symbolAllocHidden
+	lda #$00
+	sta symbolAllocOverflow
+	jmp .write
+.reallyFull:
 	lda #SYMBOL_FULL
 	rts
 .noScope:
@@ -616,11 +796,7 @@ linkWordReference:
 	pha
 	lda ZP_PTR1+1
 	pha
-
-	lda symbolEntry
-	sta ZP_PTR0
-	lda symbolEntry+1
-	sta ZP_PTR0+1
+	jsr beginSymbolEntryAccess
 	ldy #SYMBOL_REFS_LO
 	lda (ZP_PTR0),y
 	sta referenceNext
@@ -649,6 +825,7 @@ linkWordReference:
 	iny
 	lda referencePtr+1
 	sta (ZP_PTR0),y
+	jsr endSymbolEntryAccess
 
 	pla
 	sta ZP_PTR1+1
@@ -696,7 +873,7 @@ resolveWordReferencesForSymbol:
 	rts
 
 ;;; allLabelsDefined
-;;; Carry set only when both persistent ranges and the current local scratch arena
+;;; Carry set only when every persistent range and the current local scratch arena
 ;;; contain no unresolved labels.
 allLabelsDefined:
 	lda symbolTableStart
@@ -720,8 +897,39 @@ allLabelsDefined:
 	sta symbolSearchEnd+1
 	jsr scanLabelsDefined
 	bcc .bad
+	jsr allHiddenLabelsDefined
+	bcc .bad
 	jmp allLocalLabelsDefined
 .bad:
+	clc
+	rts
+
+;;; allHiddenLabelsDefined
+;;; Hidden records have the same format. Map them only for this linear scan and
+;;; restore the caller's exact processor-port and interrupt state afterwards.
+allHiddenLabelsDefined:
+	lda symbolHiddenStart
+	ora symbolHiddenStart+1
+	bne .configured
+	sec
+	rts
+.configured:
+	jsr enterHiddenSymbols
+	lda symbolHiddenStart
+	sta symbolScan
+	lda symbolHiddenStart+1
+	sta symbolScan+1
+	lda symbolHiddenEnd
+	sta symbolSearchEnd
+	lda symbolHiddenEnd+1
+	sta symbolSearchEnd+1
+	jsr scanLabelsDefined
+	bcc .bad
+	jsr leaveHiddenSymbols
+	sec
+	rts
+.bad:
+	jsr leaveHiddenSymbols
 	clc
 	rts
 
@@ -780,10 +988,7 @@ scanLabelsDefined:
 ;;; Copy the shared payload to both interpretations; symbolKind tells the caller
 ;;; whether it is a final value or an unresolved-reference head.
 loadSymbolEntry:
-	lda symbolEntry
-	sta ZP_PTR0
-	lda symbolEntry+1
-	sta ZP_PTR0+1
+	jsr beginSymbolEntryAccess
 	ldy #SYMBOL_PAYLOAD_LO
 	lda (ZP_PTR0),y
 	sta symbolValue
@@ -795,7 +1000,56 @@ loadSymbolEntry:
 	ldy #SYMBOL_KIND
 	lda (ZP_PTR0),y
 	sta symbolKind
+	jsr endSymbolEntryAccess
 	rts
+
+;;; beginSymbolEntryAccess / endSymbolEntryAccess
+;;; symbolEntryHidden is carried with the current lookup/allocation result. Visible
+;;; records cost nothing; only hidden records open an all-RAM window.
+beginSymbolEntryAccess:
+	lda symbolEntryHidden
+	beq .pointer
+	jsr enterHiddenSymbols
+.pointer:
+	lda symbolEntry
+	sta ZP_PTR0
+	lda symbolEntry+1
+	sta ZP_PTR0+1
+	rts
+
+endSymbolEntryAccess:
+	lda symbolEntryHidden
+	beq .done
+	jmp leaveHiddenSymbols
+.done:
+	rts
+
+;;; enterHiddenSymbols / leaveHiddenSymbols
+;;; $34 maps RAM at $d000-$ffff while keeping the assembler code, stack, source
+;;; buffers, and staging visible. IRQs stay masked for the short window. resetSymbols
+;;; has already placed symbolHiddenNmi under the KERNAL NMI vector for the one NMI
+;;; case SEI cannot mask.
+enterHiddenSymbols:
+	php
+	pla
+	sta symbolSavedStatus
+	sei
+	lda $01
+	sta symbolSavedMemoryConfig
+	lda #$34
+	sta $01
+	rts
+
+leaveHiddenSymbols:
+	lda symbolSavedMemoryConfig
+	sta $01
+	lda symbolSavedStatus
+	pha
+	plp
+	rts
+
+symbolHiddenNmi:
+	rti
 
 ;;; symbolScope
 ;;; Ordinary names have assembly lifetime. `.name` has current-global-label
@@ -829,10 +1083,15 @@ symbolTableStart:	word 0
 symbolTableEnd:		word 0
 symbolTableLimit:	word 0
 
-;;; Optional second persistent range. It may share RAM with the local range.
+;;; Optional second visible persistent range. It may share RAM with locals.
 symbolOverflowStart:	word 0
 symbolOverflowEnd:	word 0
 symbolOverflowLimit:	word 0
+
+;;; Optional final persistent range in RAM hidden by I/O/KERNAL.
+symbolHiddenStart:	word 0
+symbolHiddenEnd:		word 0
+symbolHiddenLimit:	word 0
 
 ;;; Local range and the current lower edge of records growing downward.
 localSymbolTableStart:	word 0
@@ -846,6 +1105,7 @@ currentScope:		byte 0
 symbolName:		word 0
 symbolNameLength:	byte 0
 symbolEntry:		word 0
+symbolEntryHidden:	byte 0
 symbolValue:		word 0
 symbolRefs:		word 0
 symbolKind:		byte 0
@@ -859,5 +1119,8 @@ symbolRecordLength:	byte 0
 symbolRecordSize:	byte 0
 symbolSearchLast:	byte 0
 symbolAllocOverflow:	byte 0
+symbolAllocHidden:	byte 0
+symbolSavedStatus:	byte 0
+symbolSavedMemoryConfig:	byte 0
 referencePtr:		word 0
 referenceNext:		word 0
