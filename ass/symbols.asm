@@ -1,9 +1,14 @@
 ;;; symbols.asm
 ;;;
-;;; A deliberately small linear symbol table whose names survive source input.
+;;; Two deliberately small linear symbol tables share one entry format.
 ;;;
-;;; Entries grow upward from symbolTableStart while owned name bytes grow
-;;; downward from symbolTableLimit. The two regions simply meet when full.
+;;; Ordinary names live for the whole assembly in the caller-owned persistent
+;;; table. Dot-prefixed names live only until the next global label in a separate
+;;; caller-owned scratch table. Starting a new global scope rewinds that scratch
+;;; table by resetting two pointers; nothing is moved or individually freed.
+;;;
+;;; Within either table entries grow upward while owned name bytes grow downward.
+;;; The two regions simply meet when that table is full.
 ;;;
 ;;; The two-byte payload has one meaning at a time:
 ;;;   constant / defined label -> final value
@@ -34,8 +39,12 @@ SYMBOL_DUPLICATE = $01
 SYMBOL_FULL      = $02
 SYMBOL_NO_SCOPE  = $03
 
+SYMBOL_SCOPE_GLOBAL = $00
+SYMBOL_SCOPE_LOCAL  = $01
+
 ;;; resetSymbols
-;;; Empty the caller-owned table and return the name cursor to its upper end.
+;;; Empty both caller-owned tables. The local table remains inactive until the
+;;; first global label starts a local-label scope.
 resetSymbols:
 	lda symbolTableStart
 	sta symbolTableEnd
@@ -45,6 +54,22 @@ resetSymbols:
 	sta symbolNameEnd
 	lda symbolTableLimit+1
 	sta symbolNameEnd+1
+	jsr resetLocalSymbols
+	lda #$00
+	sta localScopeActive
+	rts
+
+;;; resetLocalSymbols
+;;; Rewind the current-scope scratch table. No bytes need to be cleared.
+resetLocalSymbols:
+	lda localSymbolTableStart
+	sta localSymbolTableEnd
+	lda localSymbolTableStart+1
+	sta localSymbolTableEnd+1
+	lda localSymbolTableLimit
+	sta localSymbolNameEnd
+	lda localSymbolTableLimit+1
+	sta localSymbolNameEnd+1
 	rts
 
 ;;; defineConstant
@@ -158,9 +183,8 @@ defineLabel:
 	rts
 
 ;;; findSymbolEntry
-;;; Look up symbolName/symbolNameLength in the current local-label scope.
-;;; The entry payload is copied to both symbolValue and symbolRefs; symbolKind
-;;; tells the caller which interpretation is meaningful. ZP_PTR1 is preserved.
+;;; Ordinary names are searched only in the persistent table. Dot-prefixed names
+;;; are searched only in the current scratch table. ZP_PTR1 is preserved.
 findSymbolEntry:
 	jsr symbolScope
 	bcs .scopeReady
@@ -168,22 +192,37 @@ findSymbolEntry:
 	rts
 .scopeReady:
 	sta symbolWantedScope
-
+	beq .global
+	lda localSymbolTableStart
+	sta symbolScan
+	lda localSymbolTableStart+1
+	sta symbolScan+1
+	lda localSymbolTableEnd
+	sta symbolSearchEnd
+	lda localSymbolTableEnd+1
+	sta symbolSearchEnd+1
+	jmp .save
+.global:
+	lda symbolTableStart
+	sta symbolScan
+	lda symbolTableStart+1
+	sta symbolScan+1
+	lda symbolTableEnd
+	sta symbolSearchEnd
+	lda symbolTableEnd+1
+	sta symbolSearchEnd+1
+.save:
 	lda ZP_PTR1
 	pha
 	lda ZP_PTR1+1
 	pha
 
-	lda symbolTableStart
-	sta symbolScan
-	lda symbolTableStart+1
-	sta symbolScan+1
 .next:
 	lda symbolScan
-	cmp symbolTableEnd
+	cmp symbolSearchEnd
 	bne .entry
 	lda symbolScan+1
-	cmp symbolTableEnd+1
+	cmp symbolSearchEnd+1
 	bne .entry
 	jmp .notFound
 
@@ -267,9 +306,8 @@ findSymbolEntry:
 	rts
 
 ;;; allocateSymbol
-;;; Append one entry and copy its name into the downward-growing name area.
-;;; Undefined labels store symbolRefs in the payload; everything else stores
-;;; symbolValue.
+;;; Append one entry to the table selected by the name's lifetime and copy its
+;;; spelling into that table's downward-growing name area.
 allocateSymbol:
 	lda symbolNameLength
 	bne .hasName
@@ -280,20 +318,40 @@ allocateSymbol:
 	jmp .noScope
 .hasScope:
 	sta symbolWantedScope
-
-	clc
+	beq .global
+	lda localSymbolTableEnd
+	sta symbolAllocEnd
+	lda localSymbolTableEnd+1
+	sta symbolAllocEnd+1
+	lda localSymbolNameEnd
+	sta symbolAllocNameEnd
+	lda localSymbolNameEnd+1
+	sta symbolAllocNameEnd+1
+	jmp .measure
+.global:
 	lda symbolTableEnd
+	sta symbolAllocEnd
+	lda symbolTableEnd+1
+	sta symbolAllocEnd+1
+	lda symbolNameEnd
+	sta symbolAllocNameEnd
+	lda symbolNameEnd+1
+	sta symbolAllocNameEnd+1
+
+.measure:
+	clc
+	lda symbolAllocEnd
 	adc #SYMBOL_SIZE
 	sta symbolNext
-	lda symbolTableEnd+1
+	lda symbolAllocEnd+1
 	adc #$00
 	sta symbolNext+1
 
 	sec
-	lda symbolNameEnd
+	lda symbolAllocNameEnd
 	sbc symbolNameLength
 	sta symbolNewName
-	lda symbolNameEnd+1
+	lda symbolAllocNameEnd+1
 	sbc #$00
 	sta symbolNewName+1
 
@@ -329,10 +387,10 @@ allocateSymbol:
 	cpy symbolNameLength
 	bne .copyName
 
-	lda symbolTableEnd
+	lda symbolAllocEnd
 	sta symbolEntry
 	sta ZP_PTR1
-	lda symbolTableEnd+1
+	lda symbolAllocEnd+1
 	sta symbolEntry+1
 	sta ZP_PTR1+1
 	ldy #SYMBOL_NAME_LO
@@ -368,6 +426,18 @@ allocateSymbol:
 	lda symbolKind
 	sta (ZP_PTR1),y
 
+	lda symbolWantedScope
+	beq .commitGlobal
+	lda symbolNext
+	sta localSymbolTableEnd
+	lda symbolNext+1
+	sta localSymbolTableEnd+1
+	lda symbolNewName
+	sta localSymbolNameEnd
+	lda symbolNewName+1
+	sta localSymbolNameEnd+1
+	jmp .committed
+.commitGlobal:
 	lda symbolNext
 	sta symbolTableEnd
 	lda symbolNext+1
@@ -376,7 +446,7 @@ allocateSymbol:
 	sta symbolNameEnd
 	lda symbolNewName+1
 	sta symbolNameEnd+1
-
+.committed:
 	pla
 	sta ZP_PTR1+1
 	pla
@@ -478,19 +548,37 @@ resolveWordReferencesForSymbol:
 	sta symbolRefs+1
 	rts
 
-;;; allLabelsDefined
-;;; Carry set unless an interned label was never defined.
+;;; allLabelsDefined / allLocalLabelsDefined
+;;; Carry set unless the selected table contains an interned label that was never
+;;; defined. Local scopes are checked before their scratch table is rewound.
 allLabelsDefined:
 	lda symbolTableStart
 	sta symbolScan
 	lda symbolTableStart+1
 	sta symbolScan+1
+	lda symbolTableEnd
+	sta symbolSearchEnd
+	lda symbolTableEnd+1
+	sta symbolSearchEnd+1
+	jmp scanLabelsDefined
+
+allLocalLabelsDefined:
+	lda localSymbolTableStart
+	sta symbolScan
+	lda localSymbolTableStart+1
+	sta symbolScan+1
+	lda localSymbolTableEnd
+	sta symbolSearchEnd
+	lda localSymbolTableEnd+1
+	sta symbolSearchEnd+1
+
+scanLabelsDefined:
 .next:
 	lda symbolScan
-	cmp symbolTableEnd
+	cmp symbolSearchEnd
 	bne .entry
 	lda symbolScan+1
-	cmp symbolTableEnd+1
+	cmp symbolSearchEnd+1
 	beq .ok
 .entry:
 	lda symbolScan
@@ -501,7 +589,6 @@ allLabelsDefined:
 	lda (ZP_PTR0),y
 	cmp #SYMBOL_LABEL_UNDEFINED
 	beq .bad
-.advance:
 	clc
 	lda symbolScan
 	adc #SYMBOL_SIZE
@@ -539,7 +626,8 @@ loadSymbolEntry:
 	rts
 
 ;;; symbolScope
-;;; Ordinary names have scope zero. `.name` uses currentScope.
+;;; Ordinary names have assembly lifetime. `.name` has current-global-label
+;;; lifetime and therefore requires an active local scratch table.
 symbolScope:
 	lda symbolNameLength
 	beq .bad
@@ -551,23 +639,31 @@ symbolScope:
 	lda (ZP_PTR0),y
 	cmp #'.'
 	beq .local
-	lda #$00
+	lda #SYMBOL_SCOPE_GLOBAL
 	sec
 	rts
 .local:
-	lda currentScope
+	lda localScopeActive
 	beq .bad
+	lda #SYMBOL_SCOPE_LOCAL
 	sec
 	rts
 .bad:
 	clc
 	rts
 
+;;; Persistent assembly-lifetime table.
 symbolTableStart:	word 0
 symbolTableEnd:		word 0
 symbolTableLimit:	word 0
 symbolNameEnd:		word 0
-currentScope:		byte 0
+
+;;; Reusable table for dot-prefixed names in the current global-label scope.
+localSymbolTableStart:	word 0
+localSymbolTableEnd:	word 0
+localSymbolTableLimit:	word 0
+localSymbolNameEnd:	word 0
+localScopeActive:	byte 0
 
 symbolName:		word 0
 symbolNameLength:	byte 0
@@ -580,5 +676,8 @@ symbolWantedScope:	byte 0
 symbolNext:		word 0
 symbolNewName:		word 0
 symbolScan:		word 0
+symbolSearchEnd:	word 0
+symbolAllocEnd:		word 0
+symbolAllocNameEnd:	word 0
 referencePtr:		word 0
 referenceNext:		word 0
