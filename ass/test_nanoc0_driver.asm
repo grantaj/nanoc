@@ -155,10 +155,13 @@ finish:
 	jmp .halt
 
 ;;; On an assembler-stage failure the compiler diagnostic fields are not live yet.
-;;; Reuse the line/BSS words for the two packed-table end pointers. Since both
-;;; tables have fixed starts and limits, those two pointers describe exact used
-;;; and free bytes without a second name cursor.
+;;; For symbol pressure the line/BSS words carry the two moving symbol ends. For
+;;; work pressure they carry the staged-image and fixup cursors instead. Both are
+;;; direct measurements of the fixed C64 workspaces; no host model is involved.
 capture_ass_workspace:
+	lda INTEGRATION_STATUS
+	cmp #ASSEMBLE_WORK_FULL
+	beq .work
 	lda symbolTableEnd
 	sta INTEGRATION_LINE
 	lda symbolTableEnd+1
@@ -168,6 +171,18 @@ capture_ass_workspace:
 	lda localSymbolTableEnd
 	sta INTEGRATION_BSS
 	lda localSymbolTableEnd+1
+	sta INTEGRATION_BSS+1
+	rts
+.work:
+	lda stagingPtr
+	sta INTEGRATION_LINE
+	lda stagingPtr+1
+	sta INTEGRATION_LINE+1
+	lda currentScope
+	sta INTEGRATION_DETAIL
+	lda fixupFree
+	sta INTEGRATION_BSS
+	lda fixupFree+1
 	sta INTEGRATION_BSS+1
 	rts
 
