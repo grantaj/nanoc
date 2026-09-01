@@ -652,8 +652,8 @@ scan_number:
 .hexDigit:
 	jsr accumulate_hex_digit
 	bcs .hexMore
-	lda #EXPR_LITERAL_POOL_OVERFLOW
-	jmp expression_fail
+	lda #LEX_INTEGER_OVERFLOW
+	jmp set_lex_error
 .hexMore:
 	jsr read_source_byte
 	bcc .hexEndSource
