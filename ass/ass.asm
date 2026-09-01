@@ -11,13 +11,15 @@
 ;;;   $3005        returned ASSEMBLE_* status
 ;;;
 ;;; Everything else is fixed, caller-visible C64 memory geometry. There is no
-;;; allocator: the path buffer, line buffer, symbol workspace, and staged
+;;; allocator: the path buffer, line buffer, symbol tables, and staged
 ;;; representation occupy explicit non-overlapping ranges.
 ;;;
-;;; The 12 KiB symbol workspace is used from both ends. Assembly-lifetime names
-;;; grow upward from $a000. Dot-prefixed names for the current global-label scope
-;;; grow downward from $d000 and are discarded by rewinding that pointer at the
-;;; next global label. The workspace is full only if the two ends meet.
+;;; The main 12 KiB symbol workspace is used from both ends. Assembly-lifetime
+;;; names grow upward from $a000. Dot-prefixed names for the current global-label
+;;; scope grow downward from $d000 and are discarded by rewinding that pointer at
+;;; the next global label. If globals meet live locals, persistent records continue
+;;; in the otherwise idle $3300-$3fff pages below the assembler image. Those pages
+;;; are another fixed linear table, not dynamically allocated storage.
 ;;; ass selects the normal C64 mapping with BASIC hidden and KERNAL/I/O visible
 ;;; while it runs, then restores the caller's original $01 value.
 
@@ -28,12 +30,14 @@ ASSEMBLER_COMMAND_LENGTH = $3002
 ASSEMBLER_COMMAND_TARGET = $3003
 ASSEMBLER_COMMAND_STATUS = $3005
 
-ASSEMBLER_PATH_BUFFER    = $3100
-ASSEMBLER_LINE_BUFFER    = $3200
-ASSEMBLER_SYMBOLS        = $a000
-ASSEMBLER_SYMBOLS_END    = $d000
-ASSEMBLER_STAGING        = $6000
-ASSEMBLER_STAGING_END    = $a000
+ASSEMBLER_PATH_BUFFER          = $3100
+ASSEMBLER_LINE_BUFFER          = $3200
+ASSEMBLER_SYMBOL_OVERFLOW      = $3300
+ASSEMBLER_SYMBOL_OVERFLOW_END  = $4000
+ASSEMBLER_SYMBOLS              = $a000
+ASSEMBLER_SYMBOLS_END          = $d000
+ASSEMBLER_STAGING              = $6000
+ASSEMBLER_STAGING_END          = $a000
 SELFHOST_SOURCE_DIRECTORY_LENGTH = 4
 
 ;;; Temporary names retained while the direct assembler fixtures are converted
@@ -64,6 +68,15 @@ assemblerEntry:
 	lda #>ASSEMBLER_SYMBOLS_END
 	sta symbolTableLimit+1
 	sta localSymbolTableLimit+1
+
+	lda #<ASSEMBLER_SYMBOL_OVERFLOW
+	sta symbolOverflowStart
+	lda #>ASSEMBLER_SYMBOL_OVERFLOW
+	sta symbolOverflowStart+1
+	lda #<ASSEMBLER_SYMBOL_OVERFLOW_END
+	sta symbolOverflowLimit
+	lda #>ASSEMBLER_SYMBOL_OVERFLOW_END
+	sta symbolOverflowLimit+1
 
 	lda #<ASSEMBLER_STAGING
 	sta stagingStart
