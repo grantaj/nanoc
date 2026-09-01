@@ -416,7 +416,9 @@ allocateSymbol:
 .localPersistentRoom:
 	lda symbolNext+1
 	cmp symbolOverflowEnd+1
-	bcc .full
+	bcs .localPersistentHighEnough
+	jmp .full
+.localPersistentHighEnough:
 	bne .localRoom
 	lda symbolNext
 	cmp symbolOverflowEnd
@@ -500,7 +502,9 @@ allocateSymbol:
 	lda symbolNext+1
 	cmp localSymbolTableEnd+1
 	bcc .overflowRoom
-	bne .full
+	beq .overflowSameLocalPage
+	jmp .full
+.overflowSameLocalPage:
 	lda symbolNext
 	cmp localSymbolTableEnd
 	bcc .overflowRoom
