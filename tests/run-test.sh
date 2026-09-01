@@ -23,6 +23,16 @@ load "$PRG" 0
 > 0001 36
 watch store 0002
 g $ENTRY
+EOF
+
+# Integration tests can ask VICE to show ass's current streamed source line when
+# a native assembly fails. This is diagnostic only; the C64 result byte remains
+# the test authority.
+if [ "${TEST_DEBUG_SOURCE_LINE:-0}" -ne 0 ]; then
+    echo "m 3200 327f" >> "$MONITOR_FILE"
+fi
+
+cat >> "$MONITOR_FILE" <<EOF
 bsave "$RESULT_FILE" 0 0002 0003
 quit
 EOF
