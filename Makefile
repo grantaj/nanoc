@@ -136,7 +136,7 @@ $(BUILD_DIR)/border-c.prg: examples/border/main.c | $(BUILD_DIR)
 
 NANOC0_EXPRESSION_FIXTURES = tests/nanoc0-expr/expressions.c
 NANOC0_STATEMENT_FIXTURES = tests/nanoc0-stmt/return8.c tests/nanoc0-stmt/statements.c
-NANOC0_CALL_FIXTURES = tests/nanoc0-call/calls.c
+NANOC0_CALL_FIXTURES = tests/nanoc0-call/cntbad.c tests/nanoc0-call/typbad.c tests/nanoc0-call/latbad.c tests/nanoc0-call/depbad.c tests/nanoc0-call/argbad.c
 NANOC0_RUNTIME_FIXTURES = tests/nanoc0-runtime/runtime.c tests/nanoc0-runtime/runtime.in
 
 test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap test-nanoc0-expressions test-nanoc0-statements test-nanoc0-calls test-nanoc0-runtime
