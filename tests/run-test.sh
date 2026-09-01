@@ -80,7 +80,7 @@ if [ "$RESULT" -eq 255 ]; then
 fi
 
 echo "FAIL $NAME: code $RESULT" >&2
-if [ "${TEST_DEBUG_WORKSPACE:-0}" -ne 0 ]; then
+if [ "${TEST_DEBUG_WORKSPACE:-0}" -ne 0 ] || [ "$NAME" = selfhost ]; then
     set -- $(od -An -tu1 -N9 "$RESULT_FILE")
     if [ "$#" -ge 9 ]; then
         persistent_end=$(($2 + 256 * $3))
