@@ -11,15 +11,15 @@
 ;;;   $3005        returned ASSEMBLE_* status
 ;;;
 ;;; Everything else is fixed, caller-visible C64 memory geometry. There is no
-;;; allocator: the path buffer, line buffer, symbol tables, and staged
+;;; allocator: the path buffer, line buffer, symbol arenas, and staged
 ;;; representation occupy explicit non-overlapping ranges.
 ;;;
-;;; The main 12 KiB symbol workspace is used from both ends. Assembly-lifetime
-;;; names grow upward from $a000. Dot-prefixed names for the current global-label
-;;; scope grow downward from $d000 and are discarded by rewinding that pointer at
-;;; the next global label. If globals meet live locals, persistent records continue
-;;; in the otherwise idle $3300-$3fff pages below the assembler image. Those pages
-;;; are another fixed linear table, not dynamically allocated storage.
+;;; Assembly-lifetime names append from $a000 through $ceff, then continue in the
+;;; otherwise idle $3300-$3fff pages below the assembler image. Dot-prefixed names
+;;; for the current global-label scope have one fixed page at $cf00-$cfff; they
+;;; grow downward from $d000 and are discarded by rewinding one pointer at the
+;;; next global label. The three ranges have explicit lifetimes and boundaries;
+;;; none is dynamically allocated.
 ;;; ass selects the normal C64 mapping with BASIC hidden and KERNAL/I/O visible
 ;;; while it runs, then restores the caller's original $01 value.
 
@@ -35,15 +35,12 @@ ASSEMBLER_LINE_BUFFER          = $3200
 ASSEMBLER_SYMBOL_OVERFLOW      = $3300
 ASSEMBLER_SYMBOL_OVERFLOW_END  = $4000
 ASSEMBLER_SYMBOLS              = $a000
-ASSEMBLER_SYMBOLS_END          = $d000
+ASSEMBLER_SYMBOLS_END          = $cf00
+ASSEMBLER_LOCAL_SYMBOLS        = $cf00
+ASSEMBLER_LOCAL_SYMBOLS_END    = $d000
 ASSEMBLER_STAGING              = $6000
 ASSEMBLER_STAGING_END          = $a000
 SELFHOST_SOURCE_DIRECTORY_LENGTH = 4
-
-;;; Temporary names retained while the direct assembler fixtures are converted
-;;; from the former physically split symbol tables to the shared range.
-ASSEMBLER_LOCAL_SYMBOLS     = ASSEMBLER_SYMBOLS
-ASSEMBLER_LOCAL_SYMBOLS_END = ASSEMBLER_SYMBOLS_END
 
 ;;; assemblerEntry
 ;;; Configure the fixed workspaces, copy the small command block into the
@@ -58,15 +55,20 @@ assemblerEntry:
 
 	lda #<ASSEMBLER_SYMBOLS
 	sta symbolTableStart
-	sta localSymbolTableStart
 	lda #>ASSEMBLER_SYMBOLS
 	sta symbolTableStart+1
-	sta localSymbolTableStart+1
 	lda #<ASSEMBLER_SYMBOLS_END
 	sta symbolTableLimit
-	sta localSymbolTableLimit
 	lda #>ASSEMBLER_SYMBOLS_END
 	sta symbolTableLimit+1
+
+	lda #<ASSEMBLER_LOCAL_SYMBOLS
+	sta localSymbolTableStart
+	lda #>ASSEMBLER_LOCAL_SYMBOLS
+	sta localSymbolTableStart+1
+	lda #<ASSEMBLER_LOCAL_SYMBOLS_END
+	sta localSymbolTableLimit
+	lda #>ASSEMBLER_LOCAL_SYMBOLS_END
 	sta localSymbolTableLimit+1
 
 	lda #<ASSEMBLER_SYMBOL_OVERFLOW
