@@ -21,6 +21,15 @@
 CONTROL_STACK_CAPACITY = 16
 CONTROL_FRAME_BYTES    = 5
 
+;;; Five bytes per frame: kind plus two 16-bit labels. These 80 mutable bytes
+;;; follow the call workspace and are compiler work RAM, not loaded data. Define
+;;; them before use so native ass sees fixed constants rather than forward labels.
+controlKind     = $b34a
+controlLabel0Lo = $b35a
+controlLabel0Hi = $b36a
+controlLabel1Lo = $b37a
+controlLabel1Hi = $b38a
+
 CONTROL_BLOCK   = 1
 CONTROL_IF_TRUE = 2
 CONTROL_IF_ELSE = 3
@@ -775,17 +784,9 @@ statement_expression_failed:
 ;;; Compiler statement state
 ;;; ---------------------------------------------------------------------------
 
-;;; Fixed control stack: each of 16 frames has one kind byte and two 16-bit label
-;;; slots. The one-byte depth is separate. IF_TRUE versus IF_ELSE is explicit in
-;;; the kind byte; no enum ordering carries semantics. BLOCK uses only kind.
-;;; These 80 mutable bytes follow the call workspace at $b34a; they are not
-;;; loaded data.
+;;; The fixed control stack uses the work-RAM constants declared above. The
+;;; one-byte depth and remaining transient statement state stay in loaded data.
 controlDepth:		byte 0
-controlKind = $b34a
-controlLabel0Lo = $b35a
-controlLabel0Hi = $b36a
-controlLabel1Lo = $b37a
-controlLabel1Hi = $b38a
 
 statementTargetIndex:	byte 0
 statementTargetArea:	byte SYMBOL_AREA_NONE
