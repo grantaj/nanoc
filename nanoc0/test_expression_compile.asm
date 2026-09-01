@@ -6,6 +6,7 @@ XT_OUTPUT_DEVICE = 9
 XT_FAIL_DEPTH  = $01
 XT_FAIL_STRING = $02
 XT_FAIL_OPEN   = $03
+XT_FAIL_SPILL  = $04
 XT_FAIL_OUTPUT = $05
 
 XT_EXPECTED_COUNT = 30
@@ -18,6 +19,10 @@ main:
 	jmp xt_finish
 .string:
 	jsr xt_test_string_pool
+	bcs .spill
+	jmp xt_finish
+.spill:
+	jsr xt_test_simple_binary_no_spill
 	bcs .runtime
 	jmp xt_finish
 .runtime:
@@ -83,6 +88,26 @@ xt_test_string_pool:
 	rts
 .fail:
 	lda #XT_FAIL_STRING
+	clc
+	rts
+
+;;; Compile a tiny real Phase 1 source file through parse_translation_unit and
+;;; inspect the production expression machine's own spill counter. `a + 1` has
+;;; no later value to preserve, so allocating a spill word is a code-generation
+;;; regression. There is deliberately no test-local copy of expression logic.
+xt_test_simple_binary_no_spill:
+	jsr xt_reset_hooks
+	lda #noSpillNameEnd-noSpillName
+	ldx #<noSpillName
+	ldy #>noSpillName
+	jsr xt_parse_fixture
+	bcc .fail
+	lda spillAllocatedCount
+	bne .fail
+	sec
+	rts
+.fail:
+	lda #XT_FAIL_SPILL
 	clc
 	rts
 
@@ -680,6 +705,8 @@ depthName:	byte 'D','E','P','T','H','.','C'
 depthNameEnd:
 stringName:	byte 'S','T','R','I','N','G','.','C'
 stringNameEnd:
+noSpillName:	byte 'N','O','S','P','I','L','L','.','C'
+noSpillNameEnd:
 runtimeName:	byte 'E','X','P','R','E','S','S','I','O','N','S','.','C'
 runtimeNameEnd:
 outputName:	byte 'E','X','P','R','O','U','T','.','A','S','M',',','S',',','W'
