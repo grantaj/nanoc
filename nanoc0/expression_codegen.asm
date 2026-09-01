@@ -117,6 +117,140 @@ emit_load_primary_scalar:
 	bcs .currentWidth
 	rts
 .currentWidth:
+	lda primarySymbolType
+	cmp #TYPE_CHAR
+	beq emit_zero_high
+	ldx #<exprLdxSpace
+	ldy #>exprLdxSpace
+	jsr emit_string
+	bcs .currentHighName
+	rts
+.currentHighName:
+	ldx primarySymbolIndex
+	jsr emit_current_name
+	bcs .currentHighDone
+	rts
+.currentHighDone:
+	jmp emit_plus_one_newline
+
+emit_zero_high:
+	ldx #<exprLdxZero
+	ldy #>exprLdxZero
+	jmp emit_string
+
+emit_load_primary_address:
+	ldx #<exprLdaLowImm
+	ldy #>exprLdaLowImm
+	jsr emit_string
+	bcs .lowName
+	rts
+.lowName:
+	ldx primarySymbolIndex
+	jsr emit_persistent_name
+	bcs .lowDone
+	rts
+.lowDone:
+	jsr emit_newline
+	bcs .high
+	rts
+.high:
+	ldx #<exprLdxHighImm
+	ldy #>exprLdxHighImm
+	jsr emit_string
+	bcs .highName
+	rts
+.highName:
+	ldx primarySymbolIndex
+	jsr emit_persistent_name
+	bcs .done
+	rts
+.done:
+	jmp emit_newline
+
+emit_plus_one_newline:
+	ldx #<exprPlusOne
+	ldy #>exprPlusOne
+	jsr emit_string
+	bcs .done
+	rts
+.done:
+	jmp emit_newline
+
+;;; Spill storage is allocated by expression.asm. This routine merely gives the
+;;; new word its deterministic assembler-visible name.
+emit_spill_definition:
+	sta emitSpillIndex
+	jsr emit_spill_name
+	bcs .assign
+	rts
+.assign:
+	ldx #<exprBssAssign
+	ldy #>exprBssAssign
+	jsr emit_string
+	bcs .offset
+	rts
+.offset:
+	lda allocOffset
+	sta emitWord
+	lda allocOffset+1
+	sta emitWord+1
+	jsr emit_hex_word
+	bcs .done
+	rts
+.done:
+	jmp emit_newline
+
+emit_store_spill:
+	sta emitSpillIndex
+	ldx #<exprStaSpace
+	ldy #>exprStaSpace
+	jsr emit_string
+	bcs .lowName
+	rts
+.lowName:
+	lda emitSpillIndex
+	jsr emit_spill_name
+	bcs .lowDone
+	rts
+.lowDone:
+	jsr emit_newline
+	bcs .high
+	rts
+.high:
+	ldx #<exprStxSpace
+	ldy #>exprStxSpace
+	jsr emit_string
+	bcs .highName
+	rts
+.highName:
+	lda emitSpillIndex
+	jsr emit_spill_name
+	bcs .done
+	rts
+.done:
+	jmp emit_plus_one_newline
+
+;;; X=current-function symbol index; target value already lives in A/X.
+emit_store_current_value:
+	stx emitSavedIndex
+	ldx #<exprStaSpace
+	ldy #>exprStaSpace
+	jsr emit_string
+	bcs .lowName
+	ldx emitSavedIndex
+	rts
+.lowName:
+	ldx emitSavedIndex
+	jsr emit_current_name
+	bcs .lowDone
+	ldx emitSavedIndex
+	rts
+.lowDone:
+	jsr emit_newline
+	bcs .width
+	ldx emitSavedIndex
+	rts
+.width:
 	ldx emitSavedIndex
 	lda currentType,x
 	cmp #TYPE_CHAR
