@@ -725,19 +725,19 @@ emit_compare_reduction:
 	beq .signedGt
 	ldx #<exprCallSge16
 	ldy #>exprCallSge16
-	jmp emit_string
+	jmp emit_compare_call
 .signedLt:
 	ldx #<exprCallSlt16
 	ldy #>exprCallSlt16
-	jmp emit_string
+	jmp emit_compare_call
 .signedLe:
 	ldx #<exprCallSle16
 	ldy #>exprCallSle16
-	jmp emit_string
+	jmp emit_compare_call
 .signedGt:
 	ldx #<exprCallSgt16
 	ldy #>exprCallSgt16
-	jmp emit_string
+	jmp emit_compare_call
 
 .unsigned:
 	lda reduceOperator
@@ -749,28 +749,35 @@ emit_compare_reduction:
 	beq .unsignedGt
 	ldx #<exprCallUge16
 	ldy #>exprCallUge16
-	jmp emit_string
+	jmp emit_compare_call
 .unsignedLt:
 	ldx #<exprCallUlt16
 	ldy #>exprCallUlt16
-	jmp emit_string
+	jmp emit_compare_call
 .unsignedLe:
 	ldx #<exprCallUle16
 	ldy #>exprCallUle16
-	jmp emit_string
+	jmp emit_compare_call
 .unsignedGt:
 	ldx #<exprCallUgt16
 	ldy #>exprCallUgt16
-	jmp emit_string
+	jmp emit_compare_call
 
 .equal:
 	ldx #<exprCallEq16
 	ldy #>exprCallEq16
-	jmp emit_string
+	jmp emit_compare_call
 .notEqual:
 	ldx #<exprCallNe16
 	ldy #>exprCallNe16
-	jmp emit_string
+	jmp emit_compare_call
+
+emit_compare_call:
+	jsr emit_string
+	bcs .done
+	rts
+.done:
+	jmp emit_newline
 
 emit_ldx_reduce_spill_high:
 	ldx #<exprLdxSpace
