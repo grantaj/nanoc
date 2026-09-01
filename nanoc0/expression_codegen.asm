@@ -693,8 +693,6 @@ emit_long_conditional_jump:
 ;;; the saved left operand into A/X, then call the small target helper matching
 ;;; the source operator. The helper returns the ordinary C value 0/1 in A/X.
 emit_compare_reduction:
-	lda #$01
-	sta compareUsed
 	jsr emit_save_right_tmp
 	bcs .leftLow
 	rts
@@ -707,6 +705,14 @@ emit_compare_reduction:
 	bcs .call
 	rts
 .call:
+	jmp emit_compare_helper_call
+
+;;; A/X is already the left operand and NC_TMP is the right operand. Select the
+;;; one shared 16-bit comparison helper from the source operator and the normal
+;;; Phase 1 integer-conversion rule. Both spill and literal-RHS paths arrive here.
+emit_compare_helper_call:
+	lda #$01
+	sta compareUsed
 	lda reduceOperator
 	cmp #OP_EQ
 	beq .equal
