@@ -1,11 +1,15 @@
 ;;; symbols.asm
 ;;;
-;;; Two deliberately small linear symbol tables use the same packed record.
+;;; The caller supplies one fixed symbol workspace. Two linear tables use it from
+;;; opposite ends:
 ;;;
-;;; Ordinary names live for the whole assembly in the caller-owned persistent
-;;; table. Dot-prefixed names live only until the next global label in a separate
-;;; caller-owned scratch table. Starting a new global scope rewinds that scratch
-;;; table by resetting one pointer; nothing is moved or individually freed.
+;;;   ordinary names grow upward and live for the whole assembly;
+;;;   dot-prefixed names grow downward and live only for the current global label.
+;;;
+;;; Starting a new global scope checks that every local forward reference has
+;;; resolved, then rewinds the local pointer to the top of the workspace. There is
+;;; no partition to tune, no allocator, no compaction, and nothing is individually
+;;; freed. The tables are full only when their two moving ends meet.
 ;;;
 ;;; Each record is simply:
 ;;;   byte  name length
@@ -15,7 +19,8 @@
 ;;;
 ;;; The name follows its entry, so storing another two-byte pointer to it would be
 ;;; redundant. Records are never moved while live, so symbolEntry remains stable
-;;; for staged fixups. The table itself says whether a name is global or local.
+;;; for staged fixups. The table direction itself says whether a name is global
+;;; or local.
 ;;;
 ;;; The two-byte payload has one meaning at a time:
 ;;;   constant / defined label -> final value
@@ -44,13 +49,13 @@ SYMBOL_DUPLICATE = $01
 SYMBOL_FULL      = $02
 SYMBOL_NO_SCOPE  = $03
 
-;;; These select one of the two fixed tables; they are not stored in records.
+;;; These select one of the two table directions; they are not stored in records.
 SYMBOL_SCOPE_GLOBAL = $00
 SYMBOL_SCOPE_LOCAL  = $01
 
 ;;; resetSymbols
-;;; Empty both caller-owned tables. The local table remains unavailable until the
-;;; first global label gives dot-prefixed names a scope.
+;;; Empty both tables. The local table remains unavailable until the first global
+;;; label gives dot-prefixed names a scope.
 resetSymbols:
 	lda symbolTableStart
 	sta symbolTableEnd
@@ -62,11 +67,12 @@ resetSymbols:
 	rts
 
 ;;; resetLocalSymbols
-;;; Rewind the current-scope scratch table. No bytes need to be cleared.
+;;; Rewind current-scope scratch to the top of the shared workspace. No bytes are
+;;; cleared; the pointer alone defines which local records are live.
 resetLocalSymbols:
-	lda localSymbolTableStart
+	lda localSymbolTableLimit
 	sta localSymbolTableEnd
-	lda localSymbolTableStart+1
+	lda localSymbolTableLimit+1
 	sta localSymbolTableEnd+1
 	rts
 
@@ -210,8 +216,9 @@ prepareLabelLifetime:
 	rts
 
 ;;; findSymbolEntry
-;;; Ordinary names are searched only in the persistent table. Dot-prefixed names
-;;; are searched only in the current scratch table. ZP_PTR1 is preserved.
+;;; Ordinary names are searched upward through the persistent table. Dot-prefixed
+;;; names are searched upward through the live local records at the top of the
+;;; workspace. ZP_PTR1 is preserved.
 findSymbolEntry:
 	jsr symbolScope
 	bcs .scopeReady
@@ -220,13 +227,13 @@ findSymbolEntry:
 .scopeReady:
 	sta symbolWantedScope
 	beq .global
-	lda localSymbolTableStart
-	sta symbolScan
-	lda localSymbolTableStart+1
-	sta symbolScan+1
 	lda localSymbolTableEnd
-	sta symbolSearchEnd
+	sta symbolScan
 	lda localSymbolTableEnd+1
+	sta symbolScan+1
+	lda localSymbolTableLimit
+	sta symbolSearchEnd
+	lda localSymbolTableLimit+1
 	sta symbolSearchEnd+1
 	jmp .save
 .global:
@@ -331,8 +338,9 @@ findSymbolEntry:
 	rts
 
 ;;; allocateSymbol
-;;; Append one packed record to the table selected by the name's lifetime. The
-;;; copied name follows the four-byte header, so allocation is one moving cursor.
+;;; Persistent records append upward from symbolTableStart. Local records prepend
+;;; downward from localSymbolTableLimit. Both remain stable while live; allocation
+;;; fails only if the proposed record would cross the other table's current end.
 allocateSymbol:
 	lda symbolNameLength
 	bne .hasName
@@ -343,27 +351,6 @@ allocateSymbol:
 	jmp .noScope
 .hasScope:
 	sta symbolWantedScope
-	beq .global
-	lda localSymbolTableEnd
-	sta symbolAllocEnd
-	lda localSymbolTableEnd+1
-	sta symbolAllocEnd+1
-	lda localSymbolTableLimit
-	sta symbolAllocLimit
-	lda localSymbolTableLimit+1
-	sta symbolAllocLimit+1
-	jmp .measure
-.global:
-	lda symbolTableEnd
-	sta symbolAllocEnd
-	lda symbolTableEnd+1
-	sta symbolAllocEnd+1
-	lda symbolTableLimit
-	sta symbolAllocLimit
-	lda symbolTableLimit+1
-	sta symbolAllocLimit+1
-
-.measure:
 	lda symbolNameLength
 	clc
 	adc #SYMBOL_HEADER_SIZE
@@ -371,27 +358,61 @@ allocateSymbol:
 	jmp .full
 .sizeReady:
 	sta symbolRecordSize
+	lda symbolWantedScope
+	beq .global
+
+.local:
+	sec
+	lda localSymbolTableEnd
+	sbc symbolRecordSize
+	sta symbolNext
+	lda localSymbolTableEnd+1
+	sbc #$00
+	sta symbolNext+1
+	bcc .full
+
+	;;; The new local record may touch, but not cross, the persistent end.
+	lda symbolNext+1
+	cmp symbolTableEnd+1
+	bcc .full
+	bne .localRoom
+	lda symbolNext
+	cmp symbolTableEnd
+	bcc .full
+.localRoom:
+	lda symbolNext
+	sta symbolAllocEnd
+	lda symbolNext+1
+	sta symbolAllocEnd+1
+	jmp .write
+
+.global:
 	clc
-	lda symbolAllocEnd
+	lda symbolTableEnd
 	adc symbolRecordSize
 	sta symbolNext
-	lda symbolAllocEnd+1
+	lda symbolTableEnd+1
 	adc #$00
 	sta symbolNext+1
+	bcs .full
 
+	;;; The new persistent record may touch, but not cross, the live local end.
 	lda symbolNext+1
-	cmp symbolAllocLimit+1
-	bcc .room
-	beq .sameLimitPage
-	jmp .full
-.sameLimitPage:
+	cmp localSymbolTableEnd+1
+	bcc .globalRoom
+	bne .full
 	lda symbolNext
-	cmp symbolAllocLimit
-	bcc .room
-	beq .room
+	cmp localSymbolTableEnd
+	bcc .globalRoom
+	beq .globalRoom
 	jmp .full
+.globalRoom:
+	lda symbolTableEnd
+	sta symbolAllocEnd
+	lda symbolTableEnd+1
+	sta symbolAllocEnd+1
 
-.room:
+.write:
 	lda ZP_PTR1
 	pha
 	lda ZP_PTR1+1
@@ -582,13 +603,13 @@ allLabelsDefined:
 ;;; allLocalLabelsDefined
 ;;; Used both at EOF and immediately before the scratch table is rewound.
 allLocalLabelsDefined:
-	lda localSymbolTableStart
-	sta symbolScan
-	lda localSymbolTableStart+1
-	sta symbolScan+1
 	lda localSymbolTableEnd
-	sta symbolSearchEnd
+	sta symbolScan
 	lda localSymbolTableEnd+1
+	sta symbolScan+1
+	lda localSymbolTableLimit
+	sta symbolSearchEnd
+	lda localSymbolTableLimit+1
 	sta symbolSearchEnd+1
 
 scanLabelsDefined:
@@ -678,20 +699,18 @@ symbolScope:
 	clc
 	rts
 
-;;; Persistent assembly-lifetime table.
+;;; Lower edge and current end of assembly-lifetime records.
 symbolTableStart:	word 0
 symbolTableEnd:		word 0
-symbolTableLimit:	word 0
 
-;;; Reusable table for dot-prefixed names in the current global-label scope.
+;;; Compatibility configuration while callers are converted to one shared range.
+;;; symbolTableLimit/localSymbolTableStart are no longer consulted by symbols.asm.
+symbolTableLimit:	word 0
 localSymbolTableStart:	word 0
+
+;;; Current lower edge and fixed upper edge of current-scope local records.
 localSymbolTableEnd:	word 0
 localSymbolTableLimit:	word 0
-
-;;; Temporary aliases keep the measurement harness building while its mailbox is
-;;; converted from the old two-cursor layout. They are removed with that harness.
-symbolNameEnd = symbolTableEnd
-localSymbolNameEnd = localSymbolTableEnd
 
 ;;; Zero means no global label has appeared yet. Nonzero means dot-prefixed names
 ;;; have a current scope. It is reset to one at every global definition.
@@ -709,7 +728,6 @@ symbolNext:		word 0
 symbolScan:		word 0
 symbolSearchEnd:	word 0
 symbolAllocEnd:		word 0
-symbolAllocLimit:	word 0
 symbolRecordLength:	byte 0
 symbolRecordSize:	byte 0
 referencePtr:		word 0
