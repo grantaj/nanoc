@@ -1,36 +1,44 @@
-CC = cc
-CFLAGS = -std=c90 -Wall -Wextra -pedantic
-VASM = vasm6502_oldstyle
-VICE = x64sc
-BUILD_DIR = build
+VASM ?= vasm6502_oldstyle
+VICE ?= x64sc
+BUILD_DIR ?= build
 
-.PHONY: all setup doctor clean test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap test-nanoc0-expressions test-nanoc0-statements test-nanoc0-calls test-nanoc0-runtime
+.PHONY: all clean test setup doctor \
+	test-skipws test-scanner test-parser test-parser-eof test-instruction \
+	test-values test-globals test-locals test-assembler test-data test-strings \
+	test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations \
+	test-nanoc0-bootstrap test-nanoc0-expressions test-nanoc0-statements \
+	test-nanoc0-calls test-nanoc0-runtime
+
+ASS_PRODUCTION_SOURCES = \
+	ass/ass.asm \
+	ass/assembler.asm \
+	ass/data.asm \
+	ass/instruction.asm \
+	ass/opcodes.asm \
+	ass/parser.asm \
+	ass/representation.asm \
+	ass/source.asm \
+	ass/symbols.asm \
+	ass/value.asm \
+	ass/zp.inc \
+	dis/mode_ids.inc \
+	dis/mode_widths.asm \
+	dis/opcodes.asm
 
 all: $(BUILD_DIR)/dis.prg $(BUILD_DIR)/hexdump.prg $(BUILD_DIR)/test_modes.prg \
-	$(BUILD_DIR)/ass.prg $(BUILD_DIR)/parse.prg \
-	$(BUILD_DIR)/test_skipws.prg $(BUILD_DIR)/test_scanner.prg \
-	$(BUILD_DIR)/test_parser.prg $(BUILD_DIR)/test_parser_eof.prg \
-	$(BUILD_DIR)/test_instruction.prg $(BUILD_DIR)/test_values.prg \
-	$(BUILD_DIR)/test_globals.prg $(BUILD_DIR)/test_locals.prg \
-	$(BUILD_DIR)/test_assembler.prg $(BUILD_DIR)/test_data.prg \
-	$(BUILD_DIR)/test_strings.prg $(BUILD_DIR)/test_streaming.prg \
-	$(BUILD_DIR)/test_selfhost.prg $(BUILD_DIR)/nanoc0-core.prg \
-	$(BUILD_DIR)/test_nanoc0_scanner.prg $(BUILD_DIR)/test_nanoc0_declarations.prg \
-	$(BUILD_DIR)/test_nanoc0_bootstrap.prg $(BUILD_DIR)/test_nanoc0_expression_compile.prg \
-	$(BUILD_DIR)/test_nanoc0_expression_run.prg $(BUILD_DIR)/test_nanoc0_statement_compile.prg \
-	$(BUILD_DIR)/test_nanoc0_statement_run.prg $(BUILD_DIR)/test_nanoc0_calls.prg \
-	$(BUILD_DIR)/test_nanoc0_runtime_compile.prg $(BUILD_DIR)/test_nanoc0_runtime_run.prg \
-	$(BUILD_DIR)/border-demo.prg $(BUILD_DIR)/border-c.prg
-	@bytes=$$(wc -c < $(BUILD_DIR)/nanoc0-core.prg); \
-	resident=$$((bytes - 2)); \
-	symbols=3488; token=192; control=81; calls=13; \
-	code=$$((resident - symbols - token - control - calls)); \
-	printf '%-31s %5d bytes\n' 'nanoc0 resident core:' $$resident; \
-	printf '  %-29s %5d bytes\n' 'symbol/name workspace:' $$symbols; \
-	printf '  %-29s %5d bytes\n' 'reusable token text:' $$token; \
-	printf '  %-29s %5d bytes\n' 'statement control stack:' $$control; \
-	printf '  %-29s %5d bytes\n' 'pending-call stack:' $$calls; \
-	printf '  %-29s %5d bytes\n' 'code + other small state:' $$code
+	$(BUILD_DIR)/ass.prg $(BUILD_DIR)/parse.prg $(BUILD_DIR)/test_skipws.prg \
+	$(BUILD_DIR)/test_scanner.prg $(BUILD_DIR)/test_parser.prg \
+	$(BUILD_DIR)/test_parser_eof.prg $(BUILD_DIR)/test_instruction.prg \
+	$(BUILD_DIR)/test_values.prg $(BUILD_DIR)/test_globals.prg \
+	$(BUILD_DIR)/test_locals.prg $(BUILD_DIR)/test_assembler.prg \
+	$(BUILD_DIR)/test_data.prg $(BUILD_DIR)/test_strings.prg \
+	$(BUILD_DIR)/test_streaming.prg $(BUILD_DIR)/test_selfhost.prg \
+	$(BUILD_DIR)/nanoc0-core.prg $(BUILD_DIR)/test_nanoc0_scanner.prg \
+	$(BUILD_DIR)/test_nanoc0_declarations.prg $(BUILD_DIR)/test_nanoc0_bootstrap.prg \
+	$(BUILD_DIR)/test_nanoc0_expression_compile.prg $(BUILD_DIR)/test_nanoc0_expression_run.prg \
+	$(BUILD_DIR)/test_nanoc0_statement_compile.prg $(BUILD_DIR)/test_nanoc0_statement_run.prg \
+	$(BUILD_DIR)/test_nanoc0_calls.prg $(BUILD_DIR)/test_nanoc0_runtime_compile.prg \
+	$(BUILD_DIR)/test_nanoc0_runtime_run.prg $(BUILD_DIR)/border-demo.prg $(BUILD_DIR)/border-c.prg
 
 setup:
 	sh scripts/setup-dev.sh
@@ -39,93 +47,93 @@ doctor:
 	sh scripts/doctor.sh
 
 $(BUILD_DIR):
-	mkdir -p $@
+	mkdir -p $(BUILD_DIR)
 
-$(BUILD_DIR)/dis.prg: dis/dis.asm | $(BUILD_DIR)
+$(BUILD_DIR)/dis.prg: dis/dis.asm dis/modes.asm dis/printHexByte.asm dis/mode_ids.inc | $(BUILD_DIR)
 	cd dis && $(VASM) -Fbin -cbm-prg -o ../$@ dis.asm
 
 $(BUILD_DIR)/hexdump.prg: dis/hexdump.asm | $(BUILD_DIR)
 	cd dis && $(VASM) -Fbin -cbm-prg -o ../$@ hexdump.asm
 
-$(BUILD_DIR)/test_modes.prg: dis/test_modes.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_modes.prg: dis/test_modes.asm dis/modes.asm dis/mode_ids.inc test.inc | $(BUILD_DIR)
 	cd dis && $(VASM) -Fbin -cbm-prg -o ../$@ test_modes.asm
 
-$(BUILD_DIR)/ass.prg: ass/ass_4000.asm | $(BUILD_DIR)
+$(BUILD_DIR)/ass.prg: ass/ass_4000.asm $(ASS_PRODUCTION_SOURCES) | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ ass_4000.asm
 
-$(BUILD_DIR)/parse.prg: ass/parse.asm | $(BUILD_DIR)
+$(BUILD_DIR)/parse.prg: ass/parse.asm ass/parser.asm ass/value.asm test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ parse.asm
 
-$(BUILD_DIR)/test_skipws.prg: ass/test_skipws.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_skipws.prg: ass/test_skipws.asm ass/parser.asm test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_skipws.asm
 
-$(BUILD_DIR)/test_scanner.prg: ass/test_scanner.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_scanner.prg: ass/test_scanner.asm ass/parser.asm test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_scanner.asm
 
-$(BUILD_DIR)/test_parser.prg: ass/test_parser.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_parser.prg: ass/test_parser.asm ass/parser.asm test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_parser.asm
 
-$(BUILD_DIR)/test_parser_eof.prg: ass/test_parser_eof.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_parser_eof.prg: ass/test_parser_eof.asm ass/parser.asm test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_parser_eof.asm
 
-$(BUILD_DIR)/test_instruction.prg: ass/test_instruction.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_instruction.prg: ass/test_instruction.asm ass/instruction.asm ass/opcodes.asm ass/value.asm ass/symbols.asm dis/opcodes.asm dis/mode_ids.inc test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_instruction.asm
 
-$(BUILD_DIR)/test_values.prg: ass/test_values.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_values.prg: ass/test_values.asm $(ASS_PRODUCTION_SOURCES) test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_values.asm
 
-$(BUILD_DIR)/test_globals.prg: ass/test_globals.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_globals.prg: ass/test_globals.asm $(ASS_PRODUCTION_SOURCES) test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_globals.asm
 
-$(BUILD_DIR)/test_locals.prg: ass/test_locals.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_locals.prg: ass/test_locals.asm $(ASS_PRODUCTION_SOURCES) test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_locals.asm
 
-$(BUILD_DIR)/test_assembler.prg: ass/test_assembler.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_assembler.prg: ass/test_assembler.asm $(ASS_PRODUCTION_SOURCES) test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_assembler.asm
 
-$(BUILD_DIR)/test_data.prg: ass/test_data.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_data.prg: ass/test_data.asm $(ASS_PRODUCTION_SOURCES) test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_data.asm
 
-$(BUILD_DIR)/test_strings.prg: ass/test_strings.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_strings.prg: ass/test_strings.asm $(ASS_PRODUCTION_SOURCES) test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_strings.asm
 
-$(BUILD_DIR)/test_streaming.prg: ass/test_streaming.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_streaming.prg: ass/test_streaming.asm $(ASS_PRODUCTION_SOURCES) test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_streaming.asm
 
-$(BUILD_DIR)/test_selfhost.prg: ass/test_selfhost.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_selfhost.prg: ass/test_selfhost.asm $(ASS_PRODUCTION_SOURCES) test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_selfhost.asm
 
-$(BUILD_DIR)/nanoc0-core.prg: nanoc0/core.asm | $(BUILD_DIR)
+$(BUILD_DIR)/nanoc0-core.prg: nanoc0/core.asm nanoc0/*.asm nanoc0/*.inc nanoc0/target/*.asm ass/zp.inc | $(BUILD_DIR)
 	cd nanoc0 && $(VASM) -Fbin -cbm-prg -o ../$@ core.asm
 
-$(BUILD_DIR)/test_nanoc0_scanner.prg: nanoc0/test_scanner.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_nanoc0_scanner.prg: nanoc0/test_scanner.asm nanoc0/*.asm nanoc0/*.inc nanoc0/target/*.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd nanoc0 && $(VASM) -Fbin -cbm-prg -o ../$@ test_scanner.asm
 
-$(BUILD_DIR)/test_nanoc0_declarations.prg: nanoc0/test_declarations.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_nanoc0_declarations.prg: nanoc0/test_declarations.asm nanoc0/*.asm nanoc0/*.inc nanoc0/target/*.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd nanoc0 && $(VASM) -Fbin -cbm-prg -DNANOC0_DECLARATION_BODY_SKIP=1 -o ../$@ test_declarations.asm
 
-$(BUILD_DIR)/test_nanoc0_bootstrap.prg: nanoc0/test_bootstrap.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_nanoc0_bootstrap.prg: nanoc0/test_bootstrap.asm nanoc0/*.asm nanoc0/*.inc nanoc0/target/*.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd nanoc0 && $(VASM) -Fbin -cbm-prg -DNANOC0_DECLARATION_BODY_SKIP=1 -o ../$@ test_bootstrap.asm
 
-$(BUILD_DIR)/test_nanoc0_expression_compile.prg: nanoc0/test_expression_compile.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_nanoc0_expression_compile.prg: nanoc0/test_expression_compile.asm nanoc0/*.asm nanoc0/*.inc nanoc0/target/*.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd nanoc0 && $(VASM) -Fbin -cbm-prg -o ../$@ test_expression_compile.asm
 
-$(BUILD_DIR)/test_nanoc0_expression_run.prg: ass/test_nanoc0_expressions.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_nanoc0_expression_run.prg: ass/test_nanoc0_expressions.asm $(ASS_PRODUCTION_SOURCES) test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_nanoc0_expressions.asm
 
-$(BUILD_DIR)/test_nanoc0_statement_compile.prg: nanoc0/test_statement_compile.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_nanoc0_statement_compile.prg: nanoc0/test_statement_compile.asm nanoc0/*.asm nanoc0/*.inc nanoc0/target/*.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd nanoc0 && $(VASM) -Fbin -cbm-prg -o ../$@ test_statement_compile.asm
 
-$(BUILD_DIR)/test_nanoc0_statement_run.prg: ass/test_nanoc0_statements.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_nanoc0_statement_run.prg: ass/test_nanoc0_statements.asm $(ASS_PRODUCTION_SOURCES) test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_nanoc0_statements.asm
 
-$(BUILD_DIR)/test_nanoc0_calls.prg: nanoc0/test_calls.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_nanoc0_calls.prg: nanoc0/test_calls.asm nanoc0/*.asm nanoc0/*.inc nanoc0/target/*.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd nanoc0 && $(VASM) -Fbin -cbm-prg -o ../$@ test_calls.asm
 
-$(BUILD_DIR)/test_nanoc0_runtime_compile.prg: nanoc0/test_runtime_compile.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_nanoc0_runtime_compile.prg: nanoc0/test_runtime_compile.asm nanoc0/*.asm nanoc0/*.inc nanoc0/target/*.asm ass/zp.inc test.inc | $(BUILD_DIR)
 	cd nanoc0 && $(VASM) -Fbin -cbm-prg -o ../$@ test_runtime_compile.asm
 
-$(BUILD_DIR)/test_nanoc0_runtime_run.prg: ass/test_nanoc0_runtime.asm | $(BUILD_DIR)
+$(BUILD_DIR)/test_nanoc0_runtime_run.prg: ass/test_nanoc0_runtime.asm $(ASS_PRODUCTION_SOURCES) test.inc | $(BUILD_DIR)
 	cd ass && $(VASM) -Fbin -cbm-prg -o ../$@ test_nanoc0_runtime.asm
 
 $(BUILD_DIR)/border-demo.prg: examples/border/demo.asm | $(BUILD_DIR)
@@ -139,7 +147,7 @@ NANOC0_STATEMENT_FIXTURES = tests/nanoc0-stmt/return8.c tests/nanoc0-stmt/statem
 NANOC0_CALL_FIXTURES = tests/nanoc0-call/cntbad.c tests/nanoc0-call/typbad.c tests/nanoc0-call/latbad.c tests/nanoc0-call/depbad.c tests/nanoc0-call/argbad.c
 NANOC0_RUNTIME_FIXTURES = tests/nanoc0-runtime/runtime.c tests/nanoc0-runtime/runtime.in
 
-test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap test-nanoc0-expressions test-nanoc0-statements test-nanoc0-calls test-nanoc0-runtime
+test: test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap test-nanoc0-expressions test-nanoc0-statements test-nanoc0-calls test-nanoc0-runtime test-selfhost
 
 test-skipws: $(BUILD_DIR)/test_skipws.prg
 	VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $< skipws
