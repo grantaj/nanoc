@@ -12,7 +12,7 @@ ASS_FROM_C_RESULT="$BUILD_DIR/ass-from-c.result"
 mkdir -p "$OUT_DIR"
 rm -f \
     "$OUT_DIR/NCOUT.ASM" "$OUT_DIR/ncout.asm" "$OUT_DIR/ncout.prg" \
-    "$OUT_DIR/ASSFROMC.ASM" "$OUT_DIR/assfromc.asm"
+    "$OUT_DIR/ASSFROMC.ASM" "$OUT_DIR/assfromc.asm" "$OUT_DIR/assfromc.prg"
 
 nanoc_status_name() {
     case "$1" in
@@ -138,12 +138,29 @@ fi
 TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=60 VICE_FS_DIR="$OUT_DIR" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc0_generated.prg" nanoc0-generated
 
-# Size is reported with vasm only as a measurement convenience. The native test
-# above is the semantic/assembler authority for the small program.
+# Host vasm is only a measurement convenience. Native ass remains the semantic
+# authority, but these two physical limits must be known before spending minutes
+# on the final C64 rung: the emitted source must fit one 1541 disk and the loaded
+# program must fit ass's existing 16 KiB staging window.
 "$VASM" -Fbin -cbm-prg -o "$OUT_DIR/ncout.prg" "$GENERATED"
 bytes=$(wc -c < "$OUT_DIR/ncout.prg")
 echo "small generated loaded image: $((bytes - 2)) bytes"
-echo "bootstrap generated ass source: $(wc -c < "$ASS_FROM_C") bytes"
+
+ASS_SOURCE_BYTES=$(wc -c < "$ASS_FROM_C")
+echo "bootstrap generated ass source: $ASS_SOURCE_BYTES bytes"
+"$VASM" -Fbin -cbm-prg -o "$OUT_DIR/assfromc.prg" "$ASS_FROM_C"
+bytes=$(wc -c < "$OUT_DIR/assfromc.prg")
+ASS_FROM_C_LOADED=$((bytes - 2))
+echo "bootstrap generated loaded image: $ASS_FROM_C_LOADED bytes"
+
+if [ "$ASS_SOURCE_BYTES" -gt 168656 ]; then
+    echo "FAIL bootstrap source: $ASS_SOURCE_BYTES bytes exceeds one 1541 disk (168656 bytes)" >&2
+    exit 1
+fi
+if [ "$ASS_FROM_C_LOADED" -gt 16384 ]; then
+    echo "FAIL bootstrap image: $ASS_FROM_C_LOADED bytes exceeds ass staging (16384 bytes)" >&2
+    exit 1
+fi
 
 # Decisive rung: current ass assembles the compiler-generated ASSFROMC.ASM, then
 # that executable initializes its own BSS, runs ass_assemble on ASS/ASS_4000.ASM,
