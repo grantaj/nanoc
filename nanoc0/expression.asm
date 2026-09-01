@@ -49,6 +49,16 @@ EXPR_LITERAL_CAPACITY = 16
 EXPR_LITERAL_BYTES    = 512
 EXPR_LITERAL_ROW      = 16
 
+;;; Mutable expression tables are compiler work RAM, not loaded data. Define the
+;;; fixed map before parser code references it so native ass sees constants, not
+;;; forward labels that are later redefined.
+operatorKind   = $b0c0
+operatorSpill  = $b0d0
+operatorType   = $b0e0
+literalOffset  = $b0f0
+literalLength  = $b110
+literalBytes   = $b130
+
 OP_GROUP = 1
 OP_INDEX = 2
 OP_NEG   = 3
@@ -1339,12 +1349,9 @@ emit_one_literal:
 ;;; ---------------------------------------------------------------------------
 
 ;;; One bounded operator stack. Group/index/call markers use the same arrays as
-;;; binary operators so nesting needs no recursive parser state. The three
-;;; 16-byte arrays are compiler work RAM immediately after currentTokenText.
+;;; binary operators so nesting needs no recursive parser state. Their mutable
+;;; arrays use the fixed work-RAM constants declared above.
 operatorCount:		byte 0
-operatorKind = $b0c0
-operatorSpill = $b0d0
-operatorType = $b0e0
 expressionSpillDepth:	byte 0
 spillAllocatedCount:	byte 0
 expressionNeedValue:	byte 0
@@ -1368,13 +1375,10 @@ primarySymbolType:	byte TYPE_INT
 expressionLiteralValue:	word 0
 
 ;;; Narrow deferred literal pool. Offsets/lengths are 16-bit so this storage is
-;;; independent of the scanner's reusable token width. The mutable tables and
-;;; bytes continue the compiler work-RAM map; only counters/scratch are loaded.
+;;; independent of the scanner's reusable token width. Its mutable tables and
+;;; bytes use the fixed work-RAM constants above; only counters/scratch are loaded.
 literalCount:		byte 0
 literalBytesUsed:	word 0
-literalOffset = $b0f0
-literalLength = $b110
-literalBytes = $b130
 currentLiteralIndex:	byte 0
 literalNewEnd:		word 0
 literalEmitIndex:	byte 0
