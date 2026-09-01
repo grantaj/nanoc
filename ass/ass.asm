@@ -14,12 +14,13 @@
 ;;; allocator: the path buffer, line buffer, symbol arenas, and staged
 ;;; representation occupy explicit non-overlapping ranges.
 ;;;
-;;; Assembly-lifetime names append from $a000 through $cbff, then continue in the
+;;; Assembly-lifetime names append from $a000 through $c7ff, then continue in the
 ;;; otherwise idle $3300-$3fff pages below the assembler image. Dot-prefixed names
-;;; for the current global-label scope have four fixed pages at $cc00-$cfff; they
+;;; for the current global-label scope have eight fixed pages at $c800-$cfff; they
 ;;; grow downward from $d000 and are discarded by rewinding one pointer at the
-;;; next global label. The 1 KiB capacity is a direct fixed C64 budget; three
-;;; pages were measured at 762/768 bytes while assembling generated Nano C output.
+;;; next global label. The 2 KiB capacity is a direct fixed C64 budget; the
+;;; statement acceptance fixture measured 1019/1024 bytes in one real function
+;;; scope, while assembler self-hosting uses 6513 bytes of persistent symbols.
 ;;; The three ranges have explicit lifetimes and boundaries; none is dynamically
 ;;; allocated.
 ;;; ass selects the normal C64 mapping with BASIC hidden and KERNAL/I/O visible
@@ -37,8 +38,8 @@ ASSEMBLER_LINE_BUFFER          = $3200
 ASSEMBLER_SYMBOL_OVERFLOW      = $3300
 ASSEMBLER_SYMBOL_OVERFLOW_END  = $4000
 ASSEMBLER_SYMBOLS              = $a000
-ASSEMBLER_SYMBOLS_END          = $cc00
-ASSEMBLER_LOCAL_SYMBOLS        = $cc00
+ASSEMBLER_SYMBOLS_END          = $c800
+ASSEMBLER_LOCAL_SYMBOLS        = $c800
 ASSEMBLER_LOCAL_SYMBOLS_END    = $d000
 ASSEMBLER_STAGING              = $6000
 ASSEMBLER_STAGING_END          = $a000
