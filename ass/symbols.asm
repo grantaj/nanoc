@@ -369,16 +369,21 @@ allocateSymbol:
 	lda localSymbolTableEnd+1
 	sbc #$00
 	sta symbolNext+1
-	bcc .full
+	bcs .localNoUnderflow
+	jmp .full
+.localNoUnderflow:
 
 	;;; The new local record may touch, but not cross, the persistent end.
 	lda symbolNext+1
 	cmp symbolTableEnd+1
-	bcc .full
+	bcs .localHighEnough
+	jmp .full
+.localHighEnough:
 	bne .localRoom
 	lda symbolNext
 	cmp symbolTableEnd
-	bcc .full
+	bcs .localRoom
+	jmp .full
 .localRoom:
 	lda symbolNext
 	sta symbolAllocEnd
@@ -394,13 +399,17 @@ allocateSymbol:
 	lda symbolTableEnd+1
 	adc #$00
 	sta symbolNext+1
-	bcs .full
+	bcc .globalNoOverflow
+	jmp .full
+.globalNoOverflow:
 
 	;;; The new persistent record may touch, but not cross, the live local end.
 	lda symbolNext+1
 	cmp localSymbolTableEnd+1
 	bcc .globalRoom
-	bne .full
+	beq .globalSamePage
+	jmp .full
+.globalSamePage:
 	lda symbolNext
 	cmp localSymbolTableEnd
 	bcc .globalRoom
