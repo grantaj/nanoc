@@ -309,47 +309,74 @@ runtimeClosePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','
 
 runtimeInitPrefix:
 	string "__nc_init:"
-	string "\tcld"
-	string "\tlda #<NC_BSS"
-	string "\tsta NC_PTR"
-	string "\tlda #>NC_BSS"
-	string "\tsta NC_PTR+1"
+	byte $09
+	string "cld"
+	byte $09
+	string "lda #<NC_BSS"
+	byte $09
+	string "sta NC_PTR"
+	byte $09
+	string "lda #>NC_BSS"
+	byte $09
+	string "sta NC_PTR+1"
 	byte 0
 
 runtimeInitClearText:
-	string "\tldy #$00"
+	byte $09
+	string "ldy #$00"
 	string ".clear_globals:"
-	string "\tlda NC_TMP"
-	string "\tora NC_TMP+1"
-	string "\tbeq .globals_done"
-	string "\tlda #$00"
-	string "\tsta (NC_PTR),y"
-	string "\tinc NC_PTR"
-	string "\tbne .pointer_done"
-	string "\tinc NC_PTR+1"
+	byte $09
+	string "lda NC_TMP"
+	byte $09
+	string "ora NC_TMP+1"
+	byte $09
+	string "beq .globals_done"
+	byte $09
+	string "lda #$00"
+	byte $09
+	string "sta (NC_PTR),y"
+	byte $09
+	string "inc NC_PTR"
+	byte $09
+	string "bne .pointer_done"
+	byte $09
+	string "inc NC_PTR+1"
 	string ".pointer_done:"
-	string "\tlda NC_TMP"
-	string "\tbne .decrement_low"
-	string "\tdec NC_TMP+1"
+	byte $09
+	string "lda NC_TMP"
+	byte $09
+	string "bne .decrement_low"
+	byte $09
+	string "dec NC_TMP+1"
 	string ".decrement_low:"
-	string "\tdec NC_TMP"
-	string "\tjmp .clear_globals"
+	byte $09
+	string "dec NC_TMP"
+	byte $09
+	string "jmp .clear_globals"
 	string ".globals_done:"
 	byte 0
 
 runtimeInitIoText:
-	string "\tlda #$00"
-	string "\tldx #$05        ; six runtime handles"
+	byte $09
+	string "lda #$00"
+	byte $09
+	string "ldx #$05        ; six runtime handles"
 	string ".clear_io:"
-	string "\tsta __nc_io_mode,x"
-	string "\tsta __nc_io_eof,x"
-	string "\tdex"
-	string "\tbpl .clear_io"
+	byte $09
+	string "sta __nc_io_mode,x"
+	byte $09
+	string "sta __nc_io_eof,x"
+	byte $09
+	string "dex"
+	byte $09
+	string "bpl .clear_io"
 	byte 0
 
 runtimeInitReturnText:
-	string "\tcld"
-	string "\trts"
+	byte $09
+	string "cld"
+	byte $09
+	string "rts"
 	byte 0
 
 runtimeIncludePath:	word 0
