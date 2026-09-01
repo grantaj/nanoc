@@ -1,6 +1,6 @@
 ;;; symbols.asm
 ;;;
-;;; The caller supplies one fixed symbol workspace. Two linear tables use it from
+;;; The caller supplies one main symbol workspace. Two linear tables use it from
 ;;; opposite ends:
 ;;;
 ;;;   ordinary names grow upward and live for the whole assembly;
@@ -8,8 +8,12 @@
 ;;;
 ;;; Starting a new global scope checks that every local forward reference has
 ;;; resolved, then rewinds the local pointer to the top of the workspace. There is
-;;; no partition to tune, no allocator, no compaction, and nothing is individually
-;;; freed. The tables are full only when their two moving ends meet.
+;;; no allocator, no compaction, and nothing is individually freed.
+;;;
+;;; A caller may also provide one fixed persistent overflow range. Production ass
+;;; uses the otherwise idle $3300-$3fff pages between its line buffer and image.
+;;; Persistent records use that range only when the main table meets live locals.
+;;; This is simply a second linear table in a discontiguous C64 memory map.
 ;;;
 ;;; Each record is simply:
 ;;;   byte  name length
@@ -54,13 +58,17 @@ SYMBOL_SCOPE_GLOBAL = $00
 SYMBOL_SCOPE_LOCAL  = $01
 
 ;;; resetSymbols
-;;; Empty both tables. The local table remains unavailable until the first global
+;;; Empty all tables. The local table remains unavailable until the first global
 ;;; label gives dot-prefixed names a scope.
 resetSymbols:
 	lda symbolTableStart
 	sta symbolTableEnd
 	lda symbolTableStart+1
 	sta symbolTableEnd+1
+	lda symbolOverflowStart
+	sta symbolOverflowEnd
+	lda symbolOverflowStart+1
+	sta symbolOverflowEnd+1
 	jsr resetLocalSymbols
 	lda #$00
 	sta currentScope
@@ -216,8 +224,8 @@ prepareLabelLifetime:
 	rts
 
 ;;; findSymbolEntry
-;;; Ordinary names are searched upward through the persistent table. Dot-prefixed
-;;; names are searched upward through the live local records at the top of the
+;;; Ordinary names are searched through both persistent ranges. Dot-prefixed
+;;; names are searched through the live local records at the top of the main
 ;;; workspace. ZP_PTR1 is preserved.
 findSymbolEntry:
 	jsr symbolScope
@@ -235,6 +243,8 @@ findSymbolEntry:
 	sta symbolSearchEnd
 	lda symbolTableLimit+1
 	sta symbolSearchEnd+1
+	lda #$01
+	sta symbolSearchLast
 	jmp .save
 .global:
 	lda symbolTableStart
@@ -245,6 +255,8 @@ findSymbolEntry:
 	sta symbolSearchEnd
 	lda symbolTableEnd+1
 	sta symbolSearchEnd+1
+	lda #$00
+	sta symbolSearchLast
 .save:
 	lda ZP_PTR1
 	pha
@@ -258,7 +270,21 @@ findSymbolEntry:
 	lda symbolScan+1
 	cmp symbolSearchEnd+1
 	bne .entry
-	jmp .notFound
+
+	;;; A global miss in the main table gets one ordinary second-table scan.
+	lda symbolSearchLast
+	bne .notFound
+	lda #$01
+	sta symbolSearchLast
+	lda symbolOverflowStart
+	sta symbolScan
+	lda symbolOverflowStart+1
+	sta symbolScan+1
+	lda symbolOverflowEnd
+	sta symbolSearchEnd
+	lda symbolOverflowEnd+1
+	sta symbolSearchEnd+1
+	jmp .next
 
 .entry:
 	lda symbolScan
@@ -338,9 +364,10 @@ findSymbolEntry:
 	rts
 
 ;;; allocateSymbol
-;;; Persistent records append upward from symbolTableStart. Local records prepend
-;;; downward from symbolTableLimit. Both remain stable while live; allocation
-;;; fails only if the proposed record would cross the other table's current end.
+;;; Persistent records first append upward in the main table. If live locals meet
+;;; that end, production ass can use its second fixed persistent range. Local
+;;; records prepend downward from symbolTableLimit. Every record remains stable
+;;; while live; no table compaction occurs.
 allocateSymbol:
 	lda symbolNameLength
 	bne .hasName
@@ -373,7 +400,7 @@ allocateSymbol:
 	jmp .full
 .localNoUnderflow:
 
-	;;; The new local record may touch, but not cross, the persistent end.
+	;;; The new local record may touch, but not cross, the persistent main end.
 	lda symbolNext+1
 	cmp symbolTableEnd+1
 	bcs .localHighEnough
@@ -389,6 +416,8 @@ allocateSymbol:
 	sta symbolAllocEnd
 	lda symbolNext+1
 	sta symbolAllocEnd+1
+	lda #$00
+	sta symbolAllocOverflow
 	jmp .write
 
 .global:
@@ -400,26 +429,62 @@ allocateSymbol:
 	adc #$00
 	sta symbolNext+1
 	bcc .globalNoOverflow
-	jmp .full
+	jmp .globalOverflow
 .globalNoOverflow:
 
-	;;; The new persistent record may touch, but not cross, the live local end.
+	;;; The new persistent main record may touch, but not cross, live locals.
 	lda symbolNext+1
 	cmp localSymbolTableEnd+1
 	bcc .globalRoom
 	beq .globalSamePage
-	jmp .full
+	jmp .globalOverflow
 .globalSamePage:
 	lda symbolNext
 	cmp localSymbolTableEnd
 	bcc .globalRoom
 	beq .globalRoom
-	jmp .full
+	jmp .globalOverflow
 .globalRoom:
 	lda symbolTableEnd
 	sta symbolAllocEnd
 	lda symbolTableEnd+1
 	sta symbolAllocEnd+1
+	lda #$00
+	sta symbolAllocOverflow
+	jmp .write
+
+.globalOverflow:
+	;;; Zero start/limit leaves the optional second range disabled for small direct
+	;;; fixtures. Otherwise append there exactly as in the main persistent table.
+	lda symbolOverflowStart
+	ora symbolOverflowStart+1
+	beq .full
+	clc
+	lda symbolOverflowEnd
+	adc symbolRecordSize
+	sta symbolNext
+	lda symbolOverflowEnd+1
+	adc #$00
+	sta symbolNext+1
+	bcc .overflowNoWrap
+	jmp .full
+.overflowNoWrap:
+	lda symbolNext+1
+	cmp symbolOverflowLimit+1
+	bcc .overflowRoom
+	bne .full
+	lda symbolNext
+	cmp symbolOverflowLimit
+	bcc .overflowRoom
+	beq .overflowRoom
+	jmp .full
+.overflowRoom:
+	lda symbolOverflowEnd
+	sta symbolAllocEnd
+	lda symbolOverflowEnd+1
+	sta symbolAllocEnd+1
+	lda #$01
+	sta symbolAllocOverflow
 
 .write:
 	lda ZP_PTR1
@@ -477,17 +542,25 @@ allocateSymbol:
 	bne .copyName
 
 	lda symbolWantedScope
-	beq .commitGlobal
-	lda symbolNext
-	sta localSymbolTableEnd
-	lda symbolNext+1
-	sta localSymbolTableEnd+1
-	jmp .committed
-.commitGlobal:
+	bne .commitLocal
+	lda symbolAllocOverflow
+	bne .commitOverflow
 	lda symbolNext
 	sta symbolTableEnd
 	lda symbolNext+1
 	sta symbolTableEnd+1
+	jmp .committed
+.commitOverflow:
+	lda symbolNext
+	sta symbolOverflowEnd
+	lda symbolNext+1
+	sta symbolOverflowEnd+1
+	jmp .committed
+.commitLocal:
+	lda symbolNext
+	sta localSymbolTableEnd
+	lda symbolNext+1
+	sta localSymbolTableEnd+1
 .committed:
 	pla
 	sta ZP_PTR1+1
@@ -591,8 +664,8 @@ resolveWordReferencesForSymbol:
 	rts
 
 ;;; allLabelsDefined
-;;; Carry set only when both assembly-lifetime globals and the current local
-;;; scratch table contain no unresolved labels.
+;;; Carry set only when both persistent ranges and the current local scratch table
+;;; contain no unresolved labels.
 allLabelsDefined:
 	lda symbolTableStart
 	sta symbolScan
@@ -601,6 +674,17 @@ allLabelsDefined:
 	lda symbolTableEnd
 	sta symbolSearchEnd
 	lda symbolTableEnd+1
+	sta symbolSearchEnd+1
+	jsr scanLabelsDefined
+	bcc .bad
+
+	lda symbolOverflowStart
+	sta symbolScan
+	lda symbolOverflowStart+1
+	sta symbolScan+1
+	lda symbolOverflowEnd
+	sta symbolSearchEnd
+	lda symbolOverflowEnd+1
 	sta symbolSearchEnd+1
 	jsr scanLabelsDefined
 	bcc .bad
@@ -708,10 +792,15 @@ symbolScope:
 	clc
 	rts
 
-;;; Shared workspace lower edge, persistent end, and fixed upper edge.
+;;; Main shared workspace lower edge, persistent end, and fixed upper edge.
 symbolTableStart:	word 0
 symbolTableEnd:		word 0
 symbolTableLimit:	word 0
+
+;;; Optional fixed second range for persistent records only.
+symbolOverflowStart:	word 0
+symbolOverflowEnd:	word 0
+symbolOverflowLimit:	word 0
 
 ;;; Current lower edge of the local records growing down from symbolTableLimit.
 localSymbolTableEnd:	word 0
@@ -739,5 +828,7 @@ symbolSearchEnd:	word 0
 symbolAllocEnd:		word 0
 symbolRecordLength:	byte 0
 symbolRecordSize:	byte 0
+symbolSearchLast:	byte 0
+symbolAllocOverflow:	byte 0
 referencePtr:		word 0
 referenceNext:		word 0
