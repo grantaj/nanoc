@@ -715,53 +715,68 @@ set_false_target:
 	sta emitLabelValue+1
 	rts
 
+emit_short_conditional_jump:
+	jsr emit_string
+	bcs .name
+	rts
+.name:
+	jsr emit_generated_label_name
+	bcs .done
+	rts
+.done:
+	jmp emit_newline
+
+;;; Comparison-internal labels are created by the comparison emitter itself.
+;;; Their fixed templates are comfortably inside relative-branch range, so spell
+;;; those branches directly. Only a jump to a surrounding statement needs the
+;;; branch-over-JMP helper above.
 emit_bcc_true:
 	jsr set_true_target
-	ldx #<exprBcs
-	ldy #>exprBcs
-	jmp emit_long_conditional_jump
+	ldx #<exprBcc
+	ldy #>exprBcc
+	jmp emit_short_conditional_jump
 
 emit_bcc_false:
 	jsr set_false_target
-	ldx #<exprBcs
-	ldy #>exprBcs
-	jmp emit_long_conditional_jump
+	ldx #<exprBcc
+	ldy #>exprBcc
+	jmp emit_short_conditional_jump
 
 emit_bne_true:
 	jsr set_true_target
-	ldx #<exprBeq
-	ldy #>exprBeq
-	jmp emit_long_conditional_jump
+	ldx #<exprBne
+	ldy #>exprBne
+	jmp emit_short_conditional_jump
 
 emit_bne_false:
 	jsr set_false_target
-	ldx #<exprBeq
-	ldy #>exprBeq
-	jmp emit_long_conditional_jump
+	ldx #<exprBne
+	ldy #>exprBne
+	jmp emit_short_conditional_jump
 
 emit_beq_true:
 	jsr set_true_target
-	ldx #<exprBne
-	ldy #>exprBne
-	jmp emit_long_conditional_jump
+	ldx #<exprBeq
+	ldy #>exprBeq
+	jmp emit_short_conditional_jump
 
 emit_beq_false:
 	jsr set_false_target
-	ldx #<exprBne
-	ldy #>exprBne
-	jmp emit_long_conditional_jump
+	ldx #<exprBeq
+	ldy #>exprBeq
+	jmp emit_short_conditional_jump
 
 emit_bmi_true:
 	jsr set_true_target
-	ldx #<exprBpl
-	ldy #>exprBpl
-	jmp emit_long_conditional_jump
+	ldx #<exprBmi
+	ldy #>exprBmi
+	jmp emit_short_conditional_jump
 
 emit_bmi_false:
 	jsr set_false_target
-	ldx #<exprBpl
-	ldy #>exprBpl
-	jmp emit_long_conditional_jump
+	ldx #<exprBmi
+	ldy #>exprBmi
+	jmp emit_short_conditional_jump
 
 emit_bpl_same_sign:
 	lda #EMIT_LABEL_CMP_SAME_SIGN
@@ -770,9 +785,9 @@ emit_bpl_same_sign:
 	sta emitLabelValue
 	lda compareSameSignLabel+1
 	sta emitLabelValue+1
-	ldx #<exprBmi
-	ldy #>exprBmi
-	jmp emit_long_conditional_jump
+	ldx #<exprBpl
+	ldy #>exprBpl
+	jmp emit_short_conditional_jump
 
 emit_compare_reduction:
 	jsr emit_save_right_tmp
@@ -1288,6 +1303,8 @@ exprCmpTmpHigh:		byte $09,'c','m','p',' ','N','C','_','T','M','P','+','1',$0a
 exprCmpTmpHighEnd:	byte 0
 exprEorTmpHigh:		byte $09,'e','o','r',' ','N','C','_','T','M','P','+','1',$0a
 exprEorTmpHighEnd:	byte 0
+exprBcc:		byte $09,'b','c','c',' '
+exprBccEnd:		byte 0
 exprBcs:		byte $09,'b','c','s',' '
 exprBcsEnd:		byte 0
 exprBne:		byte $09,'b','n','e',' '
