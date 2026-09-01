@@ -189,7 +189,7 @@ main:
 	sta generatedOrigin
 	lda symbolValue+1
 	sta generatedOrigin+1
-	jmp .symbolsReady
+	jmp symbolsReady
 
 .symbol0:
 	lda #0
@@ -222,7 +222,7 @@ symbol_fail:
 	lda #FAIL_SYMBOL
 	jmp finish
 
-.symbolsReady:
+symbolsReady:
 	jsr copy_native_oracle
 
 	;;; A generated unit without main has one fixed public entry: initialize its
