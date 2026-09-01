@@ -41,7 +41,13 @@ report_driver_mailbox() {
 
     case "$stage" in
         1)
-            echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status" >&2
+            # During the assembler stage the line/BSS mailbox words carry the
+            # upward entry cursor and downward name cursor instead. The native
+            # assembler arena is $a000-$cfff and each entry is seven bytes.
+            entry_bytes=$((line - 40960))
+            name_bytes=$((53248 - bss))
+            free_bytes=$((bss - line))
+            echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status scope=$detail symbol-entries=$((entry_bytes / 7)) entry-bytes=$entry_bytes name-bytes=$name_bytes free-bytes=$free_bytes" >&2
             ;;
         2)
             echo "native bootstrap stage=compile-small status=$(nanoc_status_name "$status")($status) line=$line detail=$detail bss=$bss" >&2
