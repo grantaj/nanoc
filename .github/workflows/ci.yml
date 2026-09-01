@@ -28,3 +28,13 @@ jobs:
 
       - name: Run production nanoc0 ladder
         run: sh scripts/test-nanoc0-integration.sh
+
+      - name: Capture generated bootstrap assembly
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanoc0-bootstrap-generated
+          path: |
+            build/nanoc0-integration/ASSFROMC.ASM
+            build/nanoc0-integration/assfromc.asm
+          if-no-files-found: ignore
