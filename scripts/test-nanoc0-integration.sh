@@ -30,14 +30,15 @@ nanoc_status_name() {
 
 report_driver_mailbox() {
     [ -s "$DRIVER_RESULT" ] || return 0
-    set -- $(od -An -tu1 -N8 "$DRIVER_RESULT")
-    [ "$#" -ge 8 ] || return 0
+    set -- $(od -An -tu1 -N9 "$DRIVER_RESULT")
+    [ "$#" -ge 9 ] || return 0
 
     stage=$2
     status=$3
     line=$(($4 + 256 * $5))
     detail=$6
     bss=$(($7 + 256 * $8))
+    extra=$9
 
     case "$stage" in
         1)
@@ -47,12 +48,12 @@ report_driver_mailbox() {
                 free_gap=$((bss - line))
                 echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status scope=$detail staged=$staged fixup-bytes=$fixups free-gap=$free_gap" >&2
             else
-                # During other assembler failures the line/BSS words carry the
-                # two moving ends of the shared $a000-$cfff symbol workspace.
-                persistent_used=$((line - 40960))
+                main_used=$((line - 40960))
+                overflow_end=$((detail + 256 * extra))
+                overflow_used=$((overflow_end - 13056))
                 local_used=$((53248 - bss))
-                free_gap=$((bss - line))
-                echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status scope=$detail persistent=$persistent_used local=$local_used free-gap=$free_gap" >&2
+                persistent_used=$((main_used + overflow_used))
+                echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status persistent=$persistent_used/11520 main=$main_used/8192 overflow=$overflow_used/3328 local=$local_used/4096" >&2
             fi
             ;;
         2)
@@ -107,7 +108,7 @@ if ! TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=180 VICE_FS_DIR="$ROOT" VICE_FS_DIR_9
 fi
 
 report_driver_mailbox
-set -- $(od -An -tu1 -N8 "$DRIVER_RESULT")
+set -- $(od -An -tu1 -N9 "$DRIVER_RESULT")
 ASS_C_BSS=$(($7 + 256 * $8))
 echo "bootstrap ass.c BSS: $ASS_C_BSS bytes"
 
