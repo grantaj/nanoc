@@ -155,9 +155,9 @@ finish:
 	jmp .halt
 
 ;;; On an assembler-stage failure the compiler diagnostic fields are not live yet.
-;;; Reuse those mailbox bytes for the persistent symbol-table cursors. This is
-;;; diagnostic state only; local symbols now live in their own reusable scratch
-;;; table and therefore should not accumulate over the whole assembly.
+;;; Reuse the line/BSS words for the two packed-table end pointers. Since both
+;;; tables have fixed starts and limits, those two pointers describe exact used
+;;; and free bytes without a second name cursor.
 capture_ass_workspace:
 	lda symbolTableEnd
 	sta INTEGRATION_LINE
@@ -165,9 +165,9 @@ capture_ass_workspace:
 	sta INTEGRATION_LINE+1
 	lda currentScope
 	sta INTEGRATION_DETAIL
-	lda symbolNameEnd
+	lda localSymbolTableEnd
 	sta INTEGRATION_BSS
-	lda symbolNameEnd+1
+	lda localSymbolTableEnd+1
 	sta INTEGRATION_BSS+1
 	rts
 
