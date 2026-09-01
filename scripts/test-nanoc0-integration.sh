@@ -135,7 +135,7 @@ fi
 
 # current ass -> small generated ass -> executable 6502 -> zero-argument main
 # result. This keeps a short complete rung before the much larger bootstrap.
-VICE_TIMEOUT=60 VICE_FS_DIR="$OUT_DIR" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
+TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=60 VICE_FS_DIR="$OUT_DIR" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc0_generated.prg" nanoc0-generated
 
 # Size is reported with vasm only as a measurement convenience. The native test
