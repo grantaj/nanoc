@@ -21,9 +21,17 @@ emit_runtime_support:
 	bcc .failed
 
 	lda multiplyUsed
-	beq .runtimeCheck
+	beq .compareCheck
 	ldx #<runtimeMulPath
 	ldy #>runtimeMulPath
+	jsr emit_runtime_include
+	bcc .failed
+
+.compareCheck:
+	lda compareUsed
+	beq .runtimeCheck
+	ldx #<runtimeComparePath
+	ldy #>runtimeComparePath
 	jsr emit_runtime_include
 	bcc .failed
 
@@ -291,6 +299,7 @@ runtimeStaTmpHigh:	byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',0
 runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"',0
 
 runtimeMulPath:		byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','m','u','l','1','6','.','a','s','m',0
+runtimeComparePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','c','o','m','p','a','r','e','1','6','.','a','s','m',0
 runtimeCommonPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','o','m','m','o','n','.','a','s','m',0
 runtimeOpenPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','o','p','e','n','.','a','s','m',0
 runtimeReadPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','r','e','a','d','.','a','s','m',0
@@ -300,47 +309,47 @@ runtimeClosePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','
 
 runtimeInitPrefix:
 	string "__nc_init:"
-	string "	cld"
-	string "	lda #<NC_BSS"
-	string "	sta NC_PTR"
-	string "	lda #>NC_BSS"
-	string "	sta NC_PTR+1"
+	string "\tcld"
+	string "\tlda #<NC_BSS"
+	string "\tsta NC_PTR"
+	string "\tlda #>NC_BSS"
+	string "\tsta NC_PTR+1"
 	byte 0
 
 runtimeInitClearText:
-	string "	ldy #$00"
+	string "\tldy #$00"
 	string ".clear_globals:"
-	string "	lda NC_TMP"
-	string "	ora NC_TMP+1"
-	string "	beq .globals_done"
-	string "	lda #$00"
-	string "	sta (NC_PTR),y"
-	string "	inc NC_PTR"
-	string "	bne .pointer_done"
-	string "	inc NC_PTR+1"
+	string "\tlda NC_TMP"
+	string "\tora NC_TMP+1"
+	string "\tbeq .globals_done"
+	string "\tlda #$00"
+	string "\tsta (NC_PTR),y"
+	string "\tinc NC_PTR"
+	string "\tbne .pointer_done"
+	string "\tinc NC_PTR+1"
 	string ".pointer_done:"
-	string "	lda NC_TMP"
-	string "	bne .decrement_low"
-	string "	dec NC_TMP+1"
+	string "\tlda NC_TMP"
+	string "\tbne .decrement_low"
+	string "\tdec NC_TMP+1"
 	string ".decrement_low:"
-	string "	dec NC_TMP"
-	string "	jmp .clear_globals"
+	string "\tdec NC_TMP"
+	string "\tjmp .clear_globals"
 	string ".globals_done:"
 	byte 0
 
 runtimeInitIoText:
-	string "	lda #$00"
-	string "	ldx #$05        ; six runtime handles"
+	string "\tlda #$00"
+	string "\tldx #$05        ; six runtime handles"
 	string ".clear_io:"
-	string "	sta __nc_io_mode,x"
-	string "	sta __nc_io_eof,x"
-	string "	dex"
-	string "	bpl .clear_io"
+	string "\tsta __nc_io_mode,x"
+	string "\tsta __nc_io_eof,x"
+	string "\tdex"
+	string "\tbpl .clear_io"
 	byte 0
 
 runtimeInitReturnText:
-	string "	cld"
-	string "	rts"
+	string "\tcld"
+	string "\trts"
 	byte 0
 
 runtimeIncludePath:	word 0
