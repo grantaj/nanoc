@@ -1,18 +1,20 @@
 ;;; Nano C target helper: 16-bit comparisons.
 ;;; Left operand is in A/X, right operand in NC_TMP, result is C 0/1 in A/X.
-;;; Y and flags are scratch; NC_TMP is unchanged.
+;;; Every return also leaves Z matching that result: set X first, then load A.
+;;; That lets an if/while consume a comparison directly without rebuilding truth
+;;; from both result bytes. Y and the other flags are scratch; NC_TMP is unchanged.
 
 __nc_eq16:
 	cmp NC_TMP
 	bne .false
 	cpx NC_TMP+1
 	bne .false
-	lda #$01
 	ldx #$00
+	lda #$01
 	rts
 .false:
+	ldx #$00
 	lda #$00
-	tax
 	rts
 
 __nc_ne16:
@@ -20,12 +22,12 @@ __nc_ne16:
 	bne .true
 	cpx NC_TMP+1
 	bne .true
+	ldx #$00
 	lda #$00
-	tax
 	rts
 .true:
-	lda #$01
 	ldx #$00
+	lda #$01
 	rts
 
 ;;; Unsigned comparisons inspect the high byte first. A remains the left low
@@ -38,12 +40,12 @@ __nc_ult16:
 	cmp NC_TMP
 	bcc .true
 .false:
+	ldx #$00
 	lda #$00
-	tax
 	rts
 .true:
-	lda #$01
 	ldx #$00
+	lda #$01
 	rts
 
 __nc_ule16:
@@ -54,12 +56,12 @@ __nc_ule16:
 	bcc .true
 	beq .true
 .false:
+	ldx #$00
 	lda #$00
-	tax
 	rts
 .true:
-	lda #$01
 	ldx #$00
+	lda #$01
 	rts
 
 __nc_ugt16:
@@ -70,12 +72,12 @@ __nc_ugt16:
 	bcc .false
 	beq .false
 .true:
-	lda #$01
 	ldx #$00
+	lda #$01
 	rts
 .false:
+	ldx #$00
 	lda #$00
-	tax
 	rts
 
 __nc_uge16:
@@ -85,12 +87,12 @@ __nc_uge16:
 	cmp NC_TMP
 	bcc .false
 .true:
-	lda #$01
 	ldx #$00
+	lda #$01
 	rts
 .false:
+	ldx #$00
 	lda #$00
-	tax
 	rts
 
 ;;; Signed comparisons need special handling only when the sign bits differ.
@@ -104,12 +106,12 @@ __nc_slt16:
 	bpl .sameSign
 	txa
 	bmi .true
+	ldx #$00
 	lda #$00
-	tax
 	rts
 .true:
-	lda #$01
 	ldx #$00
+	lda #$01
 	rts
 .sameSign:
 	tya
@@ -122,12 +124,12 @@ __nc_sle16:
 	bpl .sameSign
 	txa
 	bmi .true
+	ldx #$00
 	lda #$00
-	tax
 	rts
 .true:
-	lda #$01
 	ldx #$00
+	lda #$01
 	rts
 .sameSign:
 	tya
@@ -140,12 +142,12 @@ __nc_sgt16:
 	bpl .sameSign
 	txa
 	bmi .false
-	lda #$01
 	ldx #$00
+	lda #$01
 	rts
 .false:
+	ldx #$00
 	lda #$00
-	tax
 	rts
 .sameSign:
 	tya
@@ -158,12 +160,12 @@ __nc_sge16:
 	bpl .sameSign
 	txa
 	bmi .false
-	lda #$01
 	ldx #$00
+	lda #$01
 	rts
 .false:
+	ldx #$00
 	lda #$00
-	tax
 	rts
 .sameSign:
 	tya
