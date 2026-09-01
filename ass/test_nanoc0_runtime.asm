@@ -2,13 +2,17 @@
 
 RT_GENERATED_ENTRY = $0800
 RT_SMOKE_TARGET    = $2000
+RT_TEST_ENTRY      = $2c00
 
 RT_FAIL_GENERATED_ASSEMBLE = $20
 RT_FAIL_GENERATED_VALUE    = $40
 RT_FAIL_SMOKE_ASSEMBLE     = $60
 RT_FAIL_SMOKE_BYTE         = $70
 
-	* = ASSEMBLER_TEST_ENTRY
+;;; Keep the test harness below ass's command block. The generated program starts
+;;; at $0800, the smoke output at $2000, and the production assembler remains its
+;;; exact $4000 image below the fixed $6000 staging buffer.
+	* = RT_TEST_ENTRY
 
 main:
 	lda #<runtimeGeneratedName
@@ -68,12 +72,15 @@ main:
 .halt:
 	jmp .halt
 
-runtimeGeneratedName:	byte 'R','T','O','U','T','.','A','S','M'
+runtimeGeneratedName:
+	byte 'T','E','S','T','S','/','N','A','N','O','C','0','-','R','U','N','T','I','M','E','/','R','T','O','U','T','.','A','S','M'
 runtimeGeneratedNameEnd:
-smokeName:		byte 'S','M','O','K','E','.','A','S','M'
+smokeName:
+	byte 'T','E','S','T','S','/','N','A','N','O','C','0','-','R','U','N','T','I','M','E','/','S','M','O','K','E','.','A','S','M'
 smokeNameEnd:
 
 rtReturnedLow:	byte 0
 rtReturnedHigh:	byte 0
 
+	* = ASSEMBLER_TEST_ENTRY
 	include "ass.asm"

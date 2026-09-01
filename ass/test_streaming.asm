@@ -5,12 +5,14 @@ FAIL_STREAM_STATUS  = $01
 FAIL_STREAM_BYTES   = $02
 FAIL_STREAM_POINTER = $03
 
-OUTPUT       = $2200
-LINE_BUFFER  = $2600
-SYMBOLS      = $2700
-SYMBOLS_END  = $3000
-STAGING      = $3000
-STAGING_END  = $4000
+OUTPUT            = $2200
+LINE_BUFFER       = $2600
+SYMBOLS           = $2700
+SYMBOLS_END       = $2e00
+LOCAL_SYMBOLS     = $2e00
+LOCAL_SYMBOLS_END = $3000
+STAGING           = $3000
+STAGING_END       = $4000
 
 	* = ASSEMBLER_TEST_ENTRY
 
@@ -74,6 +76,14 @@ setupWorkspace:
 	sta symbolTableLimit
 	lda #>SYMBOLS_END
 	sta symbolTableLimit+1
+	lda #<LOCAL_SYMBOLS
+	sta localSymbolTableStart
+	lda #>LOCAL_SYMBOLS
+	sta localSymbolTableStart+1
+	lda #<LOCAL_SYMBOLS_END
+	sta localSymbolTableLimit
+	lda #>LOCAL_SYMBOLS_END
+	sta localSymbolTableLimit+1
 	lda #<STAGING
 	sta stagingStart
 	lda #>STAGING

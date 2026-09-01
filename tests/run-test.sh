@@ -10,8 +10,9 @@ NAME=${2:-$(basename "$PRG" .prg)}
 MONITOR_FILE="$BUILD_DIR/$NAME.mon"
 RESULT_FILE="$BUILD_DIR/$NAME.result"
 LOG_FILE="$BUILD_DIR/$NAME.vice.log"
+SOURCE_LINE_FILE="$BUILD_DIR/$NAME.source-line"
 
-rm -f "$MONITOR_FILE" "$RESULT_FILE" "$LOG_FILE"
+rm -f "$MONITOR_FILE" "$RESULT_FILE" "$LOG_FILE" "$SOURCE_LINE_FILE"
 
 # A CBM PRG carries its little-endian load address in its first two bytes.
 # Start the test there rather than imposing a host-side entry address.
@@ -23,7 +24,17 @@ load "$PRG" 0
 > 0001 36
 watch store 0002
 g $ENTRY
-bsave "$RESULT_FILE" 0 0002 0003
+EOF
+
+# Integration tests can ask VICE to save ass's current streamed source line when
+# a native assembly fails. This is diagnostic only; the C64 result byte remains
+# the test authority.
+if [ "${TEST_DEBUG_SOURCE_LINE:-0}" -ne 0 ]; then
+    echo "bsave \"$SOURCE_LINE_FILE\" 0 3200 3280" >> "$MONITOR_FILE"
+fi
+
+cat >> "$MONITOR_FILE" <<EOF
+bsave "$RESULT_FILE" 0 0002 000d
 quit
 EOF
 
@@ -63,11 +74,46 @@ fi
 
 RESULT=$(od -An -tu1 -N1 "$RESULT_FILE" | tr -d '[:space:]')
 
+print_workspace() {
+    set -- $(od -An -tu1 -N5 "$RESULT_FILE")
+    if [ "$#" -ge 5 ]; then
+        persistent_end=$(($2 + 256 * $3))
+        local_end=$(($4 + 256 * $5))
+        echo "symbol workspace: persistent=$((persistent_end - 40960)) local=$((53248 - local_end)) free-gap=$((local_end - persistent_end))" >&2
+    fi
+}
+
+print_arenas() {
+    set -- $(od -An -tu1 -N7 "$RESULT_FILE")
+    if [ "$#" -ge 7 ]; then
+        persistent_end=$(($2 + 256 * $3))
+        overflow_end=$(($4 + 256 * $5))
+        local_end=$(($6 + 256 * $7))
+        echo "symbol arenas: persistent=$((persistent_end - 40960))/8192 overflow=$((overflow_end - 13056))/3328 local=$((53248 - local_end))/4096" >&2
+    fi
+}
+
 if [ "$RESULT" -eq 255 ]; then
+    if [ "${TEST_DEBUG_WORKSPACE:-0}" -ne 0 ] || [ "$NAME" = selfhost ]; then
+        print_workspace
+    fi
+    if [ "$NAME" = nanoc0-expressions ]; then
+        print_arenas
+    fi
     echo "PASS $NAME"
     exit 0
 fi
 
 echo "FAIL $NAME: code $RESULT" >&2
+if [ "${TEST_DEBUG_WORKSPACE:-0}" -ne 0 ] || [ "$NAME" = selfhost ]; then
+    print_workspace
+fi
+if [ "$NAME" = nanoc0-expressions ]; then
+    print_arenas
+fi
+if [ "${TEST_DEBUG_SOURCE_LINE:-0}" -ne 0 ] && [ -s "$SOURCE_LINE_FILE" ]; then
+    printf 'native source line: ' >&2
+    tr '\000' '\n' < "$SOURCE_LINE_FILE" | sed -n '1p' >&2
+fi
 cat "$LOG_FILE" >&2
 exit 1

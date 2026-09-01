@@ -959,14 +959,10 @@ compile_local_initializer:
 	clc
 	rts
 
-;;; Two pre-#57 declaration/capacity tests still contain calls. Keep their old
-;;; body walker in an explicitly test-only file; production source contains only
-;;; the real statement parser.
-	ifdef NANOC0_DECLARATION_BODY_SKIP
-	include "test_declaration_body_skip.asm"
-	else
+;;; #57 completed the real non-recursive statement/call path, so every build now
+;;; uses it. Keeping a test-only body parser here would require conditional
+;;; assembly that the production `ass` deliberately does not implement.
 	include "statements.asm"
-	endif
 
 ;;; currentCount is the slot being constructed until make_current_visible.
 emit_current_checked:

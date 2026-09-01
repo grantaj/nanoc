@@ -543,103 +543,13 @@ st_emit_header:
 	jmp emit_text
 
 ;;; ---------------------------------------------------------------------------
-;;; Declaration emission hooks used by the generated-program fixtures
+;;; Generated-program output
 ;;; ---------------------------------------------------------------------------
-
-;;; A=EMIT_STORAGE_*, X=persistent symbol index.
-emit_persistent_symbol:
-	sta stStorageKind
-	stx stSavedSymbol
-	cmp #EMIT_STORAGE_BSS
-	beq .bss
-	cmp #EMIT_STORAGE_DATA
-	beq .data
-	;;; EMIT_STORAGE_NONE is a function definition. Its source name already exists
-	;;; even though visibility is committed only after the body.
-	ldx stSavedSymbol
-	jsr emit_persistent_name
-	bcc .failed
-	lda #':'
-	jsr emit_output_byte
-	bcc .failed
-	jmp emit_newline
-.bss:
-	ldx stSavedSymbol
-	jsr emit_persistent_name
-	bcc .failed
-	jmp st_emit_bss_assignment
-.data:
-	ldx stSavedSymbol
-	jsr emit_persistent_name
-	bcc .failed
-	lda #':'
-	jsr emit_output_byte
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-;;; X=current-function symbol index; allocOffset is the slot just allocated.
-emit_current_symbol:
-	stx stSavedSymbol
-	jsr emit_current_name
-	bcc .failed
-	jmp st_emit_bss_assignment
-.failed:
-	clc
-	rts
-
-;;; Emit initialized bytes one per directive. Statement fixtures use BSS globals
-;;; today, but this keeps the driver faithful to the declaration contract.
-emit_static_byte:
-	sta stStaticByte
-	lda #stBytePrefixEnd-stBytePrefix
-	ldx #<stBytePrefix
-	ldy #>stBytePrefix
-	jsr emit_text
-	bcc .failed
-	lda stStaticByte
-	jsr emit_hex_byte
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-emit_bss_boundaries:
-	lda #stBssEndPrefixEnd-stBssEndPrefix
-	ldx #<stBssEndPrefix
-	ldy #>stBssEndPrefix
-	jsr emit_text
-	bcc .failed
-	lda bssOffset
-	sta emitWord
-	lda bssOffset+1
-	sta emitWord+1
-	jsr emit_hex_word
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-st_emit_bss_assignment:
-	lda #stBssAssignEnd-stBssAssign
-	ldx #<stBssAssign
-	ldy #>stBssAssign
-	jsr emit_text
-	bcc .failed
-	lda allocOffset
-	sta emitWord
-	lda allocOffset+1
-	sta emitWord+1
-	jsr emit_hex_word
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
+;;;
+;;; The acceptance fixtures use the production declaration/runtime output hooks.
+;;; Keeping that spelling in program_output.asm means this test cannot quietly
+;;; drift away from the source emitted by nanoc0 itself. Only the tiny test header
+;;; below differs: it places BSS at $3800 and jumps straight to main.
 
 ;;; ---------------------------------------------------------------------------
 ;;; Fixed output text and fixture names
@@ -653,12 +563,6 @@ stHeader:
 	byte $09,'c','l','d',$0a
 	byte $09,'j','m','p',' ','_','_','c','_','m','a','i','n',$0a
 stHeaderEnd:
-stBytePrefix:	byte $09,'b','y','t','e',' ','$'
-stBytePrefixEnd:
-stBssAssign:	byte ' ','=',' ','N','C','_','B','S','S','+','$'
-stBssAssignEnd:
-stBssEndPrefix:	byte '_','_','n','c','_','b','s','s','_','e','n','d',' ','=',' ','N','C','_','B','S','S','+','$'
-stBssEndPrefixEnd:
 
 undeclaredName:	byte 'U','N','D','E','C','L','A','R','E','D','.','C'
 undeclaredNameEnd:
@@ -706,8 +610,7 @@ stCompileDiagnostic:	byte 0
 stOutputName:		word 0
 stOutputNameLength:	byte 0
 stOutputOpen:		byte 0
-stStorageKind:		byte 0
-stSavedSymbol:		byte 0
-stStaticByte:		byte 0
 
 	include "declarations.asm"
+	include "program_output.asm"
+	include "runtime_codegen.asm"

@@ -18,12 +18,11 @@ int helper(char p, unsigned q, char *s)
     unsigned c = q;
     int input = p;
     int d = b;
-    io_write(0, input);
     return b;
 }
 int main()
 {
     int x;
-    x = helper(flag, address, source);
+    x = flag;
     return x;
 }

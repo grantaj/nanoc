@@ -4,11 +4,13 @@
 FAIL_LOCAL_REFERENCES = $01
 FAIL_LOCAL_SCOPE      = $02
 
-OUTPUT      = $2000
-SYMBOLS     = $3000
-SYMBOLS_END = $3600
-STAGING     = $3600
-STAGING_END = $4000
+OUTPUT            = $2000
+SYMBOLS           = $3000
+SYMBOLS_END       = $3500
+LOCAL_SYMBOLS     = $3500
+LOCAL_SYMBOLS_END = $3600
+STAGING           = $3600
+STAGING_END       = $4000
 
 	* = ASSEMBLER_TEST_ENTRY
 
@@ -34,6 +36,14 @@ setupWorkspace:
 	sta symbolTableLimit
 	lda #>SYMBOLS_END
 	sta symbolTableLimit+1
+	lda #<LOCAL_SYMBOLS
+	sta localSymbolTableStart
+	lda #>LOCAL_SYMBOLS
+	sta localSymbolTableStart+1
+	lda #<LOCAL_SYMBOLS_END
+	sta localSymbolTableLimit
+	lda #>LOCAL_SYMBOLS_END
+	sta localSymbolTableLimit+1
 	lda #<STAGING
 	sta stagingStart
 	lda #>STAGING
@@ -44,8 +54,10 @@ setupWorkspace:
 	sta stagingLimit+1
 	rts
 
-;;; Local names use the most recent global label as their one-byte scope. The
-;;; source below covers forward/backward references and reuses `.done` safely.
+;;; Dot names live only until the next global label. The same `.done` spelling is
+;;; therefore reused from the rewound local scratch table. `later` is deliberately
+;;; referenced before several scope changes to prove global forward names remain
+;;; in the persistent table while local tables come and go.
 testLocalReferences:
 	lda #<localSource
 	sta ZP_PTR1
@@ -101,6 +113,7 @@ testLocalScopeError:
 
 localSource:
 	string "first:"
+	string "JMP later"
 	string ".loop:"
 	string "INX"
 	string "BNE .loop"
@@ -110,6 +123,8 @@ localSource:
 	string "second:"
 	string "BNE .done"
 	string ".done:"
+	string "RTS"
+	string "later:"
 	string "RTS"
 localSourceEnd:
 

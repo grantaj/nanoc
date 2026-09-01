@@ -7,9 +7,10 @@
 ;;; remembers the callee, the next argument number, and the operator-stack index
 ;;; of that marker. The frame index itself is the call/staging depth.
 ;;;
-;;; Arguments are reduced one at a time to A/X and immediately emitted to
-;;; caller-owned static staging. Only after the closing ')' are those staged
-;;; words copied to the known callee parameter slots and a direct JSR emitted.
+;;; Arguments that must survive later argument expressions are reduced to A/X and
+;;; emitted to caller-owned static staging. The final argument has no later source
+;;; to survive, so it goes straight from A/X to the callee parameter slot. After
+;;; the closing ')' the earlier staged words are copied and a direct JSR emitted.
 ;;; No C value is ever placed on the 6502 hardware stack.
 ;;;
 ;;; bootstrap/ass.c currently needs at most five arguments. Eight leaves modest
@@ -20,12 +21,23 @@ CALL_STACK_CAPACITY    = 4
 CALL_ARGUMENT_CAPACITY = 8
 CALL_FRAME_BYTES       = 3
 
+;;; Pending-call arrays are compiler work RAM immediately after the expression
+;;; literal pool. They contain no initial data, and their fixed addresses are
+;;; declared before use for the one-pass native assembler.
+callCallee            = $b330
+callArgumentIndex     = $b334
+callOperatorBase      = $b338
+callStageAllocated    = $b33c
+runtimeParamAllocated = $b340
+runtimeUsed           = $b345
+
 ;;; reset_call_translation_state
 ;;; Runtime parameter slots, runtime use and compiler-private support use belong
 ;;; to the whole generated translation unit.
 reset_call_translation_state:
 	ldx #$00
 	lda #$00
+	sta compareUsed
 	sta multiplyUsed
 .loop:
 	sta runtimeParamAllocated,x
@@ -186,11 +198,13 @@ finish_call_separator:
 	rts
 
 ;;; finish_call_close
-;;; currentToken is ')' for a non-empty call. Stage the final argument, copy all
-;;; staged values to the callee, emit JSR, and leave the returned int in target
-;;; A/X for the enclosing expression.
+;;; currentToken is ')' for a non-empty call. The final argument no longer needs
+;;; caller staging: no later argument expression can clobber it. Store it directly
+;;; in the callee slot, copy only the earlier staged values, then emit the JSR.
 finish_call_close:
-	jsr finish_current_call_argument
+	jsr finish_current_call_value
+	bcc .failed
+	jsr store_final_call_argument
 	bcc .failed
 	jmp complete_current_call
 .failed:
@@ -198,10 +212,23 @@ finish_call_close:
 	rts
 
 ;;; finish_current_call_argument
-;;; Reduce only operators belonging to this argument. OP_CALL remains as the
-;;; delimiter below them. The resulting A/X is then emitted to the caller's
-;;; static staging word for this call depth and argument number.
+;;; A comma means more source follows, so this completed value really does need
+;;; caller staging before the next argument is evaluated.
 finish_current_call_argument:
+	jsr finish_current_call_value
+	bcc .failed
+	jsr stage_current_call_argument
+	bcc .failed
+	sec
+	rts
+.failed:
+	clc
+	rts
+
+;;; finish_current_call_value
+;;; Reduce only operators belonging to this argument and verify that OP_CALL is
+;;; exactly the active marker. On success the complete argument value is in A/X.
+finish_current_call_value:
 	lda expressionNeedValue
 	beq .haveValue
 	lda #EXPR_EXPECTED_VALUE
@@ -216,10 +243,6 @@ finish_current_call_argument:
 	jmp expression_fail
 .marker:
 	jsr verify_current_call_marker
-	bcc .failed
-	jsr stage_current_call_argument
-	bcc .failed
-	sec
 	rts
 .failed:
 	clc
@@ -250,10 +273,11 @@ verify_current_call_marker:
 	lda #EXPR_UNMATCHED_DELIMITER
 	jmp expression_fail
 
-;;; stage_current_call_argument
-;;; Check the known parameter type, allocate this caller depth/argument staging
-;;; word if it has not been needed before, then emit STA/STX into that word.
-stage_current_call_argument:
+;;; prepare_current_call_argument
+;;; Resolve the active callee/argument and check the source value against the
+;;; known parameter type. The small callEmit* fields are then ready for either
+;;; caller staging or the final direct parameter store.
+prepare_current_call_argument:
 	lda callDepth
 	sec
 	sbc #$01
@@ -291,10 +315,17 @@ stage_current_call_argument:
 	lda #EXPR_CALL_ARGUMENT_TYPE
 	jmp expression_fail
 .typeOk:
-	jsr ensure_call_stage_slot
-	bcs .stageReady
+	sec
 	rts
-.stageReady:
+
+;;; stage_current_call_argument
+;;; A comma means this value must survive later argument evaluation. Allocate the
+;;; caller depth/argument word lazily and save A/X there.
+stage_current_call_argument:
+	jsr prepare_current_call_argument
+	bcc .failed
+	jsr ensure_call_stage_slot
+	bcc .failed
 	jsr emit_store_call_stage
 	bcs .stored
 	lda #EXPR_EMIT_ERROR
@@ -303,6 +334,38 @@ stage_current_call_argument:
 	ldx callEmitDepth
 	inc callArgumentIndex,x
 	sec
+	rts
+.failed:
+	clc
+	rts
+
+;;; store_final_call_argument
+;;; No later argument exists, so A/X can go directly to the fixed callee slot.
+;;; Runtime functions allocate those slots lazily; that allocator uses callEmit*
+;;; as scratch, so prepare the argument once more afterwards before spelling it.
+store_final_call_argument:
+	jsr prepare_current_call_argument
+	bcc .failed
+	ldx callEmitCallee
+	lda persistentKind,x
+	cmp #SYMBOL_RUNTIME_FUNCTION
+	bne .ready
+	jsr ensure_runtime_parameter_slots
+	bcc .failed
+	jsr prepare_current_call_argument
+	bcc .failed
+.ready:
+	jsr emit_store_callee_argument
+	bcs .stored
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
+.stored:
+	ldx callEmitDepth
+	inc callArgumentIndex,x
+	sec
+	rts
+.failed:
+	clc
 	rts
 
 ;;; ensure_call_stage_slot
@@ -378,12 +441,19 @@ complete_current_call:
 	sta runtimeUsed,x
 
 .copyArguments:
+	;;; The final argument is already in its callee slot. Zero-argument calls have
+	;;; nothing to copy; otherwise stop when copyIndex+1 reaches the total count.
+	lda callEmitArgumentCount
+	beq .call
 	lda #$00
 	sta callCopyIndex
 .copyLoop:
 	lda callCopyIndex
+	clc
+	adc #$01
 	cmp callEmitArgumentCount
 	beq .call
+	lda callCopyIndex
 	sta callEmitArgument
 	ldx callEmitCallee
 	lda persistentParamStart,x
@@ -484,18 +554,8 @@ ensure_runtime_parameter_slots:
 ;;; Pending-call compiler state
 ;;; ---------------------------------------------------------------------------
 
+;;; The bounded arrays use the fixed compiler work-RAM constants declared above.
 callDepth:		byte 0
-callCallee:		ds CALL_STACK_CAPACITY
-callArgumentIndex:	ds CALL_STACK_CAPACITY
-callOperatorBase:	ds CALL_STACK_CAPACITY
-
-;;; Per caller function, one byte per nesting depth records how many reusable
-;;; two-byte staging words have actually been allocated at that depth.
-callStageAllocated:	ds CALL_STACK_CAPACITY
-
-;;; Runtime parameter storage is translation-unit state, not caller state.
-runtimeParamAllocated:	ds RUNTIME_SYMBOL_COUNT
-runtimeUsed:		ds RUNTIME_SYMBOL_COUNT
 
 ;;; Transient call/codegen scratch.
 callBeginCallee:	byte 0

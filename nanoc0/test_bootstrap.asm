@@ -56,19 +56,19 @@ main:
 	lda parserError
 	bne .shapeFail
 	lda persistentCount
-	cmp #129
+	cmp #130
 	bne .shapeFail
 	lda userFunctionCount
-	cmp #43
+	cmp #44
 	bne .shapeFail
 	lda parameterMetaCount
 	cmp #105
 	bne .shapeFail
 	lda persistentNameUsed
-	cmp #$fc			; 2044 = $07fc length-prefixed bytes
+	cmp #$08			; 2056 = $0808 length-prefixed bytes
 	bne .shapeFail
 	lda persistentNameUsed+1
-	cmp #$07
+	cmp #$08
 	bne .shapeFail
 	lda currentCount
 	bne .shapeFail

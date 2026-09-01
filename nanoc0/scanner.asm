@@ -19,8 +19,11 @@ ASCII_BACKSLASH          = $5c
 
 ;;; bootstrap/ass.c contains a 171-byte mnemonic-table string. A 192-byte
 ;;; reusable token buffer covers that real source with modest headroom while
-;;; remaining tiny beside the compiler's symbol workspace.
+;;; remaining tiny beside the compiler's symbol workspace. The text is mutable
+;;; compiler work RAM, not loaded data, and must be defined before scanner code
+;;; references it so the one-pass native assembler sees it as a constant.
 TOKEN_TEXT_CAPACITY      = 192
+currentTokenText         = $b000
 
 TOKEN_EOF                = $80
 TOKEN_ERROR              = $81
@@ -986,13 +989,13 @@ scan_greater:
 	lda #LEX_IO_ERROR
 	jmp set_lex_error
 
-;;; Exactly one reusable current token.
+;;; Exactly one reusable current token. The text buffer is the fixed compiler
+;;; work-RAM constant above; only this small scalar token state lives in the image.
 currentTokenKind:	byte TOKEN_EOF
 currentTokenType:	byte TOKEN_TYPE_NONE
 currentTokenValue:	word 0
 currentTokenLength:	byte 0
 currentTokenLine:	word 1
-currentTokenText:		ds TOKEN_TEXT_CAPACITY
 scannerError:		byte LEX_OK
 
 ;;; Small scanner scratch; none of it survives as token history.

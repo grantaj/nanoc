@@ -23,18 +23,22 @@
 ;;;   parameter/local       __c_<function-name>__vNN
 ;;;   expression spill      __c_<function-name>__sNN
 ;;;   deferred string       __nc_stringNN
-;;;   generic local label   .__nc_LNNNN
-;;;   statement labels      .__nc_if_false_NNNN, .__nc_if_end_NNNN,
-;;;                         .__nc_while_top_NNNN, .__nc_while_end_NNNN
-;;;   comparison labels     .__nc_cmp_true_NNNN, .__nc_cmp_false_NNNN,
-;;;                         .__nc_cmp_done_NNNN, .__nc_cmp_same_sign_NNNN
-;;;   branch trampoline     .__nc_near_NNNN
+;;;   generic local label   .LNN
+;;;   if labels             .ifFNN, .ifENN
+;;;   while labels          .wtNN, .weNN
+;;;   comparison labels     .ctNN, .cfNN, .cdNN, .csNN
+;;;   branch trampoline     .nNN
 ;;;
 ;;; Generated control/comparison labels are local to the C function's assembler
-;;; scope. This matches their lifetime and avoids consuming `ass`'s deliberately
-;;; one-byte global-label scope numbers. Deferred data labels remain global.
+;;; scope. That scope is already their namespace. The short role mnemonics are
+;;; deliberate 6502-era economy: `.wt` still says "while top", while spelling
+;;; `while_top` hundreds of times would only consume scarce local-symbol RAM.
+;;; Deferred data labels remain global and keep their explicit Nano C prefix.
 ;;;
 ;;; Every generated label still comes from one monotonically increasing counter.
+;;; Values below $100 use two hex digits; larger values naturally use the full
+;;; four. Fixed-width words would spend two bytes of local-symbol RAM on leading
+;;; zeroes for every early label without making the generated code clearer.
 ;;; emitLabelKind changes only the human-readable spelling; it is transient
 ;;; formatter state, not another label namespace or retained control structure.
 ;;;
@@ -48,6 +52,11 @@
 
 EMIT_PTR        = $fc
 EMIT_OUTPUT_LFN = 3
+
+;;; Four bytes preserve the compiler's two zero-page scratch pairs across KERNAL
+;;; output. They are mutable compiler work RAM immediately after the statement
+;;; control stack, not loaded program data.
+emitOutputSavedScratch = $b39a
 
 EMIT_LABEL_GENERIC       = 0
 EMIT_LABEL_IF_FALSE      = 1
@@ -123,7 +132,8 @@ emit_output_byte:
 	rts
 
 ;;; emit_text
-;;; A=length, X/Y=address. Carry set when all bytes were accepted.
+;;; A=length, X/Y=address. Carry set when all bytes were accepted. This is for
+;;; source-owned names and other dynamic text whose length is already known.
 emit_text:
 	sta emitTextLength
 	stx EMIT_PTR
@@ -136,6 +146,27 @@ emit_text:
 	jsr emit_output_byte
 	bcc .failed
 	iny
+	jmp .loop
+.done:
+	sec
+.failed:
+	rts
+
+;;; emit_string
+;;; X/Y=address of a fixed NUL-terminated compiler string. Fixed formatter text
+;;; uses this path so production source needs no assembler-time label arithmetic.
+emit_string:
+	stx EMIT_PTR
+	sty EMIT_PTR+1
+	ldy #$00
+.loop:
+	lda (EMIT_PTR),y
+	beq .done
+	jsr emit_output_byte
+	bcc .failed
+	inc EMIT_PTR
+	bne .loop
+	inc EMIT_PTR+1
 	jmp .loop
 .done:
 	sec
@@ -229,10 +260,9 @@ emit_persistent_source_name:
 ;;; X=persistent symbol index -> __c_<source-name>.
 emit_persistent_name:
 	stx emitSavedIndex
-	lda #emitCPrefixEnd-emitCPrefix
 	ldx #<emitCPrefix
 	ldy #>emitCPrefix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	ldx emitSavedIndex
 	jsr emit_persistent_source_name
@@ -248,18 +278,16 @@ emit_persistent_name:
 ;;; reconstructable by later callers without retaining parameter source names.
 emit_current_name:
 	stx emitSavedIndex
-	lda #emitCPrefixEnd-emitCPrefix
 	ldx #<emitCPrefix
 	ldy #>emitCPrefix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	ldx currentFunctionIndex
 	jsr emit_persistent_source_name
 	bcc .failed
-	lda #emitValueSuffixEnd-emitValueSuffix
 	ldx #<emitValueSuffix
 	ldy #>emitValueSuffix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda emitSavedIndex
 	jsr emit_hex_byte
@@ -273,18 +301,16 @@ emit_current_name:
 ;;; A=spill depth -> __c_<function-name>__sNN.
 emit_spill_name:
 	sta emitSavedValue
-	lda #emitCPrefixEnd-emitCPrefix
 	ldx #<emitCPrefix
 	ldy #>emitCPrefix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	ldx currentFunctionIndex
 	jsr emit_persistent_source_name
 	bcc .failed
-	lda #emitSpillSuffixEnd-emitSpillSuffix
 	ldx #<emitSpillSuffix
 	ldy #>emitSpillSuffix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda emitSavedValue
 	jmp emit_hex_byte
@@ -295,10 +321,9 @@ emit_spill_name:
 ;;; A=literal index -> __nc_stringNN.
 emit_literal_name:
 	sta emitSavedValue
-	lda #emitStringPrefixEnd-emitStringPrefix
 	ldx #<emitStringPrefix
 	ldy #>emitStringPrefix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda emitSavedValue
 	jmp emit_hex_byte
@@ -330,65 +355,67 @@ emit_generated_label_name:
 	beq .cmpDone
 	cmp #EMIT_LABEL_CMP_SAME_SIGN
 	beq .cmpSameSign
-	lda #emitLabelPrefixEnd-emitLabelPrefix
 	ldx #<emitLabelPrefix
 	ldy #>emitLabelPrefix
 	jmp .prefix
 .ifFalse:
-	lda #emitIfFalsePrefixEnd-emitIfFalsePrefix
 	ldx #<emitIfFalsePrefix
 	ldy #>emitIfFalsePrefix
 	jmp .prefix
 .ifEnd:
-	lda #emitIfEndPrefixEnd-emitIfEndPrefix
 	ldx #<emitIfEndPrefix
 	ldy #>emitIfEndPrefix
 	jmp .prefix
 .whileTop:
-	lda #emitWhileTopPrefixEnd-emitWhileTopPrefix
 	ldx #<emitWhileTopPrefix
 	ldy #>emitWhileTopPrefix
 	jmp .prefix
 .whileEnd:
-	lda #emitWhileEndPrefixEnd-emitWhileEndPrefix
 	ldx #<emitWhileEndPrefix
 	ldy #>emitWhileEndPrefix
 	jmp .prefix
 .near:
-	lda #emitNearPrefixEnd-emitNearPrefix
 	ldx #<emitNearPrefix
 	ldy #>emitNearPrefix
 	jmp .prefix
 .cmpTrue:
-	lda #emitCmpTruePrefixEnd-emitCmpTruePrefix
 	ldx #<emitCmpTruePrefix
 	ldy #>emitCmpTruePrefix
 	jmp .prefix
 .cmpFalse:
-	lda #emitCmpFalsePrefixEnd-emitCmpFalsePrefix
 	ldx #<emitCmpFalsePrefix
 	ldy #>emitCmpFalsePrefix
 	jmp .prefix
 .cmpDone:
-	lda #emitCmpDonePrefixEnd-emitCmpDonePrefix
 	ldx #<emitCmpDonePrefix
 	ldy #>emitCmpDonePrefix
 	jmp .prefix
 .cmpSameSign:
-	lda #emitCmpSameSignPrefixEnd-emitCmpSameSignPrefix
 	ldx #<emitCmpSameSignPrefix
 	ldy #>emitCmpSameSignPrefix
 .prefix:
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
+	jmp emit_generated_label_number
+.failed:
+	clc
+	rts
+
+;;; emit_generated_label_number
+;;; Small local-label numbers use one byte of hex. Once the counter passes $ff,
+;;; use the normal four-digit word spelling. The numeric value, not its padding,
+;;; is what makes the label unique.
+emit_generated_label_number:
+	lda emitLabelValue+1
+	bne .word
+	lda emitLabelValue
+	jmp emit_hex_byte
+.word:
 	lda emitLabelValue
 	sta emitWord
 	lda emitLabelValue+1
 	sta emitWord+1
 	jmp emit_hex_word
-.failed:
-	clc
-	rts
 
 ;;; reserve_generated_label
 ;;; Copy the current counter into emitLabelValue, then increment it. The label
@@ -412,40 +439,26 @@ reset_generated_labels:
 	sta emitLabelKind
 	rts
 
-emitCPrefix:		byte '_','_','c','_'
-emitCPrefixEnd:
-emitValueSuffix:	byte '_','_','v'
-emitValueSuffixEnd:
-emitSpillSuffix:	byte '_','_','s'
-emitSpillSuffixEnd:
-emitStringPrefix:	byte '_','_','n','c','_','s','t','r','i','n','g'
-emitStringPrefixEnd:
-emitLabelPrefix:	byte '.','_','_','n','c','_','L'
-emitLabelPrefixEnd:
-emitIfFalsePrefix:	byte '.','_','_','n','c','_','i','f','_','f','a','l','s','e','_'
-emitIfFalsePrefixEnd:
-emitIfEndPrefix:	byte '.','_','_','n','c','_','i','f','_','e','n','d','_'
-emitIfEndPrefixEnd:
-emitWhileTopPrefix:	byte '.','_','_','n','c','_','w','h','i','l','e','_','t','o','p','_'
-emitWhileTopPrefixEnd:
-emitWhileEndPrefix:	byte '.','_','_','n','c','_','w','h','i','l','e','_','e','n','d','_'
-emitWhileEndPrefixEnd:
-emitNearPrefix:	byte '.','_','_','n','c','_','n','e','a','r','_'
-emitNearPrefixEnd:
-emitCmpTruePrefix:	byte '.','_','_','n','c','_','c','m','p','_','t','r','u','e','_'
-emitCmpTruePrefixEnd:
-emitCmpFalsePrefix:	byte '.','_','_','n','c','_','c','m','p','_','f','a','l','s','e','_'
-emitCmpFalsePrefixEnd:
-emitCmpDonePrefix:	byte '.','_','_','n','c','_','c','m','p','_','d','o','n','e','_'
-emitCmpDonePrefixEnd:
-emitCmpSameSignPrefix:	byte '.','_','_','n','c','_','c','m','p','_','s','a','m','e','_','s','i','g','n','_'
-emitCmpSameSignPrefixEnd:
+emitCPrefix:		byte '_','_','c','_',0
+emitCPrefixEnd = emitCPrefix+4
+emitValueSuffix:	byte '_','_','v',0
+emitSpillSuffix:	byte '_','_','s',0
+emitStringPrefix:	byte '_','_','n','c','_','s','t','r','i','n','g',0
+emitLabelPrefix:	byte '.','L',0
+emitIfFalsePrefix:	byte '.','i','f','F',0
+emitIfEndPrefix:	byte '.','i','f','E',0
+emitWhileTopPrefix:	byte '.','w','t',0
+emitWhileEndPrefix:	byte '.','w','e',0
+emitNearPrefix:	byte '.','n',0
+emitCmpTruePrefix:	byte '.','c','t',0
+emitCmpFalsePrefix:	byte '.','c','f',0
+emitCmpDonePrefix:	byte '.','c','d',0
+emitCmpSameSignPrefix:	byte '.','c','s',0
 
 emitOutputEnabled:	byte 0
 emitOutputByte:		byte 0
 emitOutputSavedX:	byte 0
 emitOutputSavedY:	byte 0
-emitOutputSavedScratch:	ds 4
 emitOutputStatus:	byte 0
 emitTextLength:		byte 0
 emitNumber:		byte 0

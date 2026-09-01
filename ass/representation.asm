@@ -6,10 +6,9 @@
 ;;; cannot also hold a 16-bit chain pointer: byte values, word expressions, and
 ;;; relative branches.
 ;;;
-;;; Fixups are fixed-size and contiguous, growing downward from stagingLimit.
-;;; Resolved fixups stay in place but have kind FIXUP_NONE. There is deliberately
-;;; no allocator or free list: these records are small and uncommon compared with
-;;; the staged machine image.
+;;; Fixups are fixed-size records growing downward from stagingLimit. When a
+;;; label resolves, dead records at the live end are popped by advancing one
+;;; pointer. Records are never moved and there is no allocator or free list.
 
 FIXUP_NONE             = $00
 FIXUP_INSTRUCTION_BYTE = $01
@@ -77,7 +76,7 @@ stageByte:
 	rts
 
 ;;; appendFixup
-;;; Allocate one exceptional forward fixup. Inputs are fixupKind, fixupStage,
+;;; Push one exceptional forward fixup. Inputs are fixupKind, fixupStage,
 ;;; capturedSymbol, capturedAddend, and capturedPrefix.
 ;;; Carry set on success, clear with A=ASSEMBLE_WORK_FULL on collision.
 appendFixup:
@@ -131,6 +130,37 @@ appendFixup:
 .full:
 	lda #ASSEMBLE_WORK_FULL
 	clc
+	rts
+
+;;; trimResolvedFixups
+;;; fixupFree is the stack top. Pop consecutive resolved records from that end.
+;;; A still-live newer record naturally stops the rewind; when it later resolves,
+;;; any dead records behind it become reachable and are popped too.
+trimResolvedFixups:
+.loop:
+	lda fixupFree
+	cmp stagingLimit
+	bne .have
+	lda fixupFree+1
+	cmp stagingLimit+1
+	beq .done
+.have:
+	lda fixupFree
+	sta ZP_PTR0
+	lda fixupFree+1
+	sta ZP_PTR0+1
+	ldy #FIXUP_KIND
+	lda (ZP_PTR0),y
+	bne .done
+	clc
+	lda fixupFree
+	adc #FIXUP_SIZE
+	sta fixupFree
+	lda fixupFree+1
+	adc #$00
+	sta fixupFree+1
+	jmp .loop
+.done:
 	rts
 
 sealRepresentation:
@@ -237,9 +267,9 @@ encodeRelativeByte:
 	rts
 
 ;;; resolveSymbolFixups
-;;; A label has just been defined. Walk the small exceptional-fixup table and
-;;; patch every record waiting for this symbol immediately. Successful records
-;;; are marked FIXUP_NONE; their storage is not reclaimed.
+;;; A label has just been defined. Walk the exceptional-fixup stack and patch
+;;; every record waiting for this symbol immediately. Successful records become
+;;; FIXUP_NONE, then dead records are popped from the live end of the stack.
 ;;; Returns ASSEMBLE_* in A.
 resolveSymbolFixups:
 	jsr firstFixup
@@ -278,6 +308,7 @@ resolveSymbolFixups:
 	jsr nextFixup
 	jmp .next
 .ok:
+	jsr trimResolvedFixups
 	lda #ASSEMBLE_OK
 .done:
 	rts

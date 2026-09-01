@@ -6,6 +6,7 @@ XT_OUTPUT_DEVICE = 9
 XT_FAIL_DEPTH  = $01
 XT_FAIL_STRING = $02
 XT_FAIL_OPEN   = $03
+XT_FAIL_SPILL  = $04
 XT_FAIL_OUTPUT = $05
 
 XT_EXPECTED_COUNT = 30
@@ -18,6 +19,10 @@ main:
 	jmp xt_finish
 .string:
 	jsr xt_test_string_pool
+	bcs .spill
+	jmp xt_finish
+.spill:
+	jsr xt_test_simple_binary_no_spill
 	bcs .runtime
 	jmp xt_finish
 .runtime:
@@ -83,6 +88,26 @@ xt_test_string_pool:
 	rts
 .fail:
 	lda #XT_FAIL_STRING
+	clc
+	rts
+
+;;; Compile a tiny real Phase 1 source file through parse_translation_unit and
+;;; inspect the production expression machine's own spill counter. `a + 1` has
+;;; no later value to preserve, so allocating a spill word is a code-generation
+;;; regression. There is deliberately no test-local copy of expression logic.
+xt_test_simple_binary_no_spill:
+	jsr xt_reset_hooks
+	lda #noSpillNameEnd-noSpillName
+	ldx #<noSpillName
+	ldy #>noSpillName
+	jsr xt_parse_fixture
+	bcc .fail
+	lda spillAllocatedCount
+	bne .fail
+	sec
+	rts
+.fail:
+	lda #XT_FAIL_SPILL
 	clc
 	rts
 
@@ -370,31 +395,25 @@ emit_bss_boundaries:
 .runtime:
 	jsr xt_emit_bss_end
 	bcc .failed
+	;;; The checker is test scaffolding, not part of the C function. Give it a
+	;;; global anchor so its sixty short branch labels have their own assembler
+	;;; local-label lifetime instead of inflating the function's local arena.
+	lda #xtCheckerScopeEnd-xtCheckerScope
+	ldx #<xtCheckerScope
+	ldy #>xtCheckerScope
+	jsr emit_text
+	bcc .failed
 	jsr xt_emit_checker
 	bcc .failed
-	jsr xt_emit_mul16
+	;;; Use the same target helper includes as production nanoc0 rather than
+	;;; carrying test-only copies of multiplication/comparison code.
+	jsr emit_runtime_support
 	bcc .failed
 	sec
 	rts
 .failed:
 	clc
 	rts
-
-;;; emit_text has an 8-bit length by design. The helper is larger than one
-;;; fragment, so stream it as two natural source chunks instead of widening the
-;;; formatter for a test-only constant block.
-xt_emit_mul16:
-	lda #xtMul16Part2-xtMul16
-	ldx #<xtMul16
-	ldy #>xtMul16
-	jsr emit_text
-	bcs .part2
-	rts
-.part2:
-	lda #xtMul16End-xtMul16Part2
-	ldx #<xtMul16Part2
-	ldy #>xtMul16Part2
-	jmp emit_text
 
 xt_emit_bss_assignment:
 	lda #xtBssAssignEnd-xtBssAssign
@@ -645,6 +664,12 @@ xtStart:
 	byte $09,'c','l','d',$0a
 xtStartEnd:
 
+;;; This global label is intentionally emitted between the compiled function and
+;;; the test-only checker. It has no runtime cost; it only starts a fresh `ass`
+;;; local-label lifetime for the checker's generated `.LNN` branches.
+xtCheckerScope:	byte '_','_','t','e','s','t','_','c','h','e','c','k',':',$0a
+xtCheckerScopeEnd:
+
 xtBytePrefix:	byte $09,'b','y','t','e',' '
 xtBytePrefixEnd:
 xtBssAssign:	byte ' ','=',' ','N','C','_','B','S','S','+','$'
@@ -666,42 +691,6 @@ xtPass:
 	byte $09,'r','t','s',$0a
 xtPassEnd:
 
-;;; Small obvious 16-bit shift/add multiply helper. Left arrives in NC_TMP,
-;;; right in A/X, and the low 16-bit result returns in A/X. Y/X accumulate the
-;;; result; NC_PTR holds and shifts the multiplier. No C value uses page $0100.
-xtMul16:
-	byte '_','_','n','c','_','m','u','l','1','6',':',$0a
-	byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a
-	byte $09,'s','t','x',' ','N','C','_','P','T','R','+','1',$0a
-	byte $09,'l','d','y',' ','#','$','0','0',$0a
-	byte $09,'l','d','x',' ','#','$','0','0',$0a
-	byte '_','_','n','c','_','m','u','l','1','6','_','l','o','o','p',':',$0a
-	byte $09,'l','d','a',' ','N','C','_','P','T','R',$0a
-	byte $09,'o','r','a',' ','N','C','_','P','T','R','+','1',$0a
-	byte $09,'b','e','q',' ','_','_','n','c','_','m','u','l','1','6','_','d','o','n','e',$0a
-	byte $09,'l','d','a',' ','N','C','_','P','T','R',$0a
-	byte $09,'a','n','d',' ','#','$','0','1',$0a
-	byte $09,'b','e','q',' ','_','_','n','c','_','m','u','l','1','6','_','n','o','a','d','d',$0a
-xtMul16Part2:
-	byte $09,'t','y','a',$0a
-	byte $09,'c','l','c',$0a
-	byte $09,'a','d','c',' ','N','C','_','T','M','P',$0a
-	byte $09,'t','a','y',$0a
-	byte $09,'t','x','a',$0a
-	byte $09,'a','d','c',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'t','a','x',$0a
-	byte '_','_','n','c','_','m','u','l','1','6','_','n','o','a','d','d',':',$0a
-	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
-	byte $09,'r','o','l',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'l','s','r',' ','N','C','_','P','T','R','+','1',$0a
-	byte $09,'r','o','r',' ','N','C','_','P','T','R',$0a
-	byte $09,'j','m','p',' ','_','_','n','c','_','m','u','l','1','6','_','l','o','o','p',$0a
-	byte '_','_','n','c','_','m','u','l','1','6','_','d','o','n','e',':',$0a
-	byte $09,'t','y','a',$0a
-	byte $09,'c','l','d',$0a
-	byte $09,'r','t','s',$0a
-xtMul16End:
-
 ;;; Expected A/X results of the 30 locals in expressions.c, low byte first.
 xtExpectedValues:
 	word $0000,$7fff,$8000,$ffff,$00ff,$0001,$ffff,$000e
@@ -716,6 +705,8 @@ depthName:	byte 'D','E','P','T','H','.','C'
 depthNameEnd:
 stringName:	byte 'S','T','R','I','N','G','.','C'
 stringNameEnd:
+noSpillName:	byte 'N','O','S','P','I','L','L','.','C'
+noSpillNameEnd:
 runtimeName:	byte 'E','X','P','R','E','S','S','I','O','N','S','.','C'
 runtimeNameEnd:
 outputName:	byte 'E','X','P','R','O','U','T','.','A','S','M',',','S',',','W'
@@ -736,3 +727,4 @@ xtCheckLabel:		word 0
 xtOutputOpen:		byte 0
 
 	include "declarations.asm"
+	include "runtime_codegen.asm"

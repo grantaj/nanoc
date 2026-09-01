@@ -11,10 +11,21 @@
 ;;;   $3005        returned ASSEMBLE_* status
 ;;;
 ;;; Everything else is fixed, caller-visible C64 memory geometry. There is no
-;;; allocator: the path buffer, line buffer, symbol table, and staged
-;;; representation occupy explicit non-overlapping ranges.
+;;; allocator: the path buffer, line buffer, symbol arenas, and staged
+;;; representation occupy explicit ranges.
 ;;;
-;;; Symbols use the RAM under BASIC ROM plus the ordinary RAM through $cfff.
+;;; Assembly-lifetime names first fill the otherwise idle $3300-$3fff pages below
+;;; the assembler image, then $a000-$bfff. Dot-prefixed names for the current
+;;; global-label scope grow downward from $d000. They always have the top 4 KiB
+;;; $c000-$cfff available, and may use unused bytes below $c000 until they meet the
+;;; persistent frontier. Starting a new global label rewinds the local frontier to
+;;; $d000, immediately returning all of that scope's bytes.
+;;;
+;;; Further persistent names continue in physical RAM underneath I/O and KERNAL at
+;;; $d000-$fff9. Symbol code exposes that arena only for the short access itself
+;;; and restores the normal $36 map before returning. $fffa-$ffff remain reserved
+;;; for machine vectors. This is fixed C64 workspace, not an integration-only
+;;; expansion.
 ;;; ass selects the normal C64 mapping with BASIC hidden and KERNAL/I/O visible
 ;;; while it runs, then restores the caller's original $01 value.
 
@@ -25,12 +36,18 @@ ASSEMBLER_COMMAND_LENGTH = $3002
 ASSEMBLER_COMMAND_TARGET = $3003
 ASSEMBLER_COMMAND_STATUS = $3005
 
-ASSEMBLER_PATH_BUFFER = $3100
-ASSEMBLER_LINE_BUFFER = $3200
-ASSEMBLER_SYMBOLS      = $a000
-ASSEMBLER_SYMBOLS_END  = $d000
-ASSEMBLER_STAGING      = $6000
-ASSEMBLER_STAGING_END  = $a000
+ASSEMBLER_PATH_BUFFER          = $3100
+ASSEMBLER_LINE_BUFFER          = $3200
+ASSEMBLER_SYMBOLS              = $3300
+ASSEMBLER_SYMBOLS_END          = $4000
+ASSEMBLER_SYMBOL_OVERFLOW      = $a000
+ASSEMBLER_SYMBOL_OVERFLOW_END  = $c000
+ASSEMBLER_LOCAL_SYMBOLS        = $a000
+ASSEMBLER_LOCAL_SYMBOLS_END    = $d000
+ASSEMBLER_SYMBOL_HIDDEN        = $d000
+ASSEMBLER_SYMBOL_HIDDEN_END    = $fffa
+ASSEMBLER_STAGING              = $6000
+ASSEMBLER_STAGING_END          = $a000
 SELFHOST_SOURCE_DIRECTORY_LENGTH = 4
 
 ;;; assemblerEntry
@@ -52,6 +69,33 @@ assemblerEntry:
 	sta symbolTableLimit
 	lda #>ASSEMBLER_SYMBOLS_END
 	sta symbolTableLimit+1
+
+	lda #<ASSEMBLER_LOCAL_SYMBOLS
+	sta localSymbolTableStart
+	lda #>ASSEMBLER_LOCAL_SYMBOLS
+	sta localSymbolTableStart+1
+	lda #<ASSEMBLER_LOCAL_SYMBOLS_END
+	sta localSymbolTableLimit
+	lda #>ASSEMBLER_LOCAL_SYMBOLS_END
+	sta localSymbolTableLimit+1
+
+	lda #<ASSEMBLER_SYMBOL_OVERFLOW
+	sta symbolOverflowStart
+	lda #>ASSEMBLER_SYMBOL_OVERFLOW
+	sta symbolOverflowStart+1
+	lda #<ASSEMBLER_SYMBOL_OVERFLOW_END
+	sta symbolOverflowLimit
+	lda #>ASSEMBLER_SYMBOL_OVERFLOW_END
+	sta symbolOverflowLimit+1
+
+	lda #<ASSEMBLER_SYMBOL_HIDDEN
+	sta symbolHiddenStart
+	lda #>ASSEMBLER_SYMBOL_HIDDEN
+	sta symbolHiddenStart+1
+	lda #<ASSEMBLER_SYMBOL_HIDDEN_END
+	sta symbolHiddenLimit
+	lda #>ASSEMBLER_SYMBOL_HIDDEN_END
+	sta symbolHiddenLimit+1
 
 	lda #<ASSEMBLER_STAGING
 	sta stagingStart
