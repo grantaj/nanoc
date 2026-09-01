@@ -1,19 +1,19 @@
 ;;; symbols.asm
 ;;;
-;;; The caller supplies fixed symbol arenas with different lifetimes:
+;;; The caller supplies fixed symbol ranges with different lifetimes:
 ;;;
-;;;   ordinary names append upward in the persistent arena and live for the
-;;;   whole assembly;
-;;;   dot-prefixed names prepend downward in the local arena and live only for
-;;;   the current global label.
+;;;   ordinary names append upward and live for the whole assembly;
+;;;   dot-prefixed names prepend downward and live only for the current global
+;;;   label.
 ;;;
 ;;; Starting a new global scope checks that every local forward reference has
-;;; resolved, then rewinds the local pointer to the top of its arena. There is no
+;;; resolved, then rewinds the local pointer to the top of its range. There is no
 ;;; allocator, no compaction, and nothing is individually freed.
 ;;;
-;;; A caller may also provide one fixed persistent continuation range. Production
-;;; ass uses the otherwise idle $3300-$3fff pages between its line buffer and
-;;; image. This is simply a second linear table in a discontiguous C64 memory map.
+;;; A caller may provide one fixed second persistent range. That second range may
+;;; overlap the local range: persistent records grow upward while current-scope
+;;; records grow downward, and allocation fails before the live frontiers cross.
+;;; Production ass first fills $3300-$3fff, then shares $a000-$cfff this way.
 ;;;
 ;;; Each record is simply:
 ;;;   byte  name length
@@ -364,9 +364,10 @@ findSymbolEntry:
 	rts
 
 ;;; allocateSymbol
-;;; Persistent records append upward in their main arena, then in the optional
-;;; fixed continuation. Local records prepend downward in their own fixed arena.
-;;; Every record remains stable while live; no table compaction occurs.
+;;; Persistent records append upward in their first range, then in the optional
+;;; second range. Local records prepend downward in their own range. The second
+;;; persistent range may overlap the local range; the two live ends may touch but
+;;; never cross. Every record remains stable while live; no compaction occurs.
 allocateSymbol:
 	lda symbolNameLength
 	bne .hasName
@@ -405,9 +406,20 @@ allocateSymbol:
 	bcs .localHighEnough
 	jmp .full
 .localHighEnough:
-	bne .localRoom
+	bne .localPersistentRoom
 	lda symbolNext
 	cmp localSymbolTableStart
+	bcs .localPersistentRoom
+	jmp .full
+
+	;;; If the second persistent range shares this RAM, do not cross its live end.
+.localPersistentRoom:
+	lda symbolNext+1
+	cmp symbolOverflowEnd+1
+	bcc .full
+	bne .localRoom
+	lda symbolNext
+	cmp symbolOverflowEnd
 	bcs .localRoom
 	jmp .full
 .localRoom:
@@ -472,12 +484,25 @@ allocateSymbol:
 .overflowNoWrap:
 	lda symbolNext+1
 	cmp symbolOverflowLimit+1
-	bcc .overflowRoom
+	bcc .overflowWithinLimit
 	beq .overflowSamePage
 	jmp .full
 .overflowSamePage:
 	lda symbolNext
 	cmp symbolOverflowLimit
+	bcc .overflowWithinLimit
+	beq .overflowWithinLimit
+	jmp .full
+
+	;;; The production second persistent range shares upper RAM with locals.
+	;;; Touching the current local frontier is safe; crossing it is not.
+.overflowWithinLimit:
+	lda symbolNext+1
+	cmp localSymbolTableEnd+1
+	bcc .overflowRoom
+	bne .full
+	lda symbolNext
+	cmp localSymbolTableEnd
 	bcc .overflowRoom
 	beq .overflowRoom
 	jmp .full
@@ -795,17 +820,17 @@ symbolScope:
 	clc
 	rts
 
-;;; Main persistent arena lower edge, live end, and fixed upper edge.
+;;; First persistent range lower edge, live end, and fixed upper edge.
 symbolTableStart:	word 0
 symbolTableEnd:		word 0
 symbolTableLimit:	word 0
 
-;;; Optional fixed second range for persistent records only.
+;;; Optional second persistent range. It may share RAM with the local range.
 symbolOverflowStart:	word 0
 symbolOverflowEnd:	word 0
 symbolOverflowLimit:	word 0
 
-;;; Fixed local arena and the current lower edge of records growing downward.
+;;; Local range and the current lower edge of records growing downward.
 localSymbolTableStart:	word 0
 localSymbolTableEnd:	word 0
 localSymbolTableLimit:	word 0
