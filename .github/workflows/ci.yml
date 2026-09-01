@@ -37,4 +37,9 @@ jobs:
           path: |
             build/nanoc0-integration/ASSFROMC.ASM
             build/nanoc0-integration/assfromc.asm
+            nanoc0/expression_codegen.asm
+            nanoc0/expression_codegen_state.asm
+            nanoc0/runtime_codegen.asm
+            nanoc0/calls.asm
+            nanoc0/statement_codegen.asm
           if-no-files-found: ignore
