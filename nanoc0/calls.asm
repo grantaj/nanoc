@@ -484,18 +484,21 @@ ensure_runtime_parameter_slots:
 ;;; Pending-call compiler state
 ;;; ---------------------------------------------------------------------------
 
+;;; The bounded arrays live in compiler work RAM immediately after the expression
+;;; literal pool. They contain no initial data and therefore do not belong in the
+;;; loaded image.
 callDepth:		byte 0
-callCallee:		ds CALL_STACK_CAPACITY
-callArgumentIndex:	ds CALL_STACK_CAPACITY
-callOperatorBase:	ds CALL_STACK_CAPACITY
+callCallee = $b330
+callArgumentIndex = $b334
+callOperatorBase = $b338
 
 ;;; Per caller function, one byte per nesting depth records how many reusable
 ;;; two-byte staging words have actually been allocated at that depth.
-callStageAllocated:	ds CALL_STACK_CAPACITY
+callStageAllocated = $b33c
 
 ;;; Runtime parameter storage is translation-unit state, not caller state.
-runtimeParamAllocated:	ds RUNTIME_SYMBOL_COUNT
-runtimeUsed:		ds RUNTIME_SYMBOL_COUNT
+runtimeParamAllocated = $b340
+runtimeUsed = $b345
 
 ;;; Transient call/codegen scratch.
 callBeginCallee:	byte 0
