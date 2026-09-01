@@ -89,7 +89,7 @@ print_arenas() {
         persistent_end=$(($2 + 256 * $3))
         overflow_end=$(($4 + 256 * $5))
         local_end=$(($6 + 256 * $7))
-        echo "symbol arenas: persistent=$((persistent_end - 40960))/11264 overflow=$((overflow_end - 13056))/3328 local=$((53248 - local_end))/1024" >&2
+        echo "symbol arenas: persistent=$((persistent_end - 40960))/10240 overflow=$((overflow_end - 13056))/3328 local=$((53248 - local_end))/2048" >&2
     fi
 }
 
