@@ -86,6 +86,8 @@ main:
 	sta INTEGRATION_STATUS
 	cmp #ASSEMBLE_OK
 	beq .compilerReady
+	jsr capture_ass_workspace
+	lda INTEGRATION_STATUS
 	ora #FAIL_BUILD_NANOC0
 	jmp finish
 
@@ -142,6 +144,26 @@ finish:
 	sta TEST_RESULT
 .halt:
 	jmp .halt
+
+;;; On an assembler-stage failure the compiler diagnostic fields are not live yet.
+;;; Reuse those mailbox bytes for the two symbol-arena cursors and current scope:
+;;;   INTEGRATION_LINE = symbolTableEnd
+;;;   INTEGRATION_BSS  = symbolNameEnd
+;;;   INTEGRATION_DETAIL = currentScope
+;;; The host can turn those raw addresses into entry/name/free byte counts without
+;;; reproducing any assembler semantics.
+capture_ass_workspace:
+	lda symbolTableEnd
+	sta INTEGRATION_LINE
+	lda symbolTableEnd+1
+	sta INTEGRATION_LINE+1
+	lda currentScope
+	sta INTEGRATION_DETAIL
+	lda symbolNameEnd
+	sta INTEGRATION_BSS
+	lda symbolNameEnd+1
+	sta INTEGRATION_BSS+1
+	rts
 
 ;;; Preserve the production compiler command result in low RAM before the next
 ;;; operation can reuse the command block. These are exactly the facts a person
