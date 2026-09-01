@@ -75,13 +75,11 @@ fi
 RESULT=$(od -An -tu1 -N1 "$RESULT_FILE" | tr -d '[:space:]')
 
 print_workspace() {
-    set -- $(od -An -tu1 -N9 "$RESULT_FILE")
-    if [ "$#" -ge 9 ]; then
+    set -- $(od -An -tu1 -N5 "$RESULT_FILE")
+    if [ "$#" -ge 5 ]; then
         persistent_end=$(($2 + 256 * $3))
-        persistent_name_end=$(($4 + 256 * $5))
-        local_end=$(($6 + 256 * $7))
-        local_name_end=$(($8 + 256 * $9))
-        echo "symbol workspace: persistent entry-bytes=$((persistent_end - 40960)) name-bytes=$((48128 - persistent_name_end)) free=$((persistent_name_end - persistent_end)); local entry-bytes=$((local_end - 48128)) name-bytes=$((53248 - local_name_end)) free=$((local_name_end - local_end))" >&2
+        local_end=$(($4 + 256 * $5))
+        echo "symbol workspace: persistent used=$((persistent_end - 40960)) free=$((48128 - persistent_end)); local used=$((local_end - 48128)) free=$((53248 - local_end))" >&2
     fi
 }
 
