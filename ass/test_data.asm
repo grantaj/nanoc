@@ -60,9 +60,9 @@ setupWorkspace:
 	sta stagingLimit+1
 	rts
 
-;;; Origin, byte, word, spaces around commas, character values, and forward
-;;; labels all reduce directly to final-size staged bytes plus only the unresolved
-;;; reference state that is still needed.
+;;; Origin, byte, word, spaces around commas, character values including comma
+;;; and space, and forward labels all reduce directly to final-size staged bytes
+;;; plus only the unresolved reference state that is still needed.
 testDataBytes:
 	lda #<dataSource
 	sta ZP_PTR1
@@ -89,10 +89,10 @@ testDataBytes:
 	bne .check
 
 	lda assemblyPtr
-	cmp #<(OUTPUT+5)
+	cmp #<(OUTPUT+7)
 	bne .failPointer
 	lda assemblyPtr+1
-	cmp #>(OUTPUT+5)
+	cmp #>(OUTPUT+7)
 	bne .failPointer
 	sec
 	rts
@@ -196,7 +196,7 @@ testBadOrigin:
 	sta ZP_PTR1+1
 	lda #<badOriginSourceEnd
 	sta sourceEnd
-	lda #>badOriginSourceEnd
+	lda #>sourceEnd
 	sta sourceEnd+1
 	lda #<OUTPUT
 	sta assemblyPtr
@@ -274,12 +274,13 @@ dataSource:
 	string "word later"
 	string "later:"
 	string "byte 'A'"
+	string "byte ',', ' '"
 dataSourceEnd:
 
 expectedData:
 	byte $04,$21			; low/high bytes of later = $2104
 	byte $04,$21			; word later, little endian
-	byte 'A'
+	byte 'A',',',' '
 expectedDataEnd:
 
 pageSource:
