@@ -41,13 +41,19 @@ report_driver_mailbox() {
 
     case "$stage" in
         1)
-            # During the assembler stage the line/BSS words carry the two moving
-            # ends of the shared $a000-$cfff symbol workspace. Persistent records
-            # grow upward; current-scope local records grow downward.
-            persistent_used=$((line - 40960))
-            local_used=$((53248 - bss))
-            free_gap=$((bss - line))
-            echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status scope=$detail persistent=$persistent_used local=$local_used free-gap=$free_gap" >&2
+            if [ "$status" -eq 11 ]; then
+                staged=$((line - 24576))
+                fixups=$((40960 - bss))
+                free_gap=$((bss - line))
+                echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status scope=$detail staged=$staged fixup-bytes=$fixups free-gap=$free_gap" >&2
+            else
+                # During other assembler failures the line/BSS words carry the
+                # two moving ends of the shared $a000-$cfff symbol workspace.
+                persistent_used=$((line - 40960))
+                local_used=$((53248 - bss))
+                free_gap=$((bss - line))
+                echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status scope=$detail persistent=$persistent_used local=$local_used free-gap=$free_gap" >&2
+            fi
             ;;
         2)
             echo "native bootstrap stage=compile-small status=$(nanoc_status_name "$status")($status) line=$line detail=$detail bss=$bss" >&2
