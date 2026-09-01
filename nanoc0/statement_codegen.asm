@@ -210,10 +210,10 @@ emit_indexed_store:
 	clc
 	rts
 
-;;; A/X is the condition result. Collapse both bytes to Z, then use the exact
-;;; universal helper already used by expression comparisons. The real semantic
-;;; destination is an absolute JMP; the relative BNE reaches only __nc_near_NNNN
-;;; emitted adjacent to the branch.
+;;; A/X is the condition result. Collapse both bytes to Z. STX/ORA is the
+;;; shortest explicit form because the value itself is dead once the condition
+;;; has been decided. The real semantic destination is an absolute JMP; the
+;;; relative BNE reaches only the adjacent near label.
 emit_statement_false_jump:
 	ldx #<statementTruthTest
 	ldy #>statementTruthTest
@@ -238,8 +238,7 @@ statementLdaPtrHigh:	byte $09,'l','d','a',' ','N','C','_','P','T','R','+','1',$0
 statementStaPtr:		byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a,0
 statementStaPtrHigh:	byte $09,'s','t','a',' ','N','C','_','P','T','R','+','1',$0a,0
 statementTruthTest:
-	byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
-	byte $09,'t','x','a',$0a
+	byte $09,'s','t','x',' ','N','C','_','T','M','P',$0a
 	byte $09,'o','r','a',' ','N','C','_','T','M','P',$0a,0
 statementStoreChar:
 	byte $09,'l','d','y',' ','#','$','0','0',$0a
