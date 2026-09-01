@@ -34,7 +34,7 @@ if [ "${TEST_DEBUG_SOURCE_LINE:-0}" -ne 0 ]; then
 fi
 
 cat >> "$MONITOR_FILE" <<EOF
-bsave "$RESULT_FILE" 0 0002 0003
+bsave "$RESULT_FILE" 0 0002 000a
 quit
 EOF
 
