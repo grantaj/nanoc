@@ -111,11 +111,12 @@ char opcode_mode[256] = {
  * these consume the same budgets as the native assembler:
  *
  *   staging: 11264 bytes + 640 eight-byte fixups = 16384 bytes
- *   symbols: 672 seven-byte records + 7584 name bytes = 12288 bytes
+ *   symbols: 896 seven-byte records + 9344 name bytes = 15616 bytes
  *
- * The native assembler lets bytes/fixups and records/names share their regions
- * dynamically.  Fixed splits keep the C representation simple without giving
- * the host implementation extra target memory.
+ * Native ass uses a 12288-byte main symbol workspace plus its fixed 3328-byte
+ * persistent continuation at $3300-$3fff.  The C candidate uses the same total
+ * target budget as flat arrays, which keeps the representation simple without
+ * giving the host implementation extra target memory.
  */
 char ass_image[11264];
 int ass_image_length;
@@ -129,12 +130,12 @@ int source_depth;
 char *source_directory;
 int source_directory_length;
 
-int symbol_name_offset[672];
-char symbol_name_length[672];
-unsigned symbol_payload[672];
-char symbol_scope[672];
-char symbol_kind[672];
-char symbol_name_bytes[7584];
+int symbol_name_offset[896];
+char symbol_name_length[896];
+unsigned symbol_payload[896];
+char symbol_scope[896];
+char symbol_kind[896];
+char symbol_name_bytes[9344];
 int symbol_count;
 int symbol_name_used;
 int current_scope;
@@ -382,10 +383,10 @@ int allocate_symbol(char *name, int length, int kind, unsigned payload)
     if (scope < 0) {
         return -2;
     }
-    if (symbol_count >= 672) {
+    if (symbol_count >= 896) {
         return -3;
     }
-    if (symbol_name_used + length > 7584) {
+    if (symbol_name_used + length > 9344) {
         return -3;
     }
 
