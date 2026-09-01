@@ -1,19 +1,19 @@
 ;;; symbols.asm
 ;;;
-;;; The caller supplies one main symbol workspace. Two linear tables use it from
-;;; opposite ends:
+;;; The caller supplies fixed symbol arenas with different lifetimes:
 ;;;
-;;;   ordinary names grow upward and live for the whole assembly;
-;;;   dot-prefixed names grow downward and live only for the current global label.
+;;;   ordinary names append upward in the persistent arena and live for the
+;;;   whole assembly;
+;;;   dot-prefixed names prepend downward in the local arena and live only for
+;;;   the current global label.
 ;;;
 ;;; Starting a new global scope checks that every local forward reference has
-;;; resolved, then rewinds the local pointer to the top of the workspace. There is
-;;; no allocator, no compaction, and nothing is individually freed.
+;;; resolved, then rewinds the local pointer to the top of its arena. There is no
+;;; allocator, no compaction, and nothing is individually freed.
 ;;;
-;;; A caller may also provide one fixed persistent overflow range. Production ass
-;;; uses the otherwise idle $3300-$3fff pages between its line buffer and image.
-;;; Persistent records use that range only when the main table meets live locals.
-;;; This is simply a second linear table in a discontiguous C64 memory map.
+;;; A caller may also provide one fixed persistent continuation range. Production
+;;; ass uses the otherwise idle $3300-$3fff pages between its line buffer and
+;;; image. This is simply a second linear table in a discontiguous C64 memory map.
 ;;;
 ;;; Each record is simply:
 ;;;   byte  name length
@@ -23,8 +23,7 @@
 ;;;
 ;;; The name follows its entry, so storing another two-byte pointer to it would be
 ;;; redundant. Records are never moved while live, so symbolEntry remains stable
-;;; for staged fixups. The table direction itself says whether a name is global
-;;; or local.
+;;; for staged fixups. The arena itself says whether a name is global or local.
 ;;;
 ;;; The two-byte payload has one meaning at a time:
 ;;;   constant / defined label -> final value
@@ -53,12 +52,12 @@ SYMBOL_DUPLICATE = $01
 SYMBOL_FULL      = $02
 SYMBOL_NO_SCOPE  = $03
 
-;;; These select one of the two table directions; they are not stored in records.
+;;; These select one of the two arena lifetimes; they are not stored in records.
 SYMBOL_SCOPE_GLOBAL = $00
 SYMBOL_SCOPE_LOCAL  = $01
 
 ;;; resetSymbols
-;;; Empty all tables. The local table remains unavailable until the first global
+;;; Empty all tables. The local arena remains unavailable until the first global
 ;;; label gives dot-prefixed names a scope.
 resetSymbols:
 	lda symbolTableStart
@@ -75,12 +74,12 @@ resetSymbols:
 	rts
 
 ;;; resetLocalSymbols
-;;; Rewind current-scope scratch to the top of the shared workspace. No bytes are
+;;; Rewind current-scope scratch to the top of its fixed arena. No bytes are
 ;;; cleared; the pointer alone defines which local records are live.
 resetLocalSymbols:
-	lda symbolTableLimit
+	lda localSymbolTableLimit
 	sta localSymbolTableEnd
-	lda symbolTableLimit+1
+	lda localSymbolTableLimit+1
 	sta localSymbolTableEnd+1
 	rts
 
@@ -141,7 +140,7 @@ internLabel:
 
 ;;; defineLabel
 ;;; Define a label at the current final assemblyPtr. A non-local label first ends
-;;; the previous local-label lifetime; that scratch table is rewound only after
+;;; the previous local-label lifetime; that scratch arena is rewound only after
 ;;; every local forward reference has been resolved.
 defineLabel:
 	jsr prepareLabelLifetime
@@ -199,7 +198,7 @@ defineLabel:
 ;;; `enterLabelScope` in assembler.asm still performs the cheap syntactic check
 ;;; that a local label has a preceding global label. Here a global definition
 ;;; performs the actual lifetime transition: validate old locals, rewind their
-;;; scratch table, and leave currentScope nonzero for following dot labels.
+;;; scratch arena, and leave currentScope nonzero for following dot labels.
 prepareLabelLifetime:
 	lda symbolNameLength
 	beq .bad
@@ -225,8 +224,7 @@ prepareLabelLifetime:
 
 ;;; findSymbolEntry
 ;;; Ordinary names are searched through both persistent ranges. Dot-prefixed
-;;; names are searched through the live local records at the top of the main
-;;; workspace. ZP_PTR1 is preserved.
+;;; names are searched only through the live local records. ZP_PTR1 is preserved.
 findSymbolEntry:
 	jsr symbolScope
 	bcs .scopeReady
@@ -239,9 +237,9 @@ findSymbolEntry:
 	sta symbolScan
 	lda localSymbolTableEnd+1
 	sta symbolScan+1
-	lda symbolTableLimit
+	lda localSymbolTableLimit
 	sta symbolSearchEnd
-	lda symbolTableLimit+1
+	lda localSymbolTableLimit+1
 	sta symbolSearchEnd+1
 	lda #$01
 	sta symbolSearchLast
@@ -366,10 +364,9 @@ findSymbolEntry:
 	rts
 
 ;;; allocateSymbol
-;;; Persistent records first append upward in the main table. If live locals meet
-;;; that end, production ass can use its second fixed persistent range. Local
-;;; records prepend downward from symbolTableLimit. Every record remains stable
-;;; while live; no table compaction occurs.
+;;; Persistent records append upward in their main arena, then in the optional
+;;; fixed continuation. Local records prepend downward in their own fixed arena.
+;;; Every record remains stable while live; no table compaction occurs.
 allocateSymbol:
 	lda symbolNameLength
 	bne .hasName
@@ -402,15 +399,15 @@ allocateSymbol:
 	jmp .full
 .localNoUnderflow:
 
-	;;; The new local record may touch, but not cross, the persistent main end.
+	;;; The new local record may touch, but not cross, its fixed lower edge.
 	lda symbolNext+1
-	cmp symbolTableEnd+1
+	cmp localSymbolTableStart+1
 	bcs .localHighEnough
 	jmp .full
 .localHighEnough:
 	bne .localRoom
 	lda symbolNext
-	cmp symbolTableEnd
+	cmp localSymbolTableStart
 	bcs .localRoom
 	jmp .full
 .localRoom:
@@ -434,15 +431,15 @@ allocateSymbol:
 	jmp .globalOverflow
 .globalNoOverflow:
 
-	;;; The new persistent main record may touch, but not cross, live locals.
+	;;; The new persistent main record may touch, but not cross, its fixed limit.
 	lda symbolNext+1
-	cmp localSymbolTableEnd+1
+	cmp symbolTableLimit+1
 	bcc .globalRoom
 	beq .globalSamePage
 	jmp .globalOverflow
 .globalSamePage:
 	lda symbolNext
-	cmp localSymbolTableEnd
+	cmp symbolTableLimit
 	bcc .globalRoom
 	beq .globalRoom
 	jmp .globalOverflow
@@ -670,7 +667,7 @@ resolveWordReferencesForSymbol:
 	rts
 
 ;;; allLabelsDefined
-;;; Carry set only when both persistent ranges and the current local scratch table
+;;; Carry set only when both persistent ranges and the current local scratch arena
 ;;; contain no unresolved labels.
 allLabelsDefined:
 	lda symbolTableStart
@@ -700,15 +697,15 @@ allLabelsDefined:
 	rts
 
 ;;; allLocalLabelsDefined
-;;; Used both at EOF and immediately before the scratch table is rewound.
+;;; Used both at EOF and immediately before the scratch arena is rewound.
 allLocalLabelsDefined:
 	lda localSymbolTableEnd
 	sta symbolScan
 	lda localSymbolTableEnd+1
 	sta symbolScan+1
-	lda symbolTableLimit
+	lda localSymbolTableLimit
 	sta symbolSearchEnd
-	lda symbolTableLimit+1
+	lda localSymbolTableLimit+1
 	sta symbolSearchEnd+1
 
 scanLabelsDefined:
@@ -798,7 +795,7 @@ symbolScope:
 	clc
 	rts
 
-;;; Main shared workspace lower edge, persistent end, and fixed upper edge.
+;;; Main persistent arena lower edge, live end, and fixed upper edge.
 symbolTableStart:	word 0
 symbolTableEnd:		word 0
 symbolTableLimit:	word 0
@@ -808,12 +805,9 @@ symbolOverflowStart:	word 0
 symbolOverflowEnd:	word 0
 symbolOverflowLimit:	word 0
 
-;;; Current lower edge of the local records growing down from symbolTableLimit.
-localSymbolTableEnd:	word 0
-
-;;; Compatibility variables while old direct fixtures stop configuring a
-;;; separate local range. symbols.asm does not consult either value.
+;;; Fixed local arena and the current lower edge of records growing downward.
 localSymbolTableStart:	word 0
+localSymbolTableEnd:	word 0
 localSymbolTableLimit:	word 0
 
 ;;; Zero means no global label has appeared yet. Nonzero means dot-prefixed names
