@@ -7,12 +7,6 @@ VICE_TIMEOUT=${VICE_TIMEOUT:-15}
 PRG=$1
 NAME=${2:-$(basename "$PRG" .prg)}
 
-# Hidden-symbol support changed the native self-host runtime substantially. Give
-# this one diagnostic enough room to distinguish slow progress from a stuck CPU.
-if [ "$NAME" = selfhost ] && [ "$VICE_TIMEOUT" -lt 180 ]; then
-    VICE_TIMEOUT=180
-fi
-
 MONITOR_FILE="$BUILD_DIR/$NAME.mon"
 RESULT_FILE="$BUILD_DIR/$NAME.result"
 LOG_FILE="$BUILD_DIR/$NAME.vice.log"
