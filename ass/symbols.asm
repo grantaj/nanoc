@@ -1,14 +1,15 @@
 ;;; symbols.asm
 ;;;
-;;; Two deliberately small linear symbol tables share one entry format.
+;;; Two deliberately small linear symbol tables use the same compact entry.
 ;;;
 ;;; Ordinary names live for the whole assembly in the caller-owned persistent
 ;;; table. Dot-prefixed names live only until the next global label in a separate
 ;;; caller-owned scratch table. Starting a new global scope rewinds that scratch
 ;;; table by resetting two pointers; nothing is moved or individually freed.
 ;;;
-;;; Within either table entries grow upward while owned name bytes grow downward.
-;;; The two regions simply meet when that table is full.
+;;; The table itself says whether a name is global or local, so entries do not
+;;; carry a scope number. Within either table entries grow upward while owned
+;;; name bytes grow downward. The two regions simply meet when that table is full.
 ;;;
 ;;; The two-byte payload has one meaning at a time:
 ;;;   constant / defined label -> final value
@@ -21,9 +22,8 @@ SYMBOL_NAME_HI    = 1
 SYMBOL_LENGTH     = 2
 SYMBOL_PAYLOAD_LO = 3
 SYMBOL_PAYLOAD_HI = 4
-SYMBOL_SCOPE      = 5
-SYMBOL_KIND       = 6
-SYMBOL_SIZE       = 7
+SYMBOL_KIND       = 5
+SYMBOL_SIZE       = 6
 
 SYMBOL_VALUE_LO = SYMBOL_PAYLOAD_LO
 SYMBOL_VALUE_HI = SYMBOL_PAYLOAD_HI
@@ -39,12 +39,13 @@ SYMBOL_DUPLICATE = $01
 SYMBOL_FULL      = $02
 SYMBOL_NO_SCOPE  = $03
 
+;;; These select one of the two fixed tables; they are not stored in entries.
 SYMBOL_SCOPE_GLOBAL = $00
 SYMBOL_SCOPE_LOCAL  = $01
 
 ;;; resetSymbols
-;;; Empty both caller-owned tables. The local table remains inactive until the
-;;; first global label starts a local-label scope.
+;;; Empty both caller-owned tables. The local table remains unavailable until the
+;;; first global label gives dot-prefixed names a scope.
 resetSymbols:
 	lda symbolTableStart
 	sta symbolTableEnd
@@ -56,7 +57,6 @@ resetSymbols:
 	sta symbolNameEnd+1
 	jsr resetLocalSymbols
 	lda #$00
-	sta localScopeActive
 	sta currentScope
 	rts
 
@@ -204,7 +204,6 @@ prepareLabelLifetime:
 	bcc .bad
 	jsr resetLocalSymbols
 	lda #$01
-	sta localScopeActive
 	sta currentScope
 .ok:
 	sec
@@ -268,12 +267,6 @@ findSymbolEntry:
 	beq .lengthMatches
 	jmp .advance
 .lengthMatches:
-	ldy #SYMBOL_SCOPE
-	lda (ZP_PTR1),y
-	cmp symbolWantedScope
-	beq .scopeMatches
-	jmp .advance
-.scopeMatches:
 	lda symbolName
 	sta ZP_PTR0
 	lda symbolName+1
@@ -450,9 +443,6 @@ allocateSymbol:
 	lda symbolRefs+1
 	sta (ZP_PTR1),y
 .storedPayload:
-	iny
-	lda symbolWantedScope
-	sta (ZP_PTR1),y
 	iny
 	lda symbolKind
 	sta (ZP_PTR1),y
@@ -665,7 +655,7 @@ loadSymbolEntry:
 
 ;;; symbolScope
 ;;; Ordinary names have assembly lifetime. `.name` has current-global-label
-;;; lifetime and therefore requires an active local scratch table.
+;;; lifetime and therefore requires a preceding global label.
 symbolScope:
 	lda symbolNameLength
 	beq .bad
@@ -681,7 +671,7 @@ symbolScope:
 	sec
 	rts
 .local:
-	lda localScopeActive
+	lda currentScope
 	beq .bad
 	lda #SYMBOL_SCOPE_LOCAL
 	sec
@@ -701,10 +691,9 @@ localSymbolTableStart:	word 0
 localSymbolTableEnd:	word 0
 localSymbolTableLimit:	word 0
 localSymbolNameEnd:	word 0
-localScopeActive:	byte 0
 
-;;; Kept as the parser-facing "a global scope exists" byte. It is reset to one
-;;; at every global definition rather than consumed as a unique scope number.
+;;; Zero means no global label has appeared yet. Nonzero means dot-prefixed names
+;;; have a current scope. It is reset to one at every global definition.
 currentScope:		byte 0
 
 symbolName:		word 0
