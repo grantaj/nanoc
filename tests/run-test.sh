@@ -79,7 +79,7 @@ print_workspace() {
     if [ "$#" -ge 5 ]; then
         persistent_end=$(($2 + 256 * $3))
         local_end=$(($4 + 256 * $5))
-        echo "symbol workspace: persistent used=$((persistent_end - 40960)) free=$((48128 - persistent_end)); local used=$((local_end - 48128)) free=$((53248 - local_end))" >&2
+        echo "symbol workspace: persistent=$((persistent_end - 40960)) local=$((53248 - local_end)) free-gap=$((local_end - persistent_end))" >&2
     fi
 }
 
