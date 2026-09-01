@@ -86,7 +86,9 @@ main:
 	ldx #<assAssembleName
 	ldy #>assAssembleName
 	jsr find_generated_symbol
-	bcc .symbol0
+	bcs .haveAssAssemble
+	jmp .symbol0
+.haveAssAssemble:
 	lda symbolValue
 	sta callAssAssemble+1
 	lda symbolValue+1
@@ -96,7 +98,9 @@ main:
 	ldx #<param0Name
 	ldy #>param0Name
 	jsr find_generated_symbol
-	bcc .symbol1
+	bcs .haveParam0
+	jmp .symbol1
+.haveParam0:
 	lda symbolValue
 	sta param0
 	lda symbolValue+1
@@ -106,7 +110,9 @@ main:
 	ldx #<param1Name
 	ldy #>param1Name
 	jsr find_generated_symbol
-	bcc .symbol2
+	bcs .haveParam1
+	jmp .symbol2
+.haveParam1:
 	lda symbolValue
 	sta param1
 	lda symbolValue+1
@@ -116,7 +122,9 @@ main:
 	ldx #<param2Name
 	ldy #>param2Name
 	jsr find_generated_symbol
-	bcc .symbol3
+	bcs .haveParam2
+	jmp .symbol3
+.haveParam2:
 	lda symbolValue
 	sta param2
 	lda symbolValue+1
@@ -126,7 +134,9 @@ main:
 	ldx #<param3Name
 	ldy #>param3Name
 	jsr find_generated_symbol
-	bcc .symbol4
+	bcs .haveParam3
+	jmp .symbol4
+.haveParam3:
 	lda symbolValue
 	sta param3
 	lda symbolValue+1
@@ -136,7 +146,9 @@ main:
 	ldx #<param4Name
 	ldy #>param4Name
 	jsr find_generated_symbol
-	bcc .symbol5
+	bcs .haveParam4
+	jmp .symbol5
+.haveParam4:
 	lda symbolValue
 	sta param4
 	lda symbolValue+1
@@ -146,7 +158,9 @@ main:
 	ldx #<assImageName
 	ldy #>assImageName
 	jsr find_generated_symbol
-	bcc .symbol6
+	bcs .haveAssImage
+	jmp .symbol6
+.haveAssImage:
 	lda symbolValue
 	sta generatedImage
 	lda symbolValue+1
@@ -156,7 +170,9 @@ main:
 	ldx #<assLengthName
 	ldy #>assLengthName
 	jsr find_generated_symbol
-	bcc .symbol7
+	bcs .haveAssLength
+	jmp .symbol7
+.haveAssLength:
 	lda symbolValue
 	sta generatedLength
 	lda symbolValue+1
@@ -166,7 +182,9 @@ main:
 	ldx #<assOriginName
 	ldy #>assOriginName
 	jsr find_generated_symbol
-	bcc .symbol8
+	bcs .haveAssOrigin
+	jmp .symbol8
+.haveAssOrigin:
 	lda symbolValue
 	sta generatedOrigin
 	lda symbolValue+1
