@@ -14,6 +14,7 @@ INTEGRATION_STATUS = $04
 INTEGRATION_LINE   = $05
 INTEGRATION_DETAIL = $07
 INTEGRATION_BSS    = $08
+INTEGRATION_EXTRA  = $0a
 
 STAGE_BUILD_NANOC0  = 1
 STAGE_COMPILE_SOURCE = 2
@@ -30,6 +31,7 @@ main:
 	sta INTEGRATION_DETAIL
 	sta INTEGRATION_BSS
 	sta INTEGRATION_BSS+1
+	sta INTEGRATION_EXTRA
 
 	;;; Use the production assembler machinery at low memory to assemble the
 	;;; production nanoc0 source tree into $4000. assemblerEntry itself fixes its
@@ -165,8 +167,9 @@ finish:
 	jmp .halt
 
 ;;; On an assembler-stage failure the compiler diagnostic fields are not live yet.
-;;; For symbol pressure the line/BSS words carry the two moving symbol ends. For
-;;; work pressure they carry the staged-image and fixup cursors instead. Both are
+;;; For symbol pressure the line word carries the main persistent end, the BSS
+;;; word carries the local end, and DETAIL/EXTRA carry the continuation end. For
+;;; work pressure they carry the staged-image and fixup cursors instead. These are
 ;;; direct measurements of the fixed C64 workspaces; no host model is involved.
 capture_ass_workspace:
 	lda INTEGRATION_STATUS
@@ -176,8 +179,10 @@ capture_ass_workspace:
 	sta INTEGRATION_LINE
 	lda symbolTableEnd+1
 	sta INTEGRATION_LINE+1
-	lda currentScope
+	lda symbolOverflowEnd
 	sta INTEGRATION_DETAIL
+	lda symbolOverflowEnd+1
+	sta INTEGRATION_EXTRA
 	lda localSymbolTableEnd
 	sta INTEGRATION_BSS
 	lda localSymbolTableEnd+1
@@ -190,6 +195,8 @@ capture_ass_workspace:
 	sta INTEGRATION_LINE+1
 	lda currentScope
 	sta INTEGRATION_DETAIL
+	lda #$00
+	sta INTEGRATION_EXTRA
 	lda fixupFree
 	sta INTEGRATION_BSS
 	lda fixupFree+1
@@ -208,6 +215,8 @@ capture_nanoc_result:
 	sta INTEGRATION_LINE+1
 	lda NANOC_COMMAND_DETAIL
 	sta INTEGRATION_DETAIL
+	lda #$00
+	sta INTEGRATION_EXTRA
 	lda NANOC_COMMAND_BSS_BYTES
 	sta INTEGRATION_BSS
 	lda NANOC_COMMAND_BSS_BYTES+1
