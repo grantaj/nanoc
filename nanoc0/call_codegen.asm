@@ -2,15 +2,15 @@
 ;;;
 ;;; Literal target-code spelling for calls.asm.
 ;;;
-;;; The generated shape remains deliberately visible:
+;;; Earlier arguments that must survive later source use caller staging:
 ;;;
 ;;;   evaluate argument -> A/X
 ;;;   STA/STX caller staging
 ;;;   ...
 ;;;   LDA staging / STA callee parameter
-;;;   ...
-;;;   JSR known callee
 ;;;
+;;; The final argument has nothing later to survive and goes straight from A/X
+;;; to its callee parameter slot. The call itself is always one direct JSR.
 ;;; There is no parameter-copy loop in the generated program and no ABI object.
 
 ;;; The #56 statement regression still names its original call-primary seam. Its
@@ -95,7 +95,7 @@ emit_call_bss_assignment:
 	clc
 	rts
 
-;;; Target A/X currently holds the completed argument value.
+;;; Target A/X currently holds an argument that must survive later arguments.
 emit_store_call_stage:
 	ldx #<callStaSpace
 	ldy #>callStaSpace
@@ -112,6 +112,35 @@ emit_store_call_stage:
 	jsr emit_call_stage_name
 	bcc .failed
 	jsr emit_plus_one_call_newline
+	rts
+.failed:
+	clc
+	rts
+
+;;; The final argument needs no caller-owned staging. Store A/X directly into the
+;;; fixed callee parameter slot; char keeps the Phase 1 one-byte truncation rule.
+emit_store_callee_argument:
+	ldx #<callStaSpace
+	ldy #>callStaSpace
+	jsr emit_string
+	bcc .failed
+	jsr emit_callee_parameter_name
+	bcc .failed
+	jsr emit_newline
+	bcc .failed
+	lda callEmitParamType
+	cmp #TYPE_CHAR
+	beq .done
+	ldx #<callStxSpace
+	ldy #>callStxSpace
+	jsr emit_string
+	bcc .failed
+	jsr emit_callee_parameter_name
+	bcc .failed
+	jsr emit_plus_one_call_newline
+	bcc .failed
+.done:
+	sec
 	rts
 .failed:
 	clc
