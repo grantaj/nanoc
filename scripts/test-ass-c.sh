@@ -12,6 +12,7 @@ mkdir -p "$BUILD_DIR"
     -Wall \
     -Wextra \
     -Werror \
+    -Wno-char-subscripts \
     -funsigned-char \
     bootstrap/ass_host.c \
     -o "$BUILD_DIR/ass-c"
