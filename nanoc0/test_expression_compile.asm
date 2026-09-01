@@ -380,28 +380,15 @@ emit_bss_boundaries:
 	bcc .failed
 	jsr xt_emit_checker
 	bcc .failed
-	jsr emit_runtime_helpers
+	;;; Use the same target helper includes as production nanoc0 rather than
+	;;; carrying test-only copies of multiplication/comparison code.
+	jsr emit_runtime_support
 	bcc .failed
 	sec
 	rts
 .failed:
 	clc
 	rts
-
-;;; Kept as test source history for now; the fixture above deliberately uses
-;;; production emit_runtime_helpers instead of this private copy.
-xt_emit_mul16:
-	lda #xtMul16Part2-xtMul16
-	ldx #<xtMul16
-	ldy #>xtMul16
-	jsr emit_text
-	bcs .part2
-	rts
-.part2:
-	lda #xtMul16End-xtMul16Part2
-	ldx #<xtMul16Part2
-	ldy #>xtMul16Part2
-	jmp emit_text
 
 xt_emit_bss_assignment:
 	lda #xtBssAssignEnd-xtBssAssign
@@ -678,42 +665,6 @@ xtPass:
 	byte $09,'l','d','a',' ','#','$','f','f',$0a
 	byte $09,'r','t','s',$0a
 xtPassEnd:
-
-;;; Small obvious 16-bit shift/add multiply helper. Left arrives in NC_TMP,
-;;; right in A/X, and the low 16-bit result returns in A/X. Y/X accumulate the
-;;; result; NC_PTR holds and shifts the multiplier. No C value uses page $0100.
-xtMul16:
-	byte '_','_','n','c','_','m','u','l','1','6',':',$0a
-	byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a
-	byte $09,'s','t','x',' ','N','C','_','P','T','R','+','1',$0a
-	byte $09,'l','d','y',' ','#','$','0','0',$0a
-	byte $09,'l','d','x',' ','#','$','0','0',$0a
-	byte '_','_','n','c','_','m','u','l','1','6','_','l','o','o','p',':',$0a
-	byte $09,'l','d','a',' ','N','C','_','P','T','R',$0a
-	byte $09,'o','r','a',' ','N','C','_','P','T','R','+','1',$0a
-	byte $09,'b','e','q',' ','_','_','n','c','_','m','u','l','1','6','_','d','o','n','e',$0a
-	byte $09,'l','d','a',' ','N','C','_','P','T','R',$0a
-	byte $09,'a','n','d',' ','#','$','0','1',$0a
-	byte $09,'b','e','q',' ','_','_','n','c','_','m','u','l','1','6','_','n','o','a','d','d',$0a
-xtMul16Part2:
-	byte $09,'t','y','a',$0a
-	byte $09,'c','l','c',$0a
-	byte $09,'a','d','c',' ','N','C','_','T','M','P',$0a
-	byte $09,'t','a','y',$0a
-	byte $09,'t','x','a',$0a
-	byte $09,'a','d','c',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'t','a','x',$0a
-	byte '_','_','n','c','_','_','m','u','l','1','6','_','n','o','a','d','d',':',$0a
-	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
-	byte $09,'r','o','l',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'l','s','r',' ','N','C','_','P','T','R','+','1',$0a
-	byte $09,'r','o','r',' ','N','C','_','P','T','R',$0a
-	byte $09,'j','m','p',' ','_','_','n','c','_','m','u','l','1','6','_','l','o','o','p',$0a
-	byte '_','_','n','c','_','m','u','l','1','6','_','d','o','n','e',':',$0a
-	byte $09,'t','y','a',$0a
-	byte $09,'c','l','d',$0a
-	byte $09,'r','t','s',$0a
-xtMul16End:
 
 ;;; Expected A/X results of the 30 locals in expressions.c, low byte first.
 xtExpectedValues:
