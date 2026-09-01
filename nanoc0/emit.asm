@@ -49,6 +49,11 @@
 EMIT_PTR        = $fc
 EMIT_OUTPUT_LFN = 3
 
+;;; Four bytes preserve the compiler's two zero-page scratch pairs across KERNAL
+;;; output. They are mutable compiler work RAM immediately after the statement
+;;; control stack, not loaded program data.
+emitOutputSavedScratch = $b39a
+
 EMIT_LABEL_GENERIC       = 0
 EMIT_LABEL_IF_FALSE      = 1
 EMIT_LABEL_IF_END        = 2
@@ -438,7 +443,6 @@ emitOutputEnabled:	byte 0
 emitOutputByte:		byte 0
 emitOutputSavedX:	byte 0
 emitOutputSavedY:	byte 0
-emitOutputSavedScratch:	ds 4
 emitOutputStatus:	byte 0
 emitTextLength:		byte 0
 emitNumber:		byte 0
