@@ -15,17 +15,17 @@
 ;;; representation occupy explicit ranges.
 ;;;
 ;;; Assembly-lifetime names first fill the otherwise idle $3300-$3fff pages below
-;;; the assembler image. They then continue upward from $a000. Dot-prefixed names
-;;; for the current global-label scope grow downward from $d000 in that same upper
-;;; RAM. The two live frontiers may touch but never cross. Starting a new global
-;;; label rewinds the local frontier to $d000, immediately returning all of that
-;;; scope's bytes while persistent records stay put.
+;;; the assembler image, then $a000-$bfff. Dot-prefixed names for the current
+;;; global-label scope grow downward from $d000. They always have the top 4 KiB
+;;; $c000-$cfff available, and may use unused bytes below $c000 until they meet the
+;;; persistent frontier. Starting a new global label rewinds the local frontier to
+;;; $d000, immediately returning all of that scope's bytes.
 ;;;
-;;; If those visible persistent bytes are exhausted, ordinary symbols continue in
-;;; physical RAM underneath I/O and KERNAL at $d000-$fff9. Symbol code exposes
-;;; that arena only for the short access itself and restores the normal $36 map
-;;; before returning. $fffa-$ffff remain reserved for machine vectors. This is a
-;;; fixed C64 workspace, not an integration-only expansion.
+;;; Further persistent names continue in physical RAM underneath I/O and KERNAL at
+;;; $d000-$fff9. Symbol code exposes that arena only for the short access itself
+;;; and restores the normal $36 map before returning. $fffa-$ffff remain reserved
+;;; for machine vectors. This is fixed C64 workspace, not an integration-only
+;;; expansion.
 ;;; ass selects the normal C64 mapping with BASIC hidden and KERNAL/I/O visible
 ;;; while it runs, then restores the caller's original $01 value.
 
@@ -41,7 +41,7 @@ ASSEMBLER_LINE_BUFFER          = $3200
 ASSEMBLER_SYMBOLS              = $3300
 ASSEMBLER_SYMBOLS_END          = $4000
 ASSEMBLER_SYMBOL_OVERFLOW      = $a000
-ASSEMBLER_SYMBOL_OVERFLOW_END  = $d000
+ASSEMBLER_SYMBOL_OVERFLOW_END  = $c000
 ASSEMBLER_LOCAL_SYMBOLS        = $a000
 ASSEMBLER_LOCAL_SYMBOLS_END    = $d000
 ASSEMBLER_SYMBOL_HIDDEN        = $d000

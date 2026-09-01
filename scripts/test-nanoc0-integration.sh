@@ -56,7 +56,7 @@ report_driver_mailbox() {
                 shared_free=$((bss - shared_end))
                 hidden_used=$((hidden - 53248))
                 persistent_used=$((primary_used + shared_used + hidden_used))
-                echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status persistent=$persistent_used/27898 primary=$primary_used/3328 shared-global=$shared_used/12288 local=$local_used shared-free=$shared_free hidden=$hidden_used/12282" >&2
+                echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status persistent=$persistent_used/23802 primary=$primary_used/3328 shared-global=$shared_used/8192 local=$local_used shared-free=$shared_free hidden=$hidden_used/12282" >&2
             fi
             ;;
         2)
