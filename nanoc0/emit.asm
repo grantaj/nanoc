@@ -23,12 +23,12 @@
 ;;;   parameter/local       __c_<function-name>__vNN
 ;;;   expression spill      __c_<function-name>__sNN
 ;;;   deferred string       __nc_stringNN
-;;;   generic local label   .LNNNN
-;;;   statement labels      .if_false_NNNN, .if_end_NNNN,
-;;;                         .while_top_NNNN, .while_end_NNNN
-;;;   comparison labels     .cmp_true_NNNN, .cmp_false_NNNN,
-;;;                         .cmp_done_NNNN, .cmp_same_sign_NNNN
-;;;   branch trampoline     .near_NNNN
+;;;   generic local label   .LNN
+;;;   statement labels      .if_false_NN, .if_end_NN,
+;;;                         .while_top_NN, .while_end_NN
+;;;   comparison labels     .cmp_true_NN, .cmp_false_NN,
+;;;                         .cmp_done_NN, .cmp_same_sign_NN
+;;;   branch trampoline     .near_NN
 ;;;
 ;;; Generated control/comparison labels are local to the C function's assembler
 ;;; scope. That scope is already their namespace, so repeating `__nc_` in every
@@ -36,6 +36,9 @@
 ;;; Deferred data labels remain global and keep their explicit Nano C prefix.
 ;;;
 ;;; Every generated label still comes from one monotonically increasing counter.
+;;; Values below $100 use two hex digits; larger values naturally use the full
+;;; four. Fixed-width words would spend two bytes of local-symbol RAM on leading
+;;; zeroes for every early label without making the generated code clearer.
 ;;; emitLabelKind changes only the human-readable spelling; it is transient
 ;;; formatter state, not another label namespace or retained control structure.
 ;;;
@@ -393,14 +396,26 @@ emit_generated_label_name:
 .prefix:
 	jsr emit_string
 	bcc .failed
+	jmp emit_generated_label_number
+.failed:
+	clc
+	rts
+
+;;; emit_generated_label_number
+;;; Small local-label numbers use one byte of hex. Once the counter passes $ff,
+;;; use the normal four-digit word spelling. The numeric value, not its padding,
+;;; is what makes the label unique.
+emit_generated_label_number:
+	lda emitLabelValue+1
+	bne .word
+	lda emitLabelValue
+	jmp emit_hex_byte
+.word:
 	lda emitLabelValue
 	sta emitWord
 	lda emitLabelValue+1
 	sta emitWord+1
 	jmp emit_hex_word
-.failed:
-	clc
-	rts
 
 ;;; reserve_generated_label
 ;;; Copy the current counter into emitLabelValue, then increment it. The label
