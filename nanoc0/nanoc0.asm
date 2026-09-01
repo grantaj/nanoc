@@ -27,7 +27,19 @@ NANOC_TARGET_LIMIT  = $d000
 
 	* = $4000
 
+;;; Keep the native command entry fixed while putting the compiler modules first
+;;; in source order. That matters to ass: constants such as the KERNAL jump-table
+;;; names are then defined before the driver below uses them. A three-byte 6502
+;;; trampoline is simpler than teaching the assembler a special forward-constant
+;;; rule merely to accommodate this source file.
 nanoc0Entry:
+	jmp compilerMain
+
+	include "declarations.asm"
+	include "program_output.asm"
+	include "runtime_codegen.asm"
+
+compilerMain:
 	lda #$00
 	sta NANOC_COMMAND_STATUS
 	sta NANOC_COMMAND_DETAIL
@@ -295,28 +307,24 @@ programHeader:
 	string "NC_PTR = $fe"
 	string "NC_BSS = $4800"
 	string "__nc_start:"
-	string "	jmp __nc_entry"
+	string "\tjmp __nc_entry"
 	byte 0
 
 programMainEntry:
 	string "__nc_entry:"
-	string "	jsr __nc_init"
-	string "	jsr __c_main"
-	string "	rts"
+	string "\tjsr __nc_init"
+	string "\tjsr __c_main"
+	string "\trts"
 	byte 0
 
 programPlainEntry:
 	string "__nc_entry:"
-	string "	jsr __nc_init"
-	string "	lda #$00"
-	string "	tax"
-	string "	rts"
+	string "\tjsr __nc_init"
+	string "\tlda #$00"
+	string "\ttax"
+	string "\trts"
 	byte 0
 
 compilerOutputOpen:	byte 0
 compilerOutputStatus:	byte 0
 generatedBssEnd:	word 0
-
-	include "program_output.asm"
-	include "declarations.asm"
-	include "runtime_codegen.asm"
