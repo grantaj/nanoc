@@ -196,7 +196,7 @@ testBadOrigin:
 	sta ZP_PTR1+1
 	lda #<badOriginSourceEnd
 	sta sourceEnd
-	lda #>sourceEnd
+	lda #>badOriginSourceEnd
 	sta sourceEnd+1
 	lda #<OUTPUT
 	sta assemblyPtr
