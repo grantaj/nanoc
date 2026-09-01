@@ -192,7 +192,7 @@ test-nanoc0-bootstrap: $(BUILD_DIR)/test_nanoc0_bootstrap.prg bootstrap/ass.c
 test-nanoc0-expressions: $(BUILD_DIR)/test_nanoc0_expression_compile.prg $(BUILD_DIR)/test_nanoc0_expression_run.prg $(NANOC0_EXPRESSION_FIXTURES)
 	rm -f tests/nanoc0-expr/EXPROUT.ASM tests/nanoc0-expr/exprout.asm
 	VICE_TIMEOUT=30 VICE_FS_DIR=$(CURDIR)/tests/nanoc0-expr VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_expression_compile.prg nanoc0-expression-compile
-	VICE_TIMEOUT=30 VICE_FS_DIR=$(CURDIR)/tests/nanoc0-expr VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_expression_run.prg nanoc0-expressions
+	VICE_TIMEOUT=30 VICE_FS_DIR=$(CURDIR) VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_expression_run.prg nanoc0-expressions
 
 test-nanoc0-statements: $(BUILD_DIR)/test_nanoc0_statement_compile.prg $(BUILD_DIR)/test_nanoc0_statement_run.prg $(NANOC0_STATEMENT_FIXTURES)
 	rm -f tests/nanoc0-stmt/RET8OUT.ASM tests/nanoc0-stmt/ret8out.asm tests/nanoc0-stmt/STMTOUT.ASM tests/nanoc0-stmt/stmtout.asm
