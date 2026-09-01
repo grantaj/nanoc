@@ -148,7 +148,12 @@ echo "small generated loaded image: $((bytes - 2)) bytes"
 
 ASS_SOURCE_BYTES=$(wc -c < "$ASS_FROM_C")
 echo "bootstrap generated ass source: $ASS_SOURCE_BYTES bytes"
-"$VASM" -Fbin -cbm-prg -o "$OUT_DIR/assfromc.prg" "$ASS_FROM_C"
+# Production ass resolves local includes from ASS/. Run the host-only size probe
+# from that same directory so ../nanoc0/target/... has identical meaning.
+(
+    cd ass
+    "$VASM" -Fbin -cbm-prg -o "$OUT_DIR/assfromc.prg" "$ASS_FROM_C"
+)
 bytes=$(wc -c < "$OUT_DIR/assfromc.prg")
 ASS_FROM_C_LOADED=$((bytes - 2))
 echo "bootstrap generated loaded image: $ASS_FROM_C_LOADED bytes"
