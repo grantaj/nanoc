@@ -101,9 +101,13 @@ captureWorkspace:
 	sta ST_LOCAL_END+1
 	rts
 
-returnGeneratedName:	byte 'R','E','T','8','O','U','T','.','A','S','M'
+;;; Execution mounts the repository root so generated source can use the same
+;;; target-helper include paths emitted by production nanoc0.
+returnGeneratedName:
+	byte 'T','E','S','T','S','/','N','A','N','O','C','0','-','S','T','M','T','/','R','E','T','8','O','U','T','.','A','S','M'
 returnGeneratedNameEnd:
-statementGeneratedName:	byte 'S','T','M','T','O','U','T','.','A','S','M'
+statementGeneratedName:
+	byte 'T','E','S','T','S','/','N','A','N','O','C','0','-','S','T','M','T','/','S','T','M','T','O','U','T','.','A','S','M'
 statementGeneratedNameEnd:
 
 stReturnedLow:	byte 0
