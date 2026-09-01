@@ -123,7 +123,8 @@ emit_output_byte:
 	rts
 
 ;;; emit_text
-;;; A=length, X/Y=address. Carry set when all bytes were accepted.
+;;; A=length, X/Y=address. Carry set when all bytes were accepted. This is for
+;;; source-owned names and other dynamic text whose length is already known.
 emit_text:
 	sta emitTextLength
 	stx EMIT_PTR
@@ -136,6 +137,27 @@ emit_text:
 	jsr emit_output_byte
 	bcc .failed
 	iny
+	jmp .loop
+.done:
+	sec
+.failed:
+	rts
+
+;;; emit_string
+;;; X/Y=address of a fixed NUL-terminated compiler string. Fixed formatter text
+;;; uses this path so production source needs no assembler-time label arithmetic.
+emit_string:
+	stx EMIT_PTR
+	sty EMIT_PTR+1
+	ldy #$00
+.loop:
+	lda (EMIT_PTR),y
+	beq .done
+	jsr emit_output_byte
+	bcc .failed
+	inc EMIT_PTR
+	bne .loop
+	inc EMIT_PTR+1
 	jmp .loop
 .done:
 	sec
@@ -229,10 +251,9 @@ emit_persistent_source_name:
 ;;; X=persistent symbol index -> __c_<source-name>.
 emit_persistent_name:
 	stx emitSavedIndex
-	lda #emitCPrefixEnd-emitCPrefix
 	ldx #<emitCPrefix
 	ldy #>emitCPrefix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	ldx emitSavedIndex
 	jsr emit_persistent_source_name
@@ -248,18 +269,16 @@ emit_persistent_name:
 ;;; reconstructable by later callers without retaining parameter source names.
 emit_current_name:
 	stx emitSavedIndex
-	lda #emitCPrefixEnd-emitCPrefix
 	ldx #<emitCPrefix
 	ldy #>emitCPrefix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	ldx currentFunctionIndex
 	jsr emit_persistent_source_name
 	bcc .failed
-	lda #emitValueSuffixEnd-emitValueSuffix
 	ldx #<emitValueSuffix
 	ldy #>emitValueSuffix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda emitSavedIndex
 	jsr emit_hex_byte
@@ -273,18 +292,16 @@ emit_current_name:
 ;;; A=spill depth -> __c_<function-name>__sNN.
 emit_spill_name:
 	sta emitSavedValue
-	lda #emitCPrefixEnd-emitCPrefix
 	ldx #<emitCPrefix
 	ldy #>emitCPrefix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	ldx currentFunctionIndex
 	jsr emit_persistent_source_name
 	bcc .failed
-	lda #emitSpillSuffixEnd-emitSpillSuffix
 	ldx #<emitSpillSuffix
 	ldy #>emitSpillSuffix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda emitSavedValue
 	jmp emit_hex_byte
@@ -295,10 +312,9 @@ emit_spill_name:
 ;;; A=literal index -> __nc_stringNN.
 emit_literal_name:
 	sta emitSavedValue
-	lda #emitStringPrefixEnd-emitStringPrefix
 	ldx #<emitStringPrefix
 	ldy #>emitStringPrefix
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda emitSavedValue
 	jmp emit_hex_byte
@@ -330,56 +346,46 @@ emit_generated_label_name:
 	beq .cmpDone
 	cmp #EMIT_LABEL_CMP_SAME_SIGN
 	beq .cmpSameSign
-	lda #emitLabelPrefixEnd-emitLabelPrefix
 	ldx #<emitLabelPrefix
 	ldy #>emitLabelPrefix
 	jmp .prefix
 .ifFalse:
-	lda #emitIfFalsePrefixEnd-emitIfFalsePrefix
 	ldx #<emitIfFalsePrefix
 	ldy #>emitIfFalsePrefix
 	jmp .prefix
 .ifEnd:
-	lda #emitIfEndPrefixEnd-emitIfEndPrefix
 	ldx #<emitIfEndPrefix
 	ldy #>emitIfEndPrefix
 	jmp .prefix
 .whileTop:
-	lda #emitWhileTopPrefixEnd-emitWhileTopPrefix
 	ldx #<emitWhileTopPrefix
 	ldy #>emitWhileTopPrefix
 	jmp .prefix
 .whileEnd:
-	lda #emitWhileEndPrefixEnd-emitWhileEndPrefix
 	ldx #<emitWhileEndPrefix
 	ldy #>emitWhileEndPrefix
 	jmp .prefix
 .near:
-	lda #emitNearPrefixEnd-emitNearPrefix
 	ldx #<emitNearPrefix
 	ldy #>emitNearPrefix
 	jmp .prefix
 .cmpTrue:
-	lda #emitCmpTruePrefixEnd-emitCmpTruePrefix
 	ldx #<emitCmpTruePrefix
 	ldy #>emitCmpTruePrefix
 	jmp .prefix
 .cmpFalse:
-	lda #emitCmpFalsePrefixEnd-emitCmpFalsePrefix
 	ldx #<emitCmpFalsePrefix
 	ldy #>emitCmpFalsePrefix
 	jmp .prefix
 .cmpDone:
-	lda #emitCmpDonePrefixEnd-emitCmpDonePrefix
 	ldx #<emitCmpDonePrefix
 	ldy #>emitCmpDonePrefix
 	jmp .prefix
 .cmpSameSign:
-	lda #emitCmpSameSignPrefixEnd-emitCmpSameSignPrefix
 	ldx #<emitCmpSameSignPrefix
 	ldy #>emitCmpSameSignPrefix
 .prefix:
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	lda emitLabelValue
 	sta emitWord
@@ -412,34 +418,20 @@ reset_generated_labels:
 	sta emitLabelKind
 	rts
 
-emitCPrefix:		byte '_','_','c','_'
-emitCPrefixEnd:
-emitValueSuffix:	byte '_','_','v'
-emitValueSuffixEnd:
-emitSpillSuffix:	byte '_','_','s'
-emitSpillSuffixEnd:
-emitStringPrefix:	byte '_','_','n','c','_','s','t','r','i','n','g'
-emitStringPrefixEnd:
-emitLabelPrefix:	byte '.','_','_','n','c','_','L'
-emitLabelPrefixEnd:
-emitIfFalsePrefix:	byte '.','_','_','n','c','_','i','f','_','f','a','l','s','e','_'
-emitIfFalsePrefixEnd:
-emitIfEndPrefix:	byte '.','_','_','n','c','_','i','f','_','e','n','d','_'
-emitIfEndPrefixEnd:
-emitWhileTopPrefix:	byte '.','_','_','n','c','_','w','h','i','l','e','_','t','o','p','_'
-emitWhileTopPrefixEnd:
-emitWhileEndPrefix:	byte '.','_','_','n','c','_','w','h','i','l','e','_','e','n','d','_'
-emitWhileEndPrefixEnd:
-emitNearPrefix:	byte '.','_','_','n','c','_','n','e','a','r','_'
-emitNearPrefixEnd:
-emitCmpTruePrefix:	byte '.','_','_','n','c','_','c','m','p','_','t','r','u','e','_'
-emitCmpTruePrefixEnd:
-emitCmpFalsePrefix:	byte '.','_','_','n','c','_','c','m','p','_','f','a','l','s','e','_'
-emitCmpFalsePrefixEnd:
-emitCmpDonePrefix:	byte '.','_','_','n','c','_','c','m','p','_','d','o','n','e','_'
-emitCmpDonePrefixEnd:
-emitCmpSameSignPrefix:	byte '.','_','_','n','c','_','c','m','p','_','s','a','m','e','_','s','i','g','n','_'
-emitCmpSameSignPrefixEnd:
+emitCPrefix:		byte '_','_','c','_',0
+emitValueSuffix:	byte '_','_','v',0
+emitSpillSuffix:	byte '_','_','s',0
+emitStringPrefix:	byte '_','_','n','c','_','s','t','r','i','n','g',0
+emitLabelPrefix:	byte '.','_','_','n','c','_','L',0
+emitIfFalsePrefix:	byte '.','_','_','n','c','_','i','f','_','f','a','l','s','e','_',0
+emitIfEndPrefix:	byte '.','_','_','n','c','_','i','f','_','e','n','d','_',0
+emitWhileTopPrefix:	byte '.','_','_','n','c','_','w','h','i','l','e','_','t','o','p','_',0
+emitWhileEndPrefix:	byte '.','_','_','n','c','_','w','h','i','l','e','_','e','n','d','_',0
+emitNearPrefix:	byte '.','_','_','n','c','_','n','e','a','r','_',0
+emitCmpTruePrefix:	byte '.','_','_','n','c','_','c','m','p','_','t','r','u','e','_',0
+emitCmpFalsePrefix:	byte '.','_','_','n','c','_','c','m','p','_','f','a','l','s','e','_',0
+emitCmpDonePrefix:	byte '.','_','_','n','c','_','c','m','p','_','d','o','n','e','_',0
+emitCmpSameSignPrefix:	byte '.','_','_','n','c','_','c','m','p','_','s','a','m','e','_','s','i','g','n','_',0
 
 emitOutputEnabled:	byte 0
 emitOutputByte:		byte 0
