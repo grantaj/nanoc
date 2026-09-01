@@ -7,8 +7,9 @@ ST_FAIL_RETURN_VALUE       = $20
 ST_FAIL_STATEMENT_ASSEMBLE = $30
 ST_FAIL_STATEMENT_VALUE    = $40
 
-;;; Failure-only workspace mailbox saved with TEST_RESULT by tests/run-test.sh.
-;;; Packed tables need one end pointer each.
+;;; Workspace mailbox saved with TEST_RESULT by tests/run-test.sh while the
+;;; fixed symbol-table split is being measured. Packed tables need one end
+;;; pointer each.
 ST_PERSIST_END = $03
 ST_LOCAL_END   = $05
 
@@ -52,7 +53,10 @@ main:
 	sta ASSEMBLER_COMMAND_TARGET+1
 	jsr assemblerEntry
 	cmp #ASSEMBLE_OK
-	beq .runStatements
+	bne .statementAssembleFailed
+	jsr captureWorkspace
+	jmp .runStatements
+.statementAssembleFailed:
 	jsr captureWorkspace
 	lda ASSEMBLER_COMMAND_STATUS
 	ora #ST_FAIL_STATEMENT_ASSEMBLE
