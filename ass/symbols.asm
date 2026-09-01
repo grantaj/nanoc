@@ -407,6 +407,17 @@ findHiddenSymbolEntry:
 	clc
 	rts
 .configured:
+	;;; Until the first spill there is nothing under ROM to inspect. Avoid changing
+	;;; the C64 memory map on the overwhelmingly common global miss in that phase.
+	lda symbolHiddenEnd
+	cmp symbolHiddenStart
+	bne .hasEntries
+	lda symbolHiddenEnd+1
+	cmp symbolHiddenStart+1
+	bne .hasEntries
+	clc
+	rts
+.hasEntries:
 	jsr enterHiddenSymbols
 	lda symbolHiddenStart
 	sta symbolScan
@@ -921,6 +932,17 @@ allHiddenLabelsDefined:
 	sec
 	rts
 .configured:
+	;;; An enabled but unused hidden arena is already known to contain no unresolved
+	;;; labels, and need not disturb the machine memory map merely to prove that.
+	lda symbolHiddenEnd
+	cmp symbolHiddenStart
+	bne .hasEntries
+	lda symbolHiddenEnd+1
+	cmp symbolHiddenStart+1
+	bne .hasEntries
+	sec
+	rts
+.hasEntries:
 	jsr enterHiddenSymbols
 	lda symbolHiddenStart
 	sta symbolScan
