@@ -7,8 +7,9 @@
 ;;; operator follows it, there is no value to preserve across later generated
 ;;; code: apply the literal to A/X directly instead of allocating a spill word.
 ;;;
-;;; Only the four operations whose 6502 form is completely direct live here.
-;;; Other operators deliberately keep using the ordinary spill/reduction path.
+;;; Arithmetic/bitwise literals use direct immediate instructions. Comparisons
+;;; keep the same shared 16-bit helpers as ordinary reductions, but place the
+;;; literal straight in NC_TMP while preserving the left value in A/X.
 
 emit_immediate_binary_reduction:
 	lda reduceOperator
@@ -20,6 +21,18 @@ emit_immediate_binary_reduction:
 	beq .and
 	cmp #OP_OR
 	beq .or
+	cmp #OP_LT
+	beq .compare
+	cmp #OP_LE
+	beq .compare
+	cmp #OP_GT
+	beq .compare
+	cmp #OP_GE
+	beq .compare
+	cmp #OP_EQ
+	beq .compare
+	cmp #OP_NE
+	beq .compare
 	clc
 	rts
 .add:
@@ -30,6 +43,8 @@ emit_immediate_binary_reduction:
 	jmp emit_and_immediate
 .or:
 	jmp emit_or_immediate
+.compare:
+	jmp emit_compare_immediate
 
 emit_add_immediate:
 	ldx #<exprImmediateAddLow
@@ -163,6 +178,45 @@ emit_or_immediate:
 .finish:
 	jmp emit_immediate_finish
 
+emit_compare_immediate:
+	ldx #<exprImmediateCompareLow
+	ldy #>exprImmediateCompareLow
+	jsr emit_string
+	bcs .low
+	rts
+.low:
+	lda expressionLiteralValue
+	jsr emit_hex_byte
+	bcs .lowDone
+	rts
+.lowDone:
+	jsr emit_newline
+	bcs .highPrefix
+	rts
+.highPrefix:
+	ldx #<exprImmediateCompareHigh
+	ldy #>exprImmediateCompareHigh
+	jsr emit_string
+	bcs .high
+	rts
+.high:
+	lda expressionLiteralValue+1
+	jsr emit_hex_byte
+	bcs .highDone
+	rts
+.highDone:
+	jsr emit_newline
+	bcs .finish
+	rts
+.finish:
+	ldx #<exprImmediateCompareFinish
+	ldy #>exprImmediateCompareFinish
+	jsr emit_string
+	bcs .call
+	rts
+.call:
+	jmp emit_compare_helper_call
+
 emit_immediate_finish:
 	ldx #<exprImmediateFinish
 	ldy #>exprImmediateFinish
@@ -194,6 +248,15 @@ exprImmediateOrHigh:
 	byte $09,'t','a','y',$0a
 	byte $09,'t','x','a',$0a
 	byte $09,'o','r','a',' ','#','$',0
+exprImmediateCompareLow:
+	byte $09,'t','a','y',$0a
+	byte $09,'l','d','a',' ','#','$',0
+exprImmediateCompareHigh:
+	byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
+	byte $09,'l','d','a',' ','#','$',0
+exprImmediateCompareFinish:
+	byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',$0a
+	byte $09,'t','y','a',$0a,0
 exprImmediateFinish:
 	byte $09,'t','a','x',$0a
 	byte $09,'t','y','a',$0a,0
