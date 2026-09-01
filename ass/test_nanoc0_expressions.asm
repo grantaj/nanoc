@@ -56,7 +56,9 @@ captureArenas:
 	sta XT_LOCAL_END+1
 	rts
 
-generatedName:	byte 'E','X','P','R','O','U','T','.','A','S','M'
+;;; The execution pass mounts the repository root so generated source can include
+;;; the same target helpers production nanoc0 emits.
+generatedName:	byte 'T','E','S','T','S','/','N','A','N','O','C','0','-','E','X','P','R','/','E','X','P','R','O','U','T','.','A','S','M'
 generatedNameEnd:
 
 	* = ASSEMBLER_TEST_ENTRY
