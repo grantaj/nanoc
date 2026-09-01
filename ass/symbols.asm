@@ -286,13 +286,18 @@ findSymbolEntry:
 	cmp symbolSearchEnd+1
 	bne .entry
 
-	;;; A global miss in the main table gets one ordinary second-table scan.
+	;;; A global miss in the main table gets the second visible range, then hidden
+	;;; RAM. Local lookup stops after its one live range.
 	lda symbolSearchLast
 	beq .searchOverflow
 	lda symbolWantedScope
-	bne .notFound
+	beq .searchHidden
+	jmp .notFound
+.searchHidden:
 	jsr findHiddenSymbolEntry
-	bcc .notFound
+	bcs .hiddenFound
+	jmp .notFound
+.hiddenFound:
 	pla
 	sta ZP_PTR1+1
 	pla
@@ -413,7 +418,8 @@ findHiddenSymbolEntry:
 	bne .entry
 	lda symbolScan+1
 	cmp symbolHiddenEnd+1
-	beq .notFound
+	bne .entry
+	jmp .notFound
 .entry:
 	lda symbolScan
 	sta ZP_PTR1
@@ -475,8 +481,9 @@ findHiddenSymbolEntry:
 	lda symbolScan
 	adc symbolRecordSize
 	sta symbolScan
-	bcc .next
+	bcc .samePage
 	inc symbolScan+1
+.samePage:
 	jmp .next
 .notFound:
 	jsr leaveHiddenSymbols
@@ -1004,11 +1011,33 @@ loadSymbolEntry:
 	rts
 
 ;;; beginSymbolEntryAccess / endSymbolEntryAccess
-;;; symbolEntryHidden is carried with the current lookup/allocation result. Visible
-;;; records cost nothing; only hidden records open an all-RAM window.
+;;; A deferred value keeps only the two-byte symbolEntry pointer. Infer whether
+;;; that address lies in the configured hidden arena each time; no tag needs to
+;;; leak into the fixup representation.
 beginSymbolEntryAccess:
-	lda symbolEntryHidden
+	lda #$00
+	sta symbolEntryHidden
+	lda symbolHiddenStart
+	ora symbolHiddenStart+1
 	beq .pointer
+	lda symbolEntry+1
+	cmp symbolHiddenStart+1
+	bcc .pointer
+	bne .checkLimit
+	lda symbolEntry
+	cmp symbolHiddenStart
+	bcc .pointer
+.checkLimit:
+	lda symbolEntry+1
+	cmp symbolHiddenLimit+1
+	bcc .hidden
+	bne .pointer
+	lda symbolEntry
+	cmp symbolHiddenLimit
+	bcs .pointer
+.hidden:
+	lda #$01
+	sta symbolEntryHidden
 	jsr enterHiddenSymbols
 .pointer:
 	lda symbolEntry
