@@ -24,15 +24,15 @@
 ;;;   expression spill      __c_<function-name>__sNN
 ;;;   deferred string       __nc_stringNN
 ;;;   generic local label   .LNN
-;;;   statement labels      .if_false_NN, .if_end_NN,
-;;;                         .while_top_NN, .while_end_NN
-;;;   comparison labels     .cmp_true_NN, .cmp_false_NN,
-;;;                         .cmp_done_NN, .cmp_same_sign_NN
-;;;   branch trampoline     .near_NN
+;;;   if labels             .ifFNN, .ifENN
+;;;   while labels          .wtNN, .weNN
+;;;   comparison labels     .ctNN, .cfNN, .cdNN, .csNN
+;;;   branch trampoline     .nNN
 ;;;
 ;;; Generated control/comparison labels are local to the C function's assembler
-;;; scope. That scope is already their namespace, so repeating `__nc_` in every
-;;; local spelling would spend scarce assembler name RAM without adding meaning.
+;;; scope. That scope is already their namespace. The short role mnemonics are
+;;; deliberate 6502-era economy: `.wt` still says "while top", while spelling
+;;; `while_top` hundreds of times would only consume scarce local-symbol RAM.
 ;;; Deferred data labels remain global and keep their explicit Nano C prefix.
 ;;;
 ;;; Every generated label still comes from one monotonically increasing counter.
@@ -445,15 +445,15 @@ emitValueSuffix:	byte '_','_','v',0
 emitSpillSuffix:	byte '_','_','s',0
 emitStringPrefix:	byte '_','_','n','c','_','s','t','r','i','n','g',0
 emitLabelPrefix:	byte '.','L',0
-emitIfFalsePrefix:	byte '.','i','f','_','f','a','l','s','e','_',0
-emitIfEndPrefix:	byte '.','i','f','_','e','n','d','_',0
-emitWhileTopPrefix:	byte '.','w','h','i','l','e','_','t','o','p','_',0
-emitWhileEndPrefix:	byte '.','w','h','i','l','e','_','e','n','d','_',0
-emitNearPrefix:	byte '.','n','e','a','r','_',0
-emitCmpTruePrefix:	byte '.','c','m','p','_','t','r','u','e','_',0
-emitCmpFalsePrefix:	byte '.','c','m','p','_','f','a','l','s','e','_',0
-emitCmpDonePrefix:	byte '.','c','m','p','_','d','o','n','e','_',0
-emitCmpSameSignPrefix:	byte '.','c','m','p','_','s','a','m','e','_','s','i','g','n','_',0
+emitIfFalsePrefix:	byte '.','i','f','F',0
+emitIfEndPrefix:	byte '.','i','f','E',0
+emitWhileTopPrefix:	byte '.','w','t',0
+emitWhileEndPrefix:	byte '.','w','e',0
+emitNearPrefix:	byte '.','n',0
+emitCmpTruePrefix:	byte '.','c','t',0
+emitCmpFalsePrefix:	byte '.','c','f',0
+emitCmpDonePrefix:	byte '.','c','d',0
+emitCmpSameSignPrefix:	byte '.','c','s',0
 
 emitOutputEnabled:	byte 0
 emitOutputByte:		byte 0
