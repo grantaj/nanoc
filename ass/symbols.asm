@@ -57,6 +57,7 @@ resetSymbols:
 	jsr resetLocalSymbols
 	lda #$00
 	sta localScopeActive
+	sta currentScope
 	rts
 
 ;;; resetLocalSymbols
@@ -128,11 +129,12 @@ internLabel:
 	rts
 
 ;;; defineLabel
-;;; Define a label at the current final assemblyPtr. For an existing undefined
-;;; entry, findSymbolEntry leaves its old reference-chain head in symbolRefs.
-;;; Replace the shared payload with the final value, mark the label defined, and
-;;; consume that old chain immediately. The payload changes meaning in one place.
+;;; Define a label at the current final assemblyPtr. A non-local label first ends
+;;; the previous local-label lifetime; that scratch table is rewound only after
+;;; every local forward reference has been resolved.
 defineLabel:
+	jsr prepareLabelLifetime
+	bcc .noScope
 	jsr symbolScope
 	bcc .noScope
 	jsr findSymbolEntry
@@ -180,6 +182,35 @@ defineLabel:
 	rts
 .noScope:
 	lda #SYMBOL_NO_SCOPE
+	rts
+
+;;; prepareLabelLifetime
+;;; `enterLabelScope` in assembler.asm still performs the cheap syntactic check
+;;; that a local label has a preceding global label. Here a global definition
+;;; performs the actual lifetime transition: validate old locals, rewind their
+;;; scratch table, and leave currentScope nonzero for following dot labels.
+prepareLabelLifetime:
+	lda symbolNameLength
+	beq .bad
+	lda symbolName
+	sta ZP_PTR0
+	lda symbolName+1
+	sta ZP_PTR0+1
+	ldy #$00
+	lda (ZP_PTR0),y
+	cmp #'.'
+	beq .ok
+	jsr allLocalLabelsDefined
+	bcc .bad
+	jsr resetLocalSymbols
+	lda #$01
+	sta localScopeActive
+	sta currentScope
+.ok:
+	sec
+	rts
+.bad:
+	clc
 	rts
 
 ;;; findSymbolEntry
@@ -548,9 +579,9 @@ resolveWordReferencesForSymbol:
 	sta symbolRefs+1
 	rts
 
-;;; allLabelsDefined / allLocalLabelsDefined
-;;; Carry set unless the selected table contains an interned label that was never
-;;; defined. Local scopes are checked before their scratch table is rewound.
+;;; allLabelsDefined
+;;; Carry set only when both assembly-lifetime globals and the current local
+;;; scratch table contain no unresolved labels.
 allLabelsDefined:
 	lda symbolTableStart
 	sta symbolScan
@@ -560,8 +591,15 @@ allLabelsDefined:
 	sta symbolSearchEnd
 	lda symbolTableEnd+1
 	sta symbolSearchEnd+1
-	jmp scanLabelsDefined
+	jsr scanLabelsDefined
+	bcc .bad
+	jmp allLocalLabelsDefined
+.bad:
+	clc
+	rts
 
+;;; allLocalLabelsDefined
+;;; Used both at EOF and immediately before the scratch table is rewound.
 allLocalLabelsDefined:
 	lda localSymbolTableStart
 	sta symbolScan
@@ -664,6 +702,10 @@ localSymbolTableEnd:	word 0
 localSymbolTableLimit:	word 0
 localSymbolNameEnd:	word 0
 localScopeActive:	byte 0
+
+;;; Kept as the parser-facing "a global scope exists" byte. It is reset to one
+;;; at every global definition rather than consumed as a unique scope number.
+currentScope:		byte 0
 
 symbolName:		word 0
 symbolNameLength:	byte 0
