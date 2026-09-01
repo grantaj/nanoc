@@ -7,6 +7,7 @@ BUILD_DIR=${BUILD_DIR:-build}
 ROOT=$(pwd)
 OUT_DIR="$ROOT/$BUILD_DIR/nanoc0-integration"
 DRIVER_RESULT="$BUILD_DIR/nanoc0-driver.result"
+ASS_FROM_C_RESULT="$BUILD_DIR/ass-from-c.result"
 
 mkdir -p "$OUT_DIR"
 rm -f \
@@ -54,6 +55,18 @@ report_driver_mailbox() {
     esac
 }
 
+report_ass_from_c_mailbox() {
+    [ -s "$ASS_FROM_C_RESULT" ] || return 0
+    set -- $(od -An -tu1 -N8 "$ASS_FROM_C_RESULT")
+    [ "$#" -ge 7 ] || return 0
+
+    stage=$2
+    detail=$3
+    loaded=$(($4 + 256 * $5))
+    value=$(($6 + 256 * $7))
+    echo "ass-from-c stage=$stage detail=$detail loaded=$loaded value=$value" >&2
+}
+
 # Host vasm is only a fast syntax/size probe here. The first native test below
 # independently assembles this exact production source with the project ass.
 (
@@ -67,6 +80,7 @@ echo "production nanoc0 loaded image: $((bytes - 2)) bytes"
     cd ass
     "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_nanoc0_driver.prg" test_nanoc0_driver.asm
     "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_nanoc0_generated.prg" test_nanoc0_generated.asm
+    "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_ass_from_c.prg" test_ass_from_c.asm
 )
 
 # current ass -> production nanoc0 -> small Phase 1 C -> generated ass, then the
@@ -109,9 +123,24 @@ VICE_TIMEOUT=60 VICE_FS_DIR="$OUT_DIR" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc0_generated.prg" nanoc0-generated
 
 # Size is reported with vasm only as a measurement convenience. The native test
-# above is the semantic/assembler authority for the small program. ass-from-c is
-# intentionally retained as text for the next native bootstrap rung and review.
+# above is the semantic/assembler authority for the small program.
 "$VASM" -Fbin -cbm-prg -o "$OUT_DIR/ncout.prg" "$GENERATED"
 bytes=$(wc -c < "$OUT_DIR/ncout.prg")
 echo "small generated loaded image: $((bytes - 2)) bytes"
 echo "bootstrap generated ass source: $(wc -c < "$ASS_FROM_C") bytes"
+
+# Decisive rung: current ass assembles the compiler-generated ASSFROMC.ASM, then
+# that executable initializes its own BSS, runs ass_assemble on ASS/ASS_4000.ASM,
+# and compares all resulting bytes with a preserved production-native oracle.
+# The comparison itself runs on the C64; the host shell only reports the mailbox.
+if ! VICE_TIMEOUT=240 VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
+    sh tests/run-test.sh "$BUILD_DIR/test_ass_from_c.prg" ass-from-c; then
+    report_ass_from_c_mailbox
+    exit 1
+fi
+
+report_ass_from_c_mailbox
+set -- $(od -An -tu1 -N8 "$ASS_FROM_C_RESULT")
+ASS_FROM_C_LOADED=$(($4 + 256 * $5))
+echo "ass-from-c loaded image: $ASS_FROM_C_LOADED bytes"
+echo "native bootstrap oracle: 6905 bytes matched"
