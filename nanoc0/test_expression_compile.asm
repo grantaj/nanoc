@@ -370,6 +370,14 @@ emit_bss_boundaries:
 .runtime:
 	jsr xt_emit_bss_end
 	bcc .failed
+	;;; The checker is test scaffolding, not part of the C function. Give it a
+	;;; global anchor so its sixty short branch labels have their own assembler
+	;;; local-label lifetime instead of inflating the function's local arena.
+	lda #xtCheckerScopeEnd-xtCheckerScope
+	ldx #<xtCheckerScope
+	ldy #>xtCheckerScope
+	jsr emit_text
+	bcc .failed
 	jsr xt_emit_checker
 	bcc .failed
 	jsr xt_emit_mul16
@@ -644,6 +652,12 @@ xtStart:
 	byte '_','_','t','e','s','t','_','s','t','a','r','t',':',$0a
 	byte $09,'c','l','d',$0a
 xtStartEnd:
+
+;;; This global label is intentionally emitted between the compiled function and
+;;; the test-only checker. It has no runtime cost; it only starts a fresh `ass`
+;;; local-label lifetime for the checker's generated `.LNN` branches.
+xtCheckerScope:	byte '_','_','t','e','s','t','_','c','h','e','c','k',':',$0a
+xtCheckerScopeEnd:
 
 xtBytePrefix:	byte $09,'b','y','t','e',' '
 xtBytePrefixEnd:
