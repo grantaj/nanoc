@@ -117,140 +117,6 @@ emit_load_primary_scalar:
 	bcs .currentWidth
 	rts
 .currentWidth:
-	lda primarySymbolType
-	cmp #TYPE_CHAR
-	beq emit_zero_high
-	ldx #<exprLdxSpace
-	ldy #>exprLdxSpace
-	jsr emit_string
-	bcs .currentHighName
-	rts
-.currentHighName:
-	ldx primarySymbolIndex
-	jsr emit_current_name
-	bcs .currentHighDone
-	rts
-.currentHighDone:
-	jmp emit_plus_one_newline
-
-emit_zero_high:
-	ldx #<exprLdxZero
-	ldy #>exprLdxZero
-	jmp emit_string
-
-emit_load_primary_address:
-	ldx #<exprLdaLowImm
-	ldy #>exprLdaLowImm
-	jsr emit_string
-	bcs .lowName
-	rts
-.lowName:
-	ldx primarySymbolIndex
-	jsr emit_persistent_name
-	bcs .lowDone
-	rts
-.lowDone:
-	jsr emit_newline
-	bcs .high
-	rts
-.high:
-	ldx #<exprLdxHighImm
-	ldy #>exprLdxHighImm
-	jsr emit_string
-	bcs .highName
-	rts
-.highName:
-	ldx primarySymbolIndex
-	jsr emit_persistent_name
-	bcs .done
-	rts
-.done:
-	jmp emit_newline
-
-emit_plus_one_newline:
-	ldx #<exprPlusOne
-	ldy #>exprPlusOne
-	jsr emit_string
-	bcs .done
-	rts
-.done:
-	jmp emit_newline
-
-;;; Spill storage is allocated by expression.asm. This routine merely gives the
-;;; new word its deterministic assembler-visible name.
-emit_spill_definition:
-	sta emitSpillIndex
-	jsr emit_spill_name
-	bcs .assign
-	rts
-.assign:
-	ldx #<exprBssAssign
-	ldy #>exprBssAssign
-	jsr emit_string
-	bcs .offset
-	rts
-.offset:
-	lda allocOffset
-	sta emitWord
-	lda allocOffset+1
-	sta emitWord+1
-	jsr emit_hex_word
-	bcs .done
-	rts
-.done:
-	jmp emit_newline
-
-emit_store_spill:
-	sta emitSpillIndex
-	ldx #<exprStaSpace
-	ldy #>exprStaSpace
-	jsr emit_string
-	bcs .lowName
-	rts
-.lowName:
-	lda emitSpillIndex
-	jsr emit_spill_name
-	bcs .lowDone
-	rts
-.lowDone:
-	jsr emit_newline
-	bcs .high
-	rts
-.high:
-	ldx #<exprStxSpace
-	ldy #>exprStxSpace
-	jsr emit_string
-	bcs .highName
-	rts
-.highName:
-	lda emitSpillIndex
-	jsr emit_spill_name
-	bcs .done
-	rts
-.done:
-	jmp emit_plus_one_newline
-
-;;; X=current-function symbol index; target value already lives in A/X.
-emit_store_current_value:
-	stx emitSavedIndex
-	ldx #<exprStaSpace
-	ldy #>exprStaSpace
-	jsr emit_string
-	bcs .lowName
-	ldx emitSavedIndex
-	rts
-.lowName:
-	ldx emitSavedIndex
-	jsr emit_current_name
-	bcs .lowDone
-	ldx emitSavedIndex
-	rts
-.lowDone:
-	jsr emit_newline
-	bcs .width
-	ldx emitSavedIndex
-	rts
-.width:
 	ldx emitSavedIndex
 	lda currentType,x
 	cmp #TYPE_CHAR
@@ -621,19 +487,9 @@ emit_shift_reduction:
 ;;; Comparisons
 ;;; ---------------------------------------------------------------------------
 
-;;; Every semantic conditional jump uses the same unconditional policy as the
-;;; rest of nanoc0: branch only over an adjacent absolute JMP. The compiler does
-;;; not ask whether the real target happens to fit in a relative branch.
-;;;
-;;; Caller places the real target in emitLabelValue and passes the *opposite*
-;;; NUL-terminated short-branch fragment in X/Y. The generated shape is:
-;;;
-;;;     b<opposite> nearby
-;;;     jmp target
-;;; nearby:
-;;;
-;;; emitLabelKind describes the real target. The helper temporarily spells its
-;;; own adjacent label as __nc_near_NNNN, then restores the caller's role.
+;;; Statement destinations may be arbitrarily far away. For those real semantic
+;;; jumps, branch over one adjacent absolute JMP so the relative branch remains
+;;; local without any distance analysis.
 emit_long_conditional_jump:
 	stx conditionalBranchPtr
 	sty conditionalBranchPtr+1
@@ -697,106 +553,26 @@ emit_long_conditional_jump:
 	clc
 	rts
 
-set_true_target:
-	lda #EMIT_LABEL_CMP_TRUE
-	sta emitLabelKind
-	lda compareTrueLabel
-	sta emitLabelValue
-	lda compareTrueLabel+1
-	sta emitLabelValue+1
-	rts
-
-set_false_target:
-	lda #EMIT_LABEL_CMP_FALSE
-	sta emitLabelKind
-	lda compareFalseLabel
-	sta emitLabelValue
-	lda compareFalseLabel+1
-	sta emitLabelValue+1
-	rts
-
-emit_short_conditional_jump:
-	jsr emit_string
-	bcs .name
-	rts
-.name:
-	jsr emit_generated_label_name
-	bcs .done
-	rts
-.done:
-	jmp emit_newline
-
-;;; Comparison-internal labels are created by the comparison emitter itself.
-;;; Their fixed templates are comfortably inside relative-branch range, so spell
-;;; those branches directly. Only a jump to a surrounding statement needs the
-;;; branch-over-JMP helper above.
-emit_bcc_true:
-	jsr set_true_target
-	ldx #<exprBcc
-	ldy #>exprBcc
-	jmp emit_short_conditional_jump
-
-emit_bcc_false:
-	jsr set_false_target
-	ldx #<exprBcc
-	ldy #>exprBcc
-	jmp emit_short_conditional_jump
-
-emit_bne_true:
-	jsr set_true_target
-	ldx #<exprBne
-	ldy #>exprBne
-	jmp emit_short_conditional_jump
-
-emit_bne_false:
-	jsr set_false_target
-	ldx #<exprBne
-	ldy #>exprBne
-	jmp emit_short_conditional_jump
-
-emit_beq_true:
-	jsr set_true_target
-	ldx #<exprBeq
-	ldy #>exprBeq
-	jmp emit_short_conditional_jump
-
-emit_beq_false:
-	jsr set_false_target
-	ldx #<exprBeq
-	ldy #>exprBeq
-	jmp emit_short_conditional_jump
-
-emit_bmi_true:
-	jsr set_true_target
-	ldx #<exprBmi
-	ldy #>exprBmi
-	jmp emit_short_conditional_jump
-
-emit_bmi_false:
-	jsr set_false_target
-	ldx #<exprBmi
-	ldy #>exprBmi
-	jmp emit_short_conditional_jump
-
-emit_bpl_same_sign:
-	lda #EMIT_LABEL_CMP_SAME_SIGN
-	sta emitLabelKind
-	lda compareSameSignLabel
-	sta emitLabelValue
-	lda compareSameSignLabel+1
-	sta emitLabelValue+1
-	ldx #<exprBpl
-	ldy #>exprBpl
-	jmp emit_short_conditional_jump
-
+;;; Comparisons are common enough in real C that spelling the complete 16-bit
+;;; decision tree at every use quickly dominates the generated program. Keep the
+;;; expression machine contract visible instead: right operand -> NC_TMP, reload
+;;; the saved left operand into A/X, then call the small target helper matching
+;;; the source operator. The helper returns the ordinary C value 0/1 in A/X.
 emit_compare_reduction:
+	lda #$01
+	sta compareUsed
 	jsr emit_save_right_tmp
-	bcs .labels
+	bcs .leftLow
 	rts
-.labels:
-	lda #EMIT_LABEL_GENERIC
-	sta emitLabelKind
-	jsr reserve_compare_labels
+.leftLow:
+	jsr emit_lda_reduce_spill
+	bcs .leftHigh
+	rts
+.leftHigh:
+	jsr emit_ldx_reduce_spill_high
+	bcs .call
+	rts
+.call:
 	lda reduceOperator
 	cmp #OP_EQ
 	beq .equal
@@ -805,248 +581,76 @@ emit_compare_reduction:
 	jsr combined_integer_type
 	cmp #TYPE_UNSIGNED
 	beq .unsigned
-	jmp emit_signed_relational
-.unsigned:
-	jmp emit_unsigned_relational
-.equal:
-	lda #$00
-	sta compareInvert
-	jmp emit_equality
-.notEqual:
-	lda #$01
-	sta compareInvert
-	jmp emit_equality
 
-reserve_compare_labels:
-	jsr reserve_generated_label
-	lda emitLabelValue
-	sta compareTrueLabel
-	lda emitLabelValue+1
-	sta compareTrueLabel+1
-	jsr reserve_generated_label
-	lda emitLabelValue
-	sta compareFalseLabel
-	lda emitLabelValue+1
-	sta compareFalseLabel+1
-	jsr reserve_generated_label
-	lda emitLabelValue
-	sta compareDoneLabel
-	lda emitLabelValue+1
-	sta compareDoneLabel+1
-	rts
-
-emit_equality:
-	jsr emit_lda_reduce_spill
-	bcs .lowCompare
-	rts
-.lowCompare:
-	ldx #<exprCmpTmp
-	ldy #>exprCmpTmp
-	jsr emit_string
-	bcs .lowBranch
-	rts
-.lowBranch:
-	lda compareInvert
-	beq .equalLowDifferent
-	jsr emit_bne_true
-	jmp .high
-.equalLowDifferent:
-	jsr emit_bne_false
-.high:
-	bcs .highLoad
-	rts
-.highLoad:
-	jsr emit_lda_reduce_spill_high
-	bcs .highCompare
-	rts
-.highCompare:
-	ldx #<exprCmpTmpHigh
-	ldy #>exprCmpTmpHigh
-	jsr emit_string
-	bcs .highBranch
-	rts
-.highBranch:
-	lda compareInvert
-	beq .equalHighSame
-	jsr emit_beq_false
-	jmp .fallThrough
-.equalHighSame:
-	jsr emit_beq_true
-.fallThrough:
-	bcs .fallJump
-	rts
-.fallJump:
-	lda compareInvert
-	beq .fallFalse
-	jsr set_true_target
-	jmp .fallTarget
-.fallFalse:
-	jsr set_false_target
-.fallTarget:
-	jsr emit_jump_label
-	bcs .results
-	rts
-.results:
-	jmp emit_comparison_result_labels
-
-;;; Unsigned ordering compares high byte first, then low byte when equal.
-emit_unsigned_relational:
-	jsr emit_lda_reduce_spill_high
-	bcs .highCompare
-	rts
-.highCompare:
-	ldx #<exprCmpTmpHigh
-	ldy #>exprCmpTmpHigh
-	jsr emit_string
-	bcs .choose
-	rts
-.choose:
 	lda reduceOperator
 	cmp #OP_LT
-	beq .lessOrEqual
+	beq .signedLt
 	cmp #OP_LE
-	beq .lessOrEqual
-	jmp .greaterOrEqual
-
-.lessOrEqual:
-	jsr emit_bcc_true
-	bcs .leHighDifferent
-	rts
-.leHighDifferent:
-	jsr emit_bne_false
-	bcs .leLow
-	rts
-.leLow:
-	jsr emit_lda_reduce_spill
-	bcs .leLowCompare
-	rts
-.leLowCompare:
-	ldx #<exprCmpTmp
-	ldy #>exprCmpTmp
-	jsr emit_string
-	bcs .leLowBranch
-	rts
-.leLowBranch:
-	lda reduceOperator
-	cmp #OP_LT
-	beq .strictLess
-	jsr emit_bcc_true
-	bcs .leEqual
-	rts
-.leEqual:
-	jsr emit_beq_true
-	bcs .fallFalse
-	rts
-.strictLess:
-	jsr emit_bcc_true
-	bcs .fallFalse
-	rts
-
-.greaterOrEqual:
-	jsr emit_bcc_false
-	bcs .geHighDifferent
-	rts
-.geHighDifferent:
-	jsr emit_bne_true
-	bcs .geLow
-	rts
-.geLow:
-	jsr emit_lda_reduce_spill
-	bcs .geLowCompare
-	rts
-.geLowCompare:
-	ldx #<exprCmpTmp
-	ldy #>exprCmpTmp
-	jsr emit_string
-	bcs .geLowBranch
-	rts
-.geLowBranch:
-	lda reduceOperator
+	beq .signedLe
 	cmp #OP_GT
-	beq .strictGreater
-	jsr emit_bcc_false
-	bcs .fallTrue
-	rts
-.strictGreater:
-	jsr emit_bcc_false
-	bcs .gtEqual
-	rts
-.gtEqual:
-	jsr emit_beq_false
-	bcs .fallTrue
-	rts
+	beq .signedGt
+	ldx #<exprCallSge16
+	ldy #>exprCallSge16
+	jmp emit_string
+.signedLt:
+	ldx #<exprCallSlt16
+	ldy #>exprCallSlt16
+	jmp emit_string
+.signedLe:
+	ldx #<exprCallSle16
+	ldy #>exprCallSle16
+	jmp emit_string
+.signedGt:
+	ldx #<exprCallSgt16
+	ldy #>exprCallSgt16
+	jmp emit_string
 
-.fallTrue:
-	jsr set_true_target
-	jmp .fallJump
-.fallFalse:
-	jsr set_false_target
-.fallJump:
-	jsr emit_jump_label
-	bcs .results
-	rts
-.results:
-	jmp emit_comparison_result_labels
-
-;;; For signed ordering, differing sign bits decide immediately. If signs match,
-;;; ordinary unsigned byte ordering is correct for two's-complement values.
-emit_signed_relational:
-	jsr emit_lda_reduce_spill_high
-	bcs .signCompare
-	rts
-.signCompare:
-	ldx #<exprEorTmpHigh
-	ldy #>exprEorTmpHigh
-	jsr emit_string
-	bcs .sameSignLabel
-	rts
-.sameSignLabel:
-	jsr reserve_generated_label
-	lda emitLabelValue
-	sta compareSameSignLabel
-	lda emitLabelValue+1
-	sta compareSameSignLabel+1
-	jsr emit_bpl_same_sign
-	bcs .differentSigns
-	rts
-.differentSigns:
-	jsr emit_lda_reduce_spill_high
-	bcs .signBranch
-	rts
-.signBranch:
+.unsigned:
 	lda reduceOperator
 	cmp #OP_LT
-	beq .negativeMeansTrue
+	beq .unsignedLt
 	cmp #OP_LE
-	beq .negativeMeansTrue
-	jsr emit_bmi_false
-	bcs .positiveTrue
+	beq .unsignedLe
+	cmp #OP_GT
+	beq .unsignedGt
+	ldx #<exprCallUge16
+	ldy #>exprCallUge16
+	jmp emit_string
+.unsignedLt:
+	ldx #<exprCallUlt16
+	ldy #>exprCallUlt16
+	jmp emit_string
+.unsignedLe:
+	ldx #<exprCallUle16
+	ldy #>exprCallUle16
+	jmp emit_string
+.unsignedGt:
+	ldx #<exprCallUgt16
+	ldy #>exprCallUgt16
+	jmp emit_string
+
+.equal:
+	ldx #<exprCallEq16
+	ldy #>exprCallEq16
+	jmp emit_string
+.notEqual:
+	ldx #<exprCallNe16
+	ldy #>exprCallNe16
+	jmp emit_string
+
+emit_ldx_reduce_spill_high:
+	ldx #<exprLdxSpace
+	ldy #>exprLdxSpace
+	jsr emit_string
+	bcs .name
 	rts
-.negativeMeansTrue:
-	jsr emit_bmi_true
-	bcs .positiveFalse
+.name:
+	lda reduceSpill
+	jsr emit_spill_name
+	bcs .done
 	rts
-.positiveTrue:
-	jsr set_true_target
-	jmp .differentJump
-.positiveFalse:
-	jsr set_false_target
-.differentJump:
-	jsr emit_jump_label
-	bcs .sameSign
-	rts
-.sameSign:
-	lda #EMIT_LABEL_CMP_SAME_SIGN
-	sta emitLabelKind
-	lda compareSameSignLabel
-	sta emitLabelValue
-	lda compareSameSignLabel+1
-	sta emitLabelValue+1
-	jsr emit_label_definition
-	bcs .sameSignCompare
-	rts
-.sameSignCompare:
-	jmp emit_unsigned_relational
+.done:
+	jmp emit_plus_one_newline
 
 emit_jump_label:
 	ldx #<exprJmp
@@ -1072,57 +676,6 @@ emit_label_definition:
 	rts
 .done:
 	jmp emit_newline
-
-emit_comparison_result_labels:
-	lda #EMIT_LABEL_CMP_TRUE
-	sta emitLabelKind
-	lda compareTrueLabel
-	sta emitLabelValue
-	lda compareTrueLabel+1
-	sta emitLabelValue+1
-	jsr emit_label_definition
-	bcs .trueValue
-	rts
-.trueValue:
-	ldx #<exprTrueValue
-	ldy #>exprTrueValue
-	jsr emit_string
-	bcs .skipFalse
-	rts
-.skipFalse:
-	lda #EMIT_LABEL_CMP_DONE
-	sta emitLabelKind
-	lda compareDoneLabel
-	sta emitLabelValue
-	lda compareDoneLabel+1
-	sta emitLabelValue+1
-	jsr emit_jump_label
-	bcs .falseLabel
-	rts
-.falseLabel:
-	lda #EMIT_LABEL_CMP_FALSE
-	sta emitLabelKind
-	lda compareFalseLabel
-	sta emitLabelValue
-	lda compareFalseLabel+1
-	sta emitLabelValue+1
-	jsr emit_label_definition
-	bcs .falseValue
-	rts
-.falseValue:
-	ldx #<exprFalseValue
-	ldy #>exprFalseValue
-	jsr emit_string
-	bcs .doneLabel
-	rts
-.doneLabel:
-	lda #EMIT_LABEL_CMP_DONE
-	sta emitLabelKind
-	lda compareDoneLabel
-	sta emitLabelValue
-	lda compareDoneLabel+1
-	sta emitLabelValue+1
-	jmp emit_label_definition
 
 ;;; Index value is in target A/X. reduceSpill is the saved full 16-bit base.
 ;;; Non-char global arrays scale the index by two before address addition.
@@ -1297,34 +850,22 @@ exprLoadTmpResult:
 	byte $09,'l','d','x',' ','N','C','_','T','M','P','+','1',$0a
 exprLoadTmpResultEnd:	byte 0
 
-exprCmpTmp:		byte $09,'c','m','p',' ','N','C','_','T','M','P',$0a
-exprCmpTmpEnd:		byte 0
-exprCmpTmpHigh:		byte $09,'c','m','p',' ','N','C','_','T','M','P','+','1',$0a
-exprCmpTmpHighEnd:	byte 0
-exprEorTmpHigh:		byte $09,'e','o','r',' ','N','C','_','T','M','P','+','1',$0a
-exprEorTmpHighEnd:	byte 0
-exprBcc:		byte $09,'b','c','c',' '
-exprBccEnd:		byte 0
-exprBcs:		byte $09,'b','c','s',' '
-exprBcsEnd:		byte 0
 exprBne:		byte $09,'b','n','e',' '
 exprBneEnd:		byte 0
 exprBeq:		byte $09,'b','e','q',' '
 exprBeqEnd:		byte 0
-exprBmi:		byte $09,'b','m','i',' '
-exprBmiEnd:		byte 0
-exprBpl:		byte $09,'b','p','l',' '
-exprBplEnd:		byte 0
 exprJmp:		byte $09,'j','m','p',' '
 exprJmpEnd:		byte 0
-exprTrueValue:
-	byte $09,'l','d','a',' ','#','$','0','1',$0a
-	byte $09,'l','d','x',' ','#','$','0','0',$0a
-exprTrueValueEnd:	byte 0
-exprFalseValue:
-	byte $09,'l','d','a',' ','#','$','0','0',$0a
-	byte $09,'l','d','x',' ','#','$','0','0',$0a
-exprFalseValueEnd:	byte 0
+exprCallEq16:		string "\tjsr __nc_eq16"
+exprCallNe16:		string "\tjsr __nc_ne16"
+exprCallSlt16:		string "\tjsr __nc_slt16"
+exprCallSle16:		string "\tjsr __nc_sle16"
+exprCallSgt16:		string "\tjsr __nc_sgt16"
+exprCallSge16:		string "\tjsr __nc_sge16"
+exprCallUlt16:		string "\tjsr __nc_ult16"
+exprCallUle16:		string "\tjsr __nc_ule16"
+exprCallUgt16:		string "\tjsr __nc_ugt16"
+exprCallUge16:		string "\tjsr __nc_uge16"
 
 exprScaleIndex:
 	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
@@ -1354,7 +895,7 @@ exprWordIndirect:
 	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a
 exprWordIndirectEnd:	byte 0
 
-;;; Scratch used only while formatting generated control flow.
+;;; Scratch used only while formatting a branch-over-JMP statement transfer.
 conditionalBranchPtr:		word 0
 conditionalTargetLabel:	word 0
 conditionalSkipLabel:		word 0
