@@ -23,16 +23,17 @@
 ;;;   parameter/local       __c_<function-name>__vNN
 ;;;   expression spill      __c_<function-name>__sNN
 ;;;   deferred string       __nc_stringNN
-;;;   generic local label   .__nc_LNNNN
-;;;   statement labels      .__nc_if_false_NNNN, .__nc_if_end_NNNN,
-;;;                         .__nc_while_top_NNNN, .__nc_while_end_NNNN
-;;;   comparison labels     .__nc_cmp_true_NNNN, .__nc_cmp_false_NNNN,
-;;;                         .__nc_cmp_done_NNNN, .__nc_cmp_same_sign_NNNN
-;;;   branch trampoline     .__nc_near_NNNN
+;;;   generic local label   .LNNNN
+;;;   statement labels      .if_false_NNNN, .if_end_NNNN,
+;;;                         .while_top_NNNN, .while_end_NNNN
+;;;   comparison labels     .cmp_true_NNNN, .cmp_false_NNNN,
+;;;                         .cmp_done_NNNN, .cmp_same_sign_NNNN
+;;;   branch trampoline     .near_NNNN
 ;;;
 ;;; Generated control/comparison labels are local to the C function's assembler
-;;; scope. This matches their lifetime and avoids consuming `ass`'s deliberately
-;;; one-byte global-label scope numbers. Deferred data labels remain global.
+;;; scope. That scope is already their namespace, so repeating `__nc_` in every
+;;; local spelling would spend scarce assembler name RAM without adding meaning.
+;;; Deferred data labels remain global and keep their explicit Nano C prefix.
 ;;;
 ;;; Every generated label still comes from one monotonically increasing counter.
 ;;; emitLabelKind changes only the human-readable spelling; it is transient
@@ -428,16 +429,16 @@ emitCPrefixEnd = emitCPrefix+4
 emitValueSuffix:	byte '_','_','v',0
 emitSpillSuffix:	byte '_','_','s',0
 emitStringPrefix:	byte '_','_','n','c','_','s','t','r','i','n','g',0
-emitLabelPrefix:	byte '.','_','_','n','c','_','L',0
-emitIfFalsePrefix:	byte '.','_','_','n','c','_','i','f','_','f','a','l','s','e','_',0
-emitIfEndPrefix:	byte '.','_','_','n','c','_','i','f','_','e','n','d','_',0
-emitWhileTopPrefix:	byte '.','_','_','n','c','_','w','h','i','l','e','_','t','o','p','_',0
-emitWhileEndPrefix:	byte '.','_','_','n','c','_','w','h','i','l','e','_','e','n','d','_',0
-emitNearPrefix:	byte '.','_','_','n','c','_','n','e','a','r','_',0
-emitCmpTruePrefix:	byte '.','_','_','n','c','_','c','m','p','_','t','r','u','e','_',0
-emitCmpFalsePrefix:	byte '.','_','_','n','c','_','c','m','p','_','f','a','l','s','e','_',0
-emitCmpDonePrefix:	byte '.','_','_','n','c','_','c','m','p','_','d','o','n','e','_',0
-emitCmpSameSignPrefix:	byte '.','_','_','n','c','_','c','m','p','_','s','a','m','e','_','s','i','g','n','_',0
+emitLabelPrefix:	byte '.','L',0
+emitIfFalsePrefix:	byte '.','i','f','_','f','a','l','s','e','_',0
+emitIfEndPrefix:	byte '.','i','f','_','e','n','d','_',0
+emitWhileTopPrefix:	byte '.','w','h','i','l','e','_','t','o','p','_',0
+emitWhileEndPrefix:	byte '.','w','h','i','l','e','_','e','n','d','_',0
+emitNearPrefix:	byte '.','n','e','a','r','_',0
+emitCmpTruePrefix:	byte '.','c','m','p','_','t','r','u','e','_',0
+emitCmpFalsePrefix:	byte '.','c','m','p','_','f','a','l','s','e','_',0
+emitCmpDonePrefix:	byte '.','c','m','p','_','d','o','n','e','_',0
+emitCmpSameSignPrefix:	byte '.','c','m','p','_','s','a','m','e','_','s','i','g','n','_',0
 
 emitOutputEnabled:	byte 0
 emitOutputByte:		byte 0
