@@ -1,0 +1,305 @@
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -57,6 +57,13 @@
+ IMMEDIATE_BINARY_CAPTURED_LITERAL = 1
+ IMMEDIATE_BINARY_REDUCED          = 2
+ IMMEDIATE_BINARY_CAPTURED_SCALAR  = 3
++IMMEDIATE_BINARY_DEFERRED_SELF    = 4
++IMMEDIATE_BINARY_DIRECT_UPDATE    = 5
++
++;;; Scalar assignment uses statementTargetKind only until the lvalue is checked.
++;;; This private value then tells the expression parser that an exact `x = x +/- 1`
++;;; may be emitted as a direct named update rather than materialising `x` in A/X.
++STATEMENT_SCALAR_ASSIGNMENT = $82
+ 
+ ;;; Index markers need only one byte of base identity. Ordinary expression
+ ;;; spills are 0..15; a fixed char array uses the unused range above them. The
+@@ -144,6 +151,7 @@
+ 	lda #$00
+ 	sta operatorCount
+ 	sta expressionSpillDepth
++	sta immediateBinaryState
+ 	lda #$01
+ 	sta expressionNeedValue
+ 
+@@ -261,6 +269,8 @@
+ 	lda immediateBinaryState
+ 	cmp #IMMEDIATE_BINARY_REDUCED
+ 	beq .immediateReduced
++	cmp #IMMEDIATE_BINARY_DIRECT_UPDATE
++	beq .immediateReduced
+ 
+ 	jsr spill_current_value
+ 	bcs .leftSpilled
+@@ -514,11 +524,47 @@
+ 	lda #TYPE_CHAR
+ 	sta expressionElementType
+ .loadScalar:
++	jsr defer_self_update
++	bcs .primaryDone
+ 	jsr emit_load_primary_scalar
+ 	bcs .primaryDone
+ 	lda #EXPR_EMIT_ERROR
+ 	jmp expression_fail
+ 
++;;; An exact scalar self-update is the one useful case where delaying this load
++;;; buys something: the following + or - may turn out to be literal one and a
++;;; semicolon. No token is rewound. If the shape does not complete,
++;;; try_immediate_binary simply emits the deferred load and resumes normally.
++defer_self_update:
++	lda statementTargetKind
++	cmp #STATEMENT_SCALAR_ASSIGNMENT
++	bne .ordinary
++	lda operatorCount
++	bne .ordinary
++	lda primarySymbolArea
++	cmp statementTargetArea
++	bne .ordinary
++	lda primarySymbolIndex
++	cmp statementTargetIndex
++	bne .ordinary
++	lda primarySymbolType
++	jsr type_is_integer
++	bcc .ordinary
++	lda currentTokenKind
++	cmp #'+'
++	beq .defer
++	cmp #'-'
++	bne .ordinary
++.defer:
++	lda #IMMEDIATE_BINARY_DEFERRED_SELF
++	sta immediateBinaryState
++	sec
++	rts
++.ordinary:
++	clc
++	rts
++
++
+ .array:
+ 	lda primarySymbolType
+ 	sta expressionElementType
+@@ -749,6 +795,68 @@
+ ;;; precedence lookahead. A simple scalar keeps the left value in NC_PTR; a
+ ;;; nested/tighter RHS falls back to the ordinary static spill machine.
+ try_immediate_binary:
++	lda immediateBinaryState
++	cmp #IMMEDIATE_BINARY_DEFERRED_SELF
++	bne .ordinary
++
++	;;; The deferred left primary is known to be the assignment target and the
++	;;; pending operator is + or -. Only integer one followed immediately by ';'
++	;;; completes the direct-update shape. Anything else materialises the saved
++	;;; primary and rejoins this same one-token fast path.
++	lda currentTokenKind
++	cmp #TOKEN_INTEGER
++	bne .materialise
++	lda currentTokenValue
++	sta expressionLiteralValue
++	cmp #$01
++	bne .capturedFallback
++	lda currentTokenValue+1
++	sta expressionLiteralValue+1
++	bne .capturedFallback
++	lda currentTokenType
++	cmp #TOKEN_TYPE_UNSIGNED
++	bne .selfSigned
++	lda #TYPE_UNSIGNED
++	bne .selfTypeDone
++.selfSigned:
++	lda #TYPE_INT
++.selfTypeDone:
++	sta reduceRightType
++	jsr parser_next
++	bcc .failed
++	lda currentTokenKind
++	cmp #';'
++	bne .capturedOneFallback
++	lda #IMMEDIATE_BINARY_DIRECT_UPDATE
++	sta immediateBinaryState
++	sec
++	rts
++
++.capturedFallback:
++	lda currentTokenValue+1
++	sta expressionLiteralValue+1
++	lda currentTokenType
++	cmp #TOKEN_TYPE_UNSIGNED
++	bne .fallbackSigned
++	lda #TYPE_UNSIGNED
++	bne .fallbackTypeDone
++.fallbackSigned:
++	lda #TYPE_INT
++.fallbackTypeDone:
++	sta reduceRightType
++	jsr parser_next
++	bcc .failed
++.capturedOneFallback:
++	jsr emit_load_primary_scalar_now
++	bcc .emitFailed
++	lda #IMMEDIATE_BINARY_CAPTURED_LITERAL
++	sta immediateBinaryState
++	jmp .advanced
++
++.materialise:
++	jsr emit_load_primary_scalar_now
++	bcc .emitFailed
++.ordinary:
+ 	lda #IMMEDIATE_BINARY_NONE
+ 	sta immediateBinaryState
+ 
+@@ -765,6 +873,9 @@
+ .notImmediate:
+ 	sec
+ 	rts
++.failed:
++	clc
++	rts
+ 
+ .supported:
+ 	lda currentTokenKind
+--- a/nanoc0/statements.asm
++++ b/nanoc0/statements.asm
+@@ -585,6 +585,8 @@
+ 	lda #PARSE_BAD_ASSIGNMENT
+ 	jmp parser_fail
+ .targetOk:
++	lda #STATEMENT_SCALAR_ASSIGNMENT
++	sta statementTargetKind
+ 	jsr parser_next
+ 	bcc .failed
+ 	jsr parse_expression
+@@ -600,6 +602,13 @@
+ 	lda #PARSE_BAD_ASSIGNMENT
+ 	jmp parser_fail
+ .store:
++	lda immediateBinaryState
++	cmp #IMMEDIATE_BINARY_DIRECT_UPDATE
++	bne .ordinaryStore
++	jsr emit_direct_scalar_update
++	bcc .emitFail
++	jmp parser_next
++.ordinaryStore:
+ 	lda statementTargetArea
+ 	cmp #SYMBOL_AREA_CURRENT
+ 	bne .persistent
+--- a/nanoc0/statement_codegen.asm
++++ b/nanoc0/statement_codegen.asm
+@@ -37,6 +37,107 @@
+ .array:
+ 	jmp emit_load_primary_address
+ 
++
++;;; x = x +/- 1 has no reason to travel through A/X. Byte objects map directly
++;;; to INC/DEC. A word update touches the high byte only on carry/borrow, with one
++;;; adjacent generated label; this is source-shaped 6502 lowering, not a peephole.
++emit_direct_scalar_update:
++	lda #EMIT_LABEL_GENERIC
++	sta emitLabelKind
++	lda pendingOperator
++	cmp #OP_SUB
++	beq .subtract
++	lda statementTargetType
++	cmp #TYPE_CHAR
++	beq .incLow
++	jsr reserve_generated_label
++.incLow:
++	ldx #<statementIncSpace
++	ldy #>statementIncSpace
++	jsr emit_statement_target_low
++	bcc .failed
++	lda statementTargetType
++	cmp #TYPE_CHAR
++	beq .done
++	jsr emit_direct_update_branch
++	bcc .failed
++	ldx #<statementIncSpace
++	ldy #>statementIncSpace
++	jsr emit_statement_target_high
++	bcc .failed
++	jmp emit_label_definition
++
++.subtract:
++	lda statementTargetType
++	cmp #TYPE_CHAR
++	beq .decLow
++	jsr reserve_generated_label
++	ldx #<exprLdaSpace
++	ldy #>exprLdaSpace
++	jsr emit_statement_target_low
++	bcc .failed
++	jsr emit_direct_update_branch
++	bcc .failed
++	ldx #<statementDecSpace
++	ldy #>statementDecSpace
++	jsr emit_statement_target_high
++	bcc .failed
++	jsr emit_label_definition
++	bcc .failed
++.decLow:
++	ldx #<statementDecSpace
++	ldy #>statementDecSpace
++	jsr emit_statement_target_low
++	bcc .failed
++.done:
++	sec
++	rts
++.failed:
++	clc
++	rts
++
++emit_statement_target_name:
++	ldx statementTargetIndex
++	lda statementTargetArea
++	cmp #SYMBOL_AREA_CURRENT
++	beq .current
++	jmp emit_persistent_name
++.current:
++	jmp emit_current_name
++
++;;; X/Y is an instruction prefix; emit it with the scalar assignment target.
++emit_statement_target_low:
++	jsr emit_string
++	bcc .failed
++	jsr emit_statement_target_name
++	bcc .failed
++	jmp emit_newline
++.failed:
++	clc
++	rts
++
++emit_statement_target_high:
++	jsr emit_string
++	bcc .failed
++	jsr emit_statement_target_name
++	bcc .failed
++	jmp emit_plus_one_newline
++.failed:
++	clc
++	rts
++
++emit_direct_update_branch:
++	ldx #<statementBneSpace
++	ldy #>statementBneSpace
++	jsr emit_string
++	bcc .failed
++	jsr emit_generated_label_name
++	bcc .failed
++	jmp emit_newline
++.failed:
++	clc
++	rts
++
+ emit_return_value:
+ 	ldx #<statementRts
+ 	ldy #>statementRts
+@@ -264,6 +365,9 @@
+ statementRts:		byte $09,'r','t','s',$0a,0
+ statementAddressSuffix:	byte '_','_','a',0
+ statementLdySpace:	byte $09,'l','d','y',' ',0
++statementIncSpace:	byte $09,'i','n','c',' ',0
++statementDecSpace:	byte $09,'d','e','c',' ',0
++statementBneSpace:	byte $09,'b','n','e',' ',0
+ statementByteTruthTest:
+ 	byte $09,'c','m','p',' ','#','$','0','0',$0a,0
+ statementTruthTest:
