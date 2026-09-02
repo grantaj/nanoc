@@ -22,11 +22,12 @@
 ;;;   global/function       __c_<source-name>
 ;;;   parameter/local       __c_<function-name>__vNN
 ;;;   expression spill      __c_<function-name>__sNN
+;;;   transient expression  NC_PTR
 ;;;   deferred string       __nc_stringNN
 ;;;   generic local label   .LNN
 ;;;   if labels             .ifFNN, .ifENN
 ;;;   while labels          .wtNN, .weNN
-;;;   comparison labels     .ctNN, .cfNN, .cdNN, .csNN
+;;;   comparison label      .cdNN
 ;;;   branch trampoline     .nNN
 ;;;
 ;;; Generated control/comparison labels are local to the C function's assembler
@@ -50,24 +51,22 @@
 ;;; This file formats only the few things the compiler repeatedly needs. It is
 ;;; not printf and it is not an output representation.
 
-EMIT_PTR        = $fc
-EMIT_OUTPUT_LFN = 3
+EMIT_PTR             = $fc
+EMIT_OUTPUT_LFN      = 3
+EMIT_TRANSIENT_SPILL = $ff
 
 ;;; Four bytes preserve the compiler's two zero-page scratch pairs across KERNAL
 ;;; output. They are mutable compiler work RAM immediately after the statement
 ;;; control stack, not loaded program data.
 emitOutputSavedScratch = $b39a
 
-EMIT_LABEL_GENERIC       = 0
-EMIT_LABEL_IF_FALSE      = 1
-EMIT_LABEL_IF_END        = 2
-EMIT_LABEL_WHILE_TOP     = 3
-EMIT_LABEL_WHILE_END     = 4
-EMIT_LABEL_NEAR          = 5
-EMIT_LABEL_CMP_TRUE      = 6
-EMIT_LABEL_CMP_FALSE     = 7
-EMIT_LABEL_CMP_DONE      = 8
-EMIT_LABEL_CMP_SAME_SIGN = 9
+EMIT_LABEL_GENERIC   = 0
+EMIT_LABEL_IF_FALSE  = 1
+EMIT_LABEL_IF_END    = 2
+EMIT_LABEL_WHILE_TOP = 3
+EMIT_LABEL_WHILE_END = 4
+EMIT_LABEL_NEAR      = 5
+EMIT_LABEL_CMP_DONE  = 8
 
 ;;; emit_output_byte
 ;;; A=byte. Carry set success. X/Y and $fc-$ff preserved.
@@ -298,9 +297,15 @@ emit_current_name:
 	clc
 	rts
 
-;;; A=spill depth -> __c_<function-name>__sNN.
+;;; A=spill depth -> static spill name, or NC_PTR for the transient sentinel.
 emit_spill_name:
 	sta emitSavedValue
+	cmp #EMIT_TRANSIENT_SPILL
+	bne .static
+	ldx #<emitTransientSpill
+	ldy #>emitTransientSpill
+	jmp emit_string
+.static:
 	ldx #<emitCPrefix
 	ldy #>emitCPrefix
 	jsr emit_string
@@ -347,14 +352,8 @@ emit_generated_label_name:
 	beq .whileEnd
 	cmp #EMIT_LABEL_NEAR
 	beq .near
-	cmp #EMIT_LABEL_CMP_TRUE
-	beq .cmpTrue
-	cmp #EMIT_LABEL_CMP_FALSE
-	beq .cmpFalse
 	cmp #EMIT_LABEL_CMP_DONE
 	beq .cmpDone
-	cmp #EMIT_LABEL_CMP_SAME_SIGN
-	beq .cmpSameSign
 	ldx #<emitLabelPrefix
 	ldy #>emitLabelPrefix
 	jmp .prefix
@@ -378,21 +377,9 @@ emit_generated_label_name:
 	ldx #<emitNearPrefix
 	ldy #>emitNearPrefix
 	jmp .prefix
-.cmpTrue:
-	ldx #<emitCmpTruePrefix
-	ldy #>emitCmpTruePrefix
-	jmp .prefix
-.cmpFalse:
-	ldx #<emitCmpFalsePrefix
-	ldy #>emitCmpFalsePrefix
-	jmp .prefix
 .cmpDone:
 	ldx #<emitCmpDonePrefix
 	ldy #>emitCmpDonePrefix
-	jmp .prefix
-.cmpSameSign:
-	ldx #<emitCmpSameSignPrefix
-	ldy #>emitCmpSameSignPrefix
 .prefix:
 	jsr emit_string
 	bcc .failed
@@ -443,6 +430,7 @@ emitCPrefix:		byte '_','_','c','_',0
 emitCPrefixEnd = emitCPrefix+4
 emitValueSuffix:	byte '_','_','v',0
 emitSpillSuffix:	byte '_','_','s',0
+emitTransientSpill:	byte 'N','C','_','P','T','R',0
 emitStringPrefix:	byte '_','_','n','c','_','s','t','r','i','n','g',0
 emitLabelPrefix:	byte '.','L',0
 emitIfFalsePrefix:	byte '.','i','f','F',0
@@ -450,10 +438,7 @@ emitIfEndPrefix:	byte '.','i','f','E',0
 emitWhileTopPrefix:	byte '.','w','t',0
 emitWhileEndPrefix:	byte '.','w','e',0
 emitNearPrefix:	byte '.','n',0
-emitCmpTruePrefix:	byte '.','c','t',0
-emitCmpFalsePrefix:	byte '.','c','f',0
 emitCmpDonePrefix:	byte '.','c','d',0
-emitCmpSameSignPrefix:	byte '.','c','s',0
 
 emitOutputEnabled:	byte 0
 emitOutputByte:		byte 0

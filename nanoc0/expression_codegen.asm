@@ -67,74 +67,52 @@ emit_load_literal_address:
 .done:
 	jmp emit_newline
 
+;;; Load the scalar captured by expression.asm. During a direct scalar reduction
+;;; A/X still holds the left operand, so deliberately emit no target load; the
+;;; direct reducer will address this symbol in place. Tighter RHS expressions
+;;; have already taken a real static spill and therefore arrive through .emit.
 emit_load_primary_scalar:
+	lda immediateBinaryState
+	cmp #IMMEDIATE_BINARY_CAPTURED_SCALAR
+	bne .emit
+	lda emitSpillIndex
+	cmp #EMIT_TRANSIENT_SPILL
+	bne .emit
+	jsr scalar_operator_is_direct
+	bcc .emit
+	sec
+	rts
+
+.emit:
 	lda #$00
 	sta expressionTruthInZ
-	lda primarySymbolArea
-	cmp #SYMBOL_AREA_CURRENT
-	beq .current
-
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
 	jsr emit_string
-	bcs .persistentLowName
+	bcs .lowName
 	rts
-.persistentLowName:
-	ldx primarySymbolIndex
-	jsr emit_persistent_name
-	bcs .persistentLowDone
+.lowName:
+	jsr emit_primary_scalar_name
+	bcs .lowDone
 	rts
-.persistentLowDone:
+.lowDone:
 	jsr emit_newline
-	bcs .persistentWidth
+	bcs .width
 	rts
-.persistentWidth:
+.width:
 	lda primarySymbolType
 	cmp #TYPE_CHAR
 	beq emit_zero_high
 	ldx #<exprLdxSpace
 	ldy #>exprLdxSpace
 	jsr emit_string
-	bcs .persistentHighName
+	bcs .highName
 	rts
-.persistentHighName:
-	ldx primarySymbolIndex
-	jsr emit_persistent_name
-	bcs .persistentHighDone
+.highName:
+	jsr emit_primary_scalar_name
+	bcs .highDone
 	rts
-.persistentHighDone:
-	jmp emit_plus_one_newline
-
-.current:
-	ldx #<exprLdaSpace
-	ldy #>exprLdaSpace
-	jsr emit_string
-	bcs .currentLowName
-	rts
-.currentLowName:
-	ldx primarySymbolIndex
-	jsr emit_current_name
-	bcs .currentLowDone
-	rts
-.currentLowDone:
-	jsr emit_newline
-	bcs .currentWidth
-	rts
-.currentWidth:
-	lda primarySymbolType
-	cmp #TYPE_CHAR
-	beq emit_zero_high
-	ldx #<exprLdxSpace
-	ldy #>exprLdxSpace
-	jsr emit_string
-	bcs .currentHighName
-	rts
-.currentHighName:
-	ldx primarySymbolIndex
-	jsr emit_current_name
-	bcs .currentHighDone
-	rts
-.currentHighDone:
+.highDone:
 	jmp emit_plus_one_newline
 
 emit_zero_high:
@@ -204,8 +182,18 @@ emit_spill_definition:
 .done:
 	jmp emit_newline
 
+;;; The transient sentinel means a simple scalar RHS. Operators which can address
+;;; that scalar directly need no spill at all; GT/LE retain the old NC_PTR
+;;; transient sequence because its reversed compare already expresses equality.
 emit_store_spill:
 	sta emitSpillIndex
+	cmp #EMIT_TRANSIENT_SPILL
+	bne .store
+	jsr scalar_operator_is_direct
+	bcc .store
+	sec
+	rts
+.store:
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
 	jsr emit_string
@@ -290,8 +278,17 @@ emit_unary_minus:
 
 ;;; Keep relative branches in this selector local. Every Phase 1 operator class
 ;;; is named explicitly; an unknown operator is an internal failure, not an
-;;; accidental comparison.
+;;; accidental comparison. A transient scalar sentinel selects the direct
+;;; memory-operand path; GT/LE deliberately keep the ordinary NC_PTR fallback.
 emit_binary_reduction:
+	lda reduceSpill
+	cmp #EMIT_TRANSIENT_SPILL
+	bne .ordinary
+	jsr scalar_operator_is_direct
+	bcc .ordinary
+	jmp emit_scalar_binary_reduction
+
+.ordinary:
 	lda #$00
 	sta expressionTruthInZ
 	lda reduceOperator

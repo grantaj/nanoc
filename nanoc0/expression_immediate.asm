@@ -1,28 +1,25 @@
 ;;; expression_immediate.asm
 ;;;
-;;; Direct target emission for the small literal-RHS fast path in expression.asm.
+;;; Direct target emission for simple right-hand operands.
 ;;;
 ;;; The ordinary expression machine leaves the left operand in A/X when it sees
-;;; a binary operator. If the right operand is one literal and no tighter
-;;; operator follows it, there is no value to preserve across later generated
-;;; code: apply the literal to A/X directly instead of allocating a spill word.
-;;;
-;;; Arithmetic/bitwise literals use direct immediate instructions. A char on the
-;;; left and a literal in the byte range also compare directly as bytes. Wider
-;;; comparisons retain the shared 16-bit helper path.
+;;; a binary operator. A literal can be applied directly. A plain scalar may also
+;;; avoid a static spill; byte comparisons are cheap enough to address the scalar
+;;; itself, while wider/arithmetic cases use the existing bounded NC_PTR transient
+;;; convention. There is no retained expression representation or optimizer.
 
 emit_immediate_binary_reduction:
 	lda #$00
 	sta expressionTruthInZ
 	lda reduceOperator
 	cmp #OP_ADD
-	beq .add
+	beq .arithmetic
 	cmp #OP_SUB
-	beq .sub
+	beq .arithmetic
 	cmp #OP_AND
-	beq .and
+	beq .arithmetic
 	cmp #OP_OR
-	beq .or
+	beq .arithmetic
 	cmp #OP_LT
 	beq .compare
 	cmp #OP_LE
@@ -37,148 +34,101 @@ emit_immediate_binary_reduction:
 	beq .compare
 	clc
 	rts
-.add:
-	jmp emit_add_immediate
-.sub:
-	jmp emit_sub_immediate
-.and:
-	jmp emit_and_immediate
-.or:
-	jmp emit_or_immediate
+.arithmetic:
+	jmp emit_arithmetic_immediate
 .compare:
 	jmp emit_compare_immediate
 
-emit_add_immediate:
+;;; The four arithmetic/bitwise literal forms differ only in instruction name.
+emit_arithmetic_immediate:
+	jsr select_arithmetic_low
+	bcc .failed
+	jsr emit_string
+	bcc .failed
+	lda expressionLiteralValue
+	jsr emit_hex_byte
+	bcc .failed
+	jsr emit_newline
+	bcc .failed
+	jsr select_arithmetic_high
+	bcc .failed
+	jsr emit_string
+	bcc .failed
+	lda expressionLiteralValue+1
+	jsr emit_hex_byte
+	bcc .failed
+	jsr emit_newline
+	bcc .failed
+	jmp emit_immediate_finish
+.failed:
+	clc
+	rts
+
+select_arithmetic_low:
+	lda reduceOperator
+	cmp #OP_ADD
+	beq .add
+	cmp #OP_SUB
+	beq .sub
+	cmp #OP_AND
+	beq .and
+	cmp #OP_OR
+	beq .or
+	clc
+	rts
+.add:
 	ldx #<exprImmediateAddLow
 	ldy #>exprImmediateAddLow
-	jsr emit_string
-	bcs .low
+	sec
 	rts
-.low:
-	lda expressionLiteralValue
-	jsr emit_hex_byte
-	bcs .lowDone
-	rts
-.lowDone:
-	jsr emit_newline
-	bcs .highPrefix
-	rts
-.highPrefix:
-	ldx #<exprImmediateAddHigh
-	ldy #>exprImmediateAddHigh
-	jsr emit_string
-	bcs .high
-	rts
-.high:
-	lda expressionLiteralValue+1
-	jsr emit_hex_byte
-	bcs .highDone
-	rts
-.highDone:
-	jsr emit_newline
-	bcs .finish
-	rts
-.finish:
-	jmp emit_immediate_finish
-
-emit_sub_immediate:
+.sub:
 	ldx #<exprImmediateSubLow
 	ldy #>exprImmediateSubLow
-	jsr emit_string
-	bcs .low
+	sec
 	rts
-.low:
-	lda expressionLiteralValue
-	jsr emit_hex_byte
-	bcs .lowDone
-	rts
-.lowDone:
-	jsr emit_newline
-	bcs .highPrefix
-	rts
-.highPrefix:
-	ldx #<exprImmediateSubHigh
-	ldy #>exprImmediateSubHigh
-	jsr emit_string
-	bcs .high
-	rts
-.high:
-	lda expressionLiteralValue+1
-	jsr emit_hex_byte
-	bcs .highDone
-	rts
-.highDone:
-	jsr emit_newline
-	bcs .finish
-	rts
-.finish:
-	jmp emit_immediate_finish
-
-emit_and_immediate:
+.and:
 	ldx #<exprImmediateAndLow
 	ldy #>exprImmediateAndLow
-	jsr emit_string
-	bcs .low
+	sec
 	rts
-.low:
-	lda expressionLiteralValue
-	jsr emit_hex_byte
-	bcs .lowDone
-	rts
-.lowDone:
-	jsr emit_newline
-	bcs .highPrefix
-	rts
-.highPrefix:
-	ldx #<exprImmediateAndHigh
-	ldy #>exprImmediateAndHigh
-	jsr emit_string
-	bcs .high
-	rts
-.high:
-	lda expressionLiteralValue+1
-	jsr emit_hex_byte
-	bcs .highDone
-	rts
-.highDone:
-	jsr emit_newline
-	bcs .finish
-	rts
-.finish:
-	jmp emit_immediate_finish
-
-emit_or_immediate:
+.or:
 	ldx #<exprImmediateOrLow
 	ldy #>exprImmediateOrLow
-	jsr emit_string
-	bcs .low
+	sec
 	rts
-.low:
-	lda expressionLiteralValue
-	jsr emit_hex_byte
-	bcs .lowDone
+
+select_arithmetic_high:
+	lda reduceOperator
+	cmp #OP_ADD
+	beq .add
+	cmp #OP_SUB
+	beq .sub
+	cmp #OP_AND
+	beq .and
+	cmp #OP_OR
+	beq .or
+	clc
 	rts
-.lowDone:
-	jsr emit_newline
-	bcs .highPrefix
+.add:
+	ldx #<exprImmediateAddHigh
+	ldy #>exprImmediateAddHigh
+	sec
 	rts
-.highPrefix:
+.sub:
+	ldx #<exprImmediateSubHigh
+	ldy #>exprImmediateSubHigh
+	sec
+	rts
+.and:
+	ldx #<exprImmediateAndHigh
+	ldy #>exprImmediateAndHigh
+	sec
+	rts
+.or:
 	ldx #<exprImmediateOrHigh
 	ldy #>exprImmediateOrHigh
-	jsr emit_string
-	bcs .high
+	sec
 	rts
-.high:
-	lda expressionLiteralValue+1
-	jsr emit_hex_byte
-	bcs .highDone
-	rts
-.highDone:
-	jsr emit_newline
-	bcs .finish
-	rts
-.finish:
-	jmp emit_immediate_finish
 
 emit_compare_immediate:
 	lda reduceLeftType
@@ -227,10 +177,7 @@ emit_compare_immediate:
 	jmp emit_compare_helper_call
 
 ;;; A char is already known to be 0..255. A literal with zero high byte occupies
-;;; that same domain after the normal integer promotions, so a byte CMP is exact.
-;;; For > and <=, comparing against literal+1 turns the test into >= or <. The
-;;; $ff edge is the corresponding constant false/true result; the literal scratch
-;;; is dead after this reduction, so incrementing it needs no retained state.
+;;; that same domain after normal integer promotion, so a byte CMP is exact.
 emit_byte_compare_immediate:
 	lda reduceOperator
 	cmp #OP_EQ
@@ -280,6 +227,85 @@ emit_byte_compare_immediate:
 .failed:
 	clc
 	rts
+
+;;; ---------------------------------------------------------------------------
+;;; Direct scalar byte comparisons
+;;; ---------------------------------------------------------------------------
+
+;;; Only the dominant char comparison case bypasses the NC_PTR transient. EQ/NE
+;;; and LT/GE map directly to CMP flags. GT/LE need carry plus equality and stay
+;;; on the existing reversed transient path; wider comparisons keep their shared
+;;; 16-bit helper path. This keeps the compiler smaller than the code it saves.
+scalar_operator_is_direct:
+	lda reduceLeftType
+	cmp #TYPE_CHAR
+	bne .no
+	lda reduceRightType
+	cmp #TYPE_CHAR
+	bne .no
+	lda reduceOperator
+	cmp #OP_LT
+	beq .yes
+	cmp #OP_GE
+	bcc .no
+	cmp #OP_AND
+	bcc .yes
+.no:
+	clc
+	rts
+.yes:
+	sec
+	rts
+
+;;; Both labels name the same byte-comparison emitter. The generic codegen seam
+;;; calls the first name; the second states what the routine actually emits.
+emit_scalar_binary_reduction:
+emit_byte_compare_scalar:
+	lda reduceOperator
+	cmp #OP_EQ
+	beq .equality
+	cmp #OP_NE
+	beq .equality
+	jsr emit_cmp_primary_scalar
+	bcc .failed
+	lda reduceOperator
+	cmp #OP_GE
+	beq .carry
+	jmp emit_byte_not_carry_result
+.carry:
+	jmp emit_byte_carry_result
+.equality:
+	jsr begin_byte_equality
+	bcc .failed
+	jsr emit_cmp_primary_scalar
+	bcc .failed
+	jmp finish_byte_equality
+.failed:
+	clc
+	rts
+
+emit_cmp_primary_scalar:
+	ldx #<exprCmpSpace
+	ldy #>exprCmpSpace
+	jsr emit_string
+	bcc .failed
+	jsr emit_primary_scalar_name
+	bcc .failed
+	jmp emit_newline
+.failed:
+	clc
+	rts
+
+;;; Format the captured scalar without emitting a load instruction.
+emit_primary_scalar_name:
+	lda primarySymbolArea
+	cmp #SYMBOL_AREA_CURRENT
+	beq .current
+	ldx primarySymbolIndex
+	jmp emit_persistent_name
+.current:
+	ldx primarySymbolIndex
+	jmp emit_current_name
 
 emit_immediate_finish:
 	ldx #<exprImmediateFinish
