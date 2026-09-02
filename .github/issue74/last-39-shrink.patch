@@ -1,0 +1,179 @@
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -789,9 +789,8 @@ try_immediate_binary:
+ 	cmp #TOKEN_INTEGER
+ 	bne .selfFallback
+ 	lda currentTokenValue
+-	cmp #$01
+-	bne .selfFallback
+-	lda currentTokenValue+1
++	eor #$01
++	ora currentTokenValue+1
+ 	beq .ordinaryStart
+ .selfFallback:
+ 	lda #$00
+@@ -800,20 +799,27 @@ try_immediate_binary:
+ 	lda #IMMEDIATE_BINARY_NONE
+ 	sta immediateBinaryState
+ 
+-	;;; Immediate RHS lowering covers +, -, comparisons, &, |, and the one
+-	;;; exact shift count handled below. OP_SHL is the single hole in that range.
++	;;; Multiply and left shift keep their ordinary lowering. Right shift has
++	;;; one source-recognised direct count: exactly integer 8.
+ 	lda pendingOperator
+-	cmp #OP_ADD
+-	bcc .notImmediate
++	cmp #OP_MUL
++	beq .notImmediate
+ 	cmp #OP_SHL
+-	bcc .supported		; + or -
+-	beq .notImmediate	; <<
+-	cmp #OP_CALL
+-	bcc .supported		; >>, comparisons, &, |
++	bne .checkShift
+ .notImmediate:
+ 	sec
+ 	rts
+-
++.checkShift:
++	cmp #OP_SHR
++	bne .supported
++	lda currentTokenKind
++	cmp #TOKEN_INTEGER
++	bne .notImmediate
++	lda currentTokenValue
++	cmp #$08
++	bne .notImmediate
++	lda currentTokenValue+1
++	bne .notImmediate
+ .supported:
+ 	lda currentTokenKind
+ 	cmp #TOKEN_INTEGER
+@@ -826,28 +832,23 @@ try_immediate_binary:
+ 	rts
+ 
+ .integer:
+-	lda currentTokenValue
+-	sta expressionLiteralValue
+ 	lda currentTokenValue+1
+ 	sta expressionLiteralValue+1
+ 	lda currentTokenType
+ 	cmp #TOKEN_TYPE_UNSIGNED
+-	bne .signed
++	bne .setInt
+ 	lda #TYPE_UNSIGNED
+ 	jmp .typeDone
+-.signed:
+-	lda #TYPE_INT
+-.typeDone:
+-	sta reduceRightType
+-	jmp .literalCaptured
+ 
+ .character:
+-	lda currentTokenValue
+-	sta expressionLiteralValue
+ 	lda #$00
+ 	sta expressionLiteralValue+1
++.setInt:
+ 	lda #TYPE_INT
++.typeDone:
+ 	sta reduceRightType
++	lda currentTokenValue
++	sta expressionLiteralValue
+ .literalCaptured:
+ 	lda #IMMEDIATE_BINARY_CAPTURED_LITERAL
+ 	jmp .captured
+@@ -901,20 +902,6 @@ try_immediate_binary:
+ 	rts
+ 
+ .reduce:
+-	;;; Only the literal count eight has a direct shift form. Other shifts
+-	;;; rejoin the established expression path.
+-	lda pendingOperator
+-	cmp #OP_SHR
+-	bne .reduceNow
+-	lda immediateBinaryState
+-	cmp #IMMEDIATE_BINARY_CAPTURED_LITERAL
+-	bne .done
+-	lda expressionLiteralValue
+-	cmp #$08
+-	bne .done
+-	lda expressionLiteralValue+1
+-	bne .done
+-.reduceNow:
+ 	lda pendingOperator
+ 	sta reduceOperator
+ 	lda expressionValueType
+--- a/nanoc0/expression_immediate.asm
++++ b/nanoc0/expression_immediate.asm
+@@ -158,21 +158,14 @@ emit_compare_immediate:
+ emit_byte_compare_immediate:
+ 	lda reduceOperator
+ 	cmp #OP_EQ
+-	beq .equality
+-	cmp #OP_NE
+-	beq .equality
++	bcs .equality
+ 	cmp #OP_GT
+ 	beq .greater
+ 	cmp #OP_LE
+ 	beq .lessEqual
+ 	jsr emit_cmp_literal_byte
+ 	bcc .failed
+-	lda reduceOperator
+-	cmp #OP_GE
+-	beq .carry
+-	jmp emit_byte_not_carry_result
+-.carry:
+-	jmp emit_byte_carry_result
++	jmp finish_byte_order_compare
+ 
+ .greater:
+ 	lda expressionLiteralValue
+@@ -205,6 +198,15 @@ emit_byte_compare_immediate:
+ 	clc
+ 	rts
+ 
++;;; Finish LT/GE after either immediate or direct-scalar CMP.
++finish_byte_order_compare:
++	lda reduceOperator
++	cmp #OP_GE
++	beq .carry
++	jmp emit_byte_not_carry_result
++.carry:
++	jmp emit_byte_carry_result
++
+ ;;; ---------------------------------------------------------------------------
+ ;;; Direct scalar byte comparisons
+ ;;; ---------------------------------------------------------------------------
+@@ -240,17 +242,10 @@ emit_scalar_binary_reduction:
+ emit_byte_compare_scalar:
+ 	lda reduceOperator
+ 	cmp #OP_EQ
+-	beq .equality
+-	cmp #OP_NE
+-	beq .equality
++	bcs .equality
+ 	jsr emit_cmp_primary_scalar
+ 	bcc .failed
+-	lda reduceOperator
+-	cmp #OP_GE
+-	beq .carry
+-	jmp emit_byte_not_carry_result
+-.carry:
+-	jmp emit_byte_carry_result
++	jmp finish_byte_order_compare
+ .equality:
+ 	jsr begin_byte_equality
+ 	bcc .failed
+--- a/nanoc0/statements.asm
++++ b/nanoc0/statements.asm
+@@ -608,6 +608,8 @@ parse_scalar_assignment:
+ 	lda statementTargetKind
+ 	cmp #STATEMENT_SELF_UPDATE
+ 	bne .ordinaryStore
++	lda #$00
++	sta statementTargetKind
+ 	jsr emit_direct_scalar_update
+ 	bcc .emitFail
+ 	jmp parser_next
