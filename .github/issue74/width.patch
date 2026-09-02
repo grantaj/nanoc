@@ -143,7 +143,7 @@ index e47a47e..8bd28b4 100644
  	jsr select_arithmetic_low
  	bcc .failed
  	jsr emit_string
-@@ -65,69 +80,35 @@ emit_arithmetic_immediate:
+@@ -65,69 +80,36 @@ emit_arithmetic_immediate:
  	rts
  
  select_arithmetic_low:
@@ -205,7 +205,8 @@ index e47a47e..8bd28b4 100644
 -	clc
 +	bcc .addSub
 +	sec
-+	sbc #(OP_AND-2)
++	sbc #OP_AND		; AND/OR become 0/1
++	ora #$02		; table slots 2/3
 +	tax
  	rts
 -.add:
@@ -233,7 +234,7 @@ index e47a47e..8bd28b4 100644
  	rts
  
  emit_compare_immediate:
-@@ -350,3 +331,16 @@ exprImmediateCompareFinish:
+@@ -350,3 +332,16 @@ exprImmediateCompareFinish:
  exprImmediateFinish:
  	byte $09,'t','a','x',$0a
  	byte $09,'t','y','a',$0a,0
