@@ -29,6 +29,8 @@ jobs:
           git apply .github/issue74/final-shrink.patch
           git apply --check .github/issue74/no-deferred-load.patch
           git apply .github/issue74/no-deferred-load.patch
+          git apply --check .github/issue74/char-direct-only.patch
+          git apply .github/issue74/char-direct-only.patch
           git diff --check
           git diff --stat
       - name: Set up development environment
