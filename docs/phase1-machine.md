@@ -469,33 +469,58 @@ No general shift runtime helper is required.
 
 There is no bounds checking.
 
-Array and pointer accesses compute the effective address explicitly into `NC_PTR`, then use `(NC_PTR),Y`.
+Indexing follows the shape of the 6502 instruction set rather than forcing every access through one general address calculation. When the index expression is already typed as `char`, the compiler knows that its offset fits in `Y` and uses indexed addressing directly. When the index is an `int`/`unsigned`, or the element width requires scaling, it computes a full address in `NC_PTR`.
 
-This gives one uniform implementation for full 16-bit indices and avoids pretending an 8-bit `,X` or `,Y` index is a general C array mechanism.
+## 10.1 Fixed `char` arrays
 
-## 10.1 `char` arrays and `char *`
+A fixed `char[]` has an assembler-visible base address. If its index is a `char`, the natural read is simply:
 
-For `base[index]`, where the element size is one byte:
+```asm
+    ; index is in A
+    tay
+    lda array,y
+    ldx #0
+```
+
+There is no reason to construct `array + index` in zero page first. The array base is already part of the instruction and the byte index is exactly what `Y` represents.
+
+A byte-index store uses the same absolute-`,Y` form. If the right-hand expression must be evaluated first, only the one-byte index needs to survive that evaluation.
+
+Integer literals have Phase 1 type `int`, so even a small literal such as `array[4]` currently takes the conservative 16-bit fallback. Recognizing numerically byte-sized `int` expressions is a separate local improvement; it is not needed to make `char` indexing machine-shaped.
+
+## 10.2 `char *` with a byte index
+
+A `char *` is a runtime value, so indirect addressing is still required. With a byte index the pointer itself goes in `NC_PTR` and the index goes in `Y`:
+
+```asm
+    ; pointer value has been placed in NC_PTR
+    ; index is in A
+    tay
+    lda (NC_PTR),y
+    ldx #0
+```
+
+The compiler preserves the pointer value before evaluating a side-effecting index expression when necessary. It does **not** first add the byte index to a second 16-bit pointer merely to access offset zero.
+
+A `char` load is zero-extended into `A/X`.
+
+## 10.3 Full 16-bit and scaled indexing
+
+The byte-index forms are deliberately not treated as a general C indexing mechanism. A wide index still means:
 
 ```text
 effective address = base + index  (mod 65536)
 ```
 
-The compiler writes that address to `NC_PTR`, then loads or stores with `Y = 0`.
-
-A `char` load is zero-extended into `A/X`.
-
-## 10.2 `int` and `unsigned` arrays
-
-For a named 16-bit array:
+and a named `int[]` or `unsigned[]` means:
 
 ```text
 effective address = base + 2 * index  (mod 65536)
 ```
 
-The low byte is at offset zero and the high byte at offset one.
+The compiler keeps the offset in `NC_TMP`; non-byte elements scale it before the addition. The small generated support routine `__nc_index16` adds that offset to the base in `A/X` and leaves the full effective address in `NC_PTR`.
 
-A baseline load is conceptually:
+A 16-bit load is then conceptually:
 
 ```asm
     ldy #0
@@ -509,13 +534,15 @@ A baseline load is conceptually:
 
 The result is again in `A/X`.
 
-## 10.3 Indexed assignment
+## 10.4 Indexed assignment lifetime
 
-For an indexed lvalue, the compiler evaluates the index/address first and saves the resulting 16-bit effective address in function-owned static storage before evaluating the right-hand expression.
+The compiler evaluates the lvalue index before the right-hand expression, but it saves only as much state as must genuinely survive the RHS:
 
-This matters because the right-hand expression may contain calls or other indexed accesses that clobber `NC_PTR`.
+- a fixed `char[]` with a byte index saves only that one-byte index;
+- a current function's `char *` parameter/local may save the byte index and reload its own fixed pointer slot after the RHS, because a callee cannot name that slot;
+- a global pointer, wide index, scaled element, or other general case saves the complete effective address in function-owned static storage.
 
-After the right-hand result is available, the saved address is restored to `NC_PTR` and the value is stored.
+The last case matters because the RHS may contain calls or other indexed accesses that clobber `NC_PTR`, or may itself change a global pointer. After the RHS is available, the saved address is restored and the value is stored.
 
 Again, no machine stack is involved.
 
@@ -662,17 +689,20 @@ There is nothing to push before `JSR inner`.
 p[i] = value;
 ```
 
-The compiler:
+If `i` is a `char` and `p` is a current-function pointer slot, the compiler can use the smaller machine-shaped sequence:
 
 ```text
-1. evaluates p + i;
-2. saves the effective address in an outer-function static temporary;
-3. evaluates value;
-4. restores the address to NC_PTR;
-5. stores A through (NC_PTR),Y with Y = 0.
+1. evaluates i and saves its low byte;
+2. evaluates value;
+3. saves the result byte briefly in NC_TMP;
+4. reloads p into NC_PTR;
+5. loads the saved index into Y;
+6. stores the result through (NC_PTR),Y.
 ```
 
-This is exactly the bookkeeping an assembly programmer would otherwise perform by hand.
+If `p` is global, the compiler instead computes and saves the complete effective address before evaluating `value`, because the RHS is allowed to change that global pointer.
+
+This is exactly the lifetime distinction an assembly programmer would make by hand.
 
 # 15. Compiler invariants
 
@@ -700,7 +730,7 @@ The first compiler should prefer obvious code over clever code.
 Later versions may safely make local improvements such as:
 
 - retaining a simple byte value in `A` without writing a spill;
-- using absolute indexed addressing when an 8-bit index is provably sufficient;
+- recognizing additional expressions that are provably byte-sized and can therefore use indexed addressing;
 - folding literal arithmetic;
 - shortening a branch-over-`JMP` sequence when a later compiler already knows the final layout;
 - omitting redundant reloads;

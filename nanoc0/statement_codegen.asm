@@ -6,45 +6,18 @@
 ;;; source construct it has and calls the obvious emitter immediately. There is
 ;;; no statement representation between the two files.
 
-;;; Index is in target A/X on entry. The normal expression spill stack is idle
-;;; because parse_expression has completed, so one spill may temporarily hold
-;;; the lvalue base. #55's emit_index_address performs the one authoritative
-;;; scale-and-add operation and leaves the complete effective address in NC_PTR.
-;;;
-;;; Saving the index to NC_TMP before loading the base keeps the machine sequence
-;;; explicit. We reload that value into A/X only because emit_index_address has
-;;; the same A/X entry contract as an indexed read; the address arithmetic itself
-;;; is not duplicated here.
+;;; The statement target is already a named array or pointer. Save the index in
+;;; NC_TMP, scale it when required, load the named base into A/X, then call the
+;;; same tiny 16-bit address helper used by expression reads.
 emit_statement_index_address:
-	jsr emit_save_right_tmp
-	bcc .emitFailed
-	jsr load_statement_target_base
-	bcc .emitFailed
-	jsr spill_current_value
-	bcs .baseSpilled
-	clc
-	rts
-.baseSpilled:
-	lda expressionSpillDepth
-	sec
-	sbc #$01
-	sta reduceSpill
 	lda statementElementType
 	sta reduceLeftType
-
-	lda #exprLoadTmpResultEnd-exprLoadTmpResult
-	ldx #<exprLoadTmpResult
-	ldy #>exprLoadTmpResult
-	jsr emit_text
-	bcc .releaseFailed
-	jsr emit_index_address
-	php
-	dec expressionSpillDepth
-	plp
-	rts
-.releaseFailed:
-	dec expressionSpillDepth
-.emitFailed:
+	jsr emit_index_offset
+	bcc .failed
+	jsr load_statement_target_base
+	bcc .failed
+	jmp emit_index_address_call
+.failed:
 	clc
 	rts
 
@@ -60,7 +33,7 @@ load_statement_target_base:
 	lda statementTargetKind
 	cmp #SYMBOL_ARRAY
 	beq .array
-	jmp emit_load_primary_scalar
+	jmp emit_load_primary_scalar_now
 .array:
 	jmp emit_load_primary_address
 
@@ -134,28 +107,20 @@ emit_statement_address_definition:
 	clc
 	rts
 
-emit_save_statement_address:
-	ldx #<statementLdaPtr
-	ldy #>statementLdaPtr
+;;; X/Y names an instruction prefix such as "sta " or "ldx ". Spell that
+;;; instruction with the current function's one reusable indexed-lvalue slot.
+emit_statement_address_low:
 	jsr emit_string
-	bcc .failed
-	lda #exprStaSpaceEnd-exprStaSpace
-	ldx #<exprStaSpace
-	ldy #>exprStaSpace
-	jsr emit_text
 	bcc .failed
 	jsr emit_statement_address_name
 	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	ldx #<statementLdaPtrHigh
-	ldy #>statementLdaPtrHigh
+	jmp emit_newline
+.failed:
+	clc
+	rts
+
+emit_statement_address_high:
 	jsr emit_string
-	bcc .failed
-	lda #exprStaSpaceEnd-exprStaSpace
-	ldx #<exprStaSpace
-	ldy #>exprStaSpace
-	jsr emit_text
 	bcc .failed
 	jsr emit_statement_address_name
 	bcc .failed
@@ -164,36 +129,51 @@ emit_save_statement_address:
 	clc
 	rts
 
-;;; RHS A/X is saved in NC_TMP while the static lvalue address is restored to
-;;; NC_PTR. Store one byte for char elements, both bytes for word elements.
+;;; A direct byte-index lvalue needs only the low index byte across its RHS.
+emit_save_statement_index:
+	ldx #<exprStaSpace
+	ldy #>exprStaSpace
+	jmp emit_statement_address_low
+
+emit_save_statement_address:
+	lda #EMIT_TRANSIENT_SPILL
+	sta reduceSpill
+	jsr emit_lda_reduce_spill
+	bcc .failed
+	ldx #<exprStaSpace
+	ldy #>exprStaSpace
+	jsr emit_statement_address_low
+	bcc .failed
+	jsr emit_lda_reduce_spill_high
+	bcc .failed
+	ldx #<exprStaSpace
+	ldy #>exprStaSpace
+	jmp emit_statement_address_high
+.failed:
+	clc
+	rts
+
+;;; Direct char[] stores keep only the byte index and use absolute,Y. A current
+;;; char * reloads its named pointer into NC_PTR and uses the saved byte as Y.
+;;; Every other case retains the saved full-address fallback below.
 emit_indexed_store:
+	lda statementTargetKind
+	cmp #STATEMENT_INDEX_ARRAY
+	beq emit_indexed_array_store
+	cmp #STATEMENT_INDEX_CURRENT_PTR
+	beq emit_indexed_current_pointer_store
+
 	jsr emit_save_right_tmp
 	bcc .failed
-	lda #exprLdaSpaceEnd-exprLdaSpace
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
-	jsr emit_text
+	jsr emit_statement_address_low
 	bcc .failed
-	jsr emit_statement_address_name
+	ldx #<exprLdxSpace
+	ldy #>exprLdxSpace
+	jsr emit_statement_address_high
 	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	ldx #<statementStaPtr
-	ldy #>statementStaPtr
-	jsr emit_string
-	bcc .failed
-	lda #exprLdaSpaceEnd-exprLdaSpace
-	ldx #<exprLdaSpace
-	ldy #>exprLdaSpace
-	jsr emit_text
-	bcc .failed
-	jsr emit_statement_address_name
-	bcc .failed
-	jsr emit_plus_one_newline
-	bcc .failed
-	ldx #<statementStaPtrHigh
-	ldy #>statementStaPtrHigh
-	jsr emit_string
+	jsr emit_store_transient
 	bcc .failed
 
 	lda statementElementType
@@ -205,6 +185,43 @@ emit_indexed_store:
 .char:
 	ldx #<statementStoreChar
 	ldy #>statementStoreChar
+	jmp emit_string
+.failed:
+	clc
+	rts
+
+emit_indexed_array_store:
+	ldx #<statementLdySpace
+	ldy #>statementLdySpace
+	jsr emit_statement_address_low
+	bcc .failed
+	ldx #<exprStaSpace
+	ldy #>exprStaSpace
+	jsr emit_string
+	bcc .failed
+	ldx statementTargetIndex
+	jsr emit_persistent_name
+	bcc .failed
+	ldx #<exprIndexYSuffix
+	ldy #>exprIndexYSuffix
+	jmp emit_string
+.failed:
+	clc
+	rts
+
+emit_indexed_current_pointer_store:
+	jsr emit_save_right_byte_tmp
+	bcc .failed
+	jsr load_statement_target_base
+	bcc .failed
+	jsr emit_store_transient
+	bcc .failed
+	ldx #<statementLdySpace
+	ldy #>statementLdySpace
+	jsr emit_statement_address_low
+	bcc .failed
+	ldx #<statementStoreCharY
+	ldy #>statementStoreCharY
 	jmp emit_string
 .failed:
 	clc
@@ -246,10 +263,7 @@ emit_statement_false_jump:
 
 statementRts:		byte $09,'r','t','s',$0a,0
 statementAddressSuffix:	byte '_','_','a',0
-statementLdaPtr:		byte $09,'l','d','a',' ','N','C','_','P','T','R',$0a,0
-statementLdaPtrHigh:	byte $09,'l','d','a',' ','N','C','_','P','T','R','+','1',$0a,0
-statementStaPtr:		byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a,0
-statementStaPtrHigh:	byte $09,'s','t','a',' ','N','C','_','P','T','R','+','1',$0a,0
+statementLdySpace:	byte $09,'l','d','y',' ',0
 statementByteTruthTest:
 	byte $09,'c','m','p',' ','#','$','0','0',$0a,0
 statementTruthTest:
@@ -257,6 +271,7 @@ statementTruthTest:
 	byte $09,'o','r','a',' ','N','C','_','T','M','P',$0a,0
 statementStoreChar:
 	byte $09,'l','d','y',' ','#','$','0','0',$0a
+statementStoreCharY:
 	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a
 	byte $09,'s','t','a',' ','(','N','C','_','P','T','R',')',',','y',$0a,0
 statementStoreWord:

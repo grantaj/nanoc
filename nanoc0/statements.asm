@@ -35,6 +35,11 @@ CONTROL_IF_TRUE = 2
 CONTROL_IF_ELSE = 3
 CONTROL_WHILE   = 4
 
+;;; Temporary statementTargetKind values after a byte-index lvalue has been
+;;; recognized. The next identifier statement overwrites them normally.
+STATEMENT_INDEX_ARRAY       = $80
+STATEMENT_INDEX_CURRENT_PTR = $81
+
 ;;; parse_function_statements
 ;;; currentToken is the first executable token after function-entry locals.
 ;;; Carry set returns with currentToken already advanced beyond the function's
@@ -632,15 +637,19 @@ scalar_assignment_type_ok:
 	sec
 	rts
 
-;;; Indexed assignment follows the literal machine shape from phase1-machine.md:
-;;; compute the complete lvalue address first, save it in static function storage,
-;;; evaluate the RHS freely, restore NC_PTR, then store. Address arithmetic itself
-;;; is shared with indexed reads through #55's emit_index_address.
+;;; Indexed assignment normally computes and saves the full lvalue address before
+;;; the RHS. Two byte-index cases need less state: a fixed char array needs only
+;;; its index, and a current-function char * can safely be reloaded after the RHS
+;;; because no callee can name this function's static parameter/local slot.
 parse_indexed_assignment:
 	jsr validate_indexed_target
 	bcc .badTarget
 	jsr parser_next
-	bcc .failed
+	bcs .indexStarted
+.failed:
+	clc
+	rts
+.indexStarted:
 	jsr parse_expression
 	bcs .indexParsed
 	jmp statement_expression_failed
@@ -650,21 +659,44 @@ parse_indexed_assignment:
 	bcc .badTarget
 	lda currentTokenKind
 	cmp #']'
-	beq .address
+	bne .badTarget
+
+	lda statementElementType
+	cmp #TYPE_CHAR
+	bne .fullAddress
+	lda expressionValueType
+	cmp #TYPE_CHAR
+	bne .fullAddress
+	lda statementTargetKind
+	cmp #SYMBOL_ARRAY
+	beq .directArray
+	lda statementTargetArea
+	cmp #SYMBOL_AREA_CURRENT
+	bne .fullAddress
+	lda #STATEMENT_INDEX_CURRENT_PTR
+	jmp .saveIndex
+.directArray:
+	lda #STATEMENT_INDEX_ARRAY
+.saveIndex:
+	sta statementTargetKind
+	jsr ensure_statement_address_slot
+	bcc .failed
+	jsr emit_save_statement_index
+	bcc .emitFail
+	jmp .addressDone
+
+.badTarget:
 	lda #PARSE_BAD_ASSIGNMENT
 	jmp parser_fail
-.address:
+
+.fullAddress:
 	jsr emit_statement_index_address
-	bcs .addressDone
-	lda expressionError
-	beq .emitFail
-	jmp statement_expression_failed
-.addressDone:
+	bcc .emitFail
 	jsr ensure_statement_address_slot
 	bcc .failed
 	jsr emit_save_statement_address
 	bcc .emitFail
-
+.addressDone:
 	jsr parser_next
 	bcc .failed
 	lda currentTokenKind
@@ -691,15 +723,9 @@ parse_indexed_assignment:
 	jsr emit_indexed_store
 	bcc .emitFail
 	jmp parser_next
-.badTarget:
-	lda #PARSE_BAD_ASSIGNMENT
-	jmp parser_fail
 .emitFail:
 	lda #PARSE_EMIT_ERROR
 	jmp parser_fail
-.failed:
-	clc
-	rts
 
 validate_indexed_target:
 	lda statementTargetArea

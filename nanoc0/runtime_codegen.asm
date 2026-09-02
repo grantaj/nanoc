@@ -16,9 +16,13 @@ RUNTIME_HANDLE_CAPACITY = 6
 
 emit_runtime_support:
 	jsr prepare_runtime_storage
-	bcc .failed
+	bcs .storageReady
+	rts
+.storageReady:
 	jsr emit_runtime_init
-	bcc .failed
+	bcs .initReady
+	rts
+.initReady:
 
 	lda multiplyUsed
 	beq .compareCheck
@@ -29,9 +33,17 @@ emit_runtime_support:
 
 .compareCheck:
 	lda compareUsed
-	beq .runtimeCheck
+	beq .indexCheck
 	ldx #<runtimeComparePath
 	ldy #>runtimeComparePath
+	jsr emit_runtime_include
+	bcc .failed
+
+.indexCheck:
+	lda indexUsed
+	beq .runtimeCheck
+	ldx #<runtimeIndexPath
+	ldy #>runtimeIndexPath
 	jsr emit_runtime_include
 	bcc .failed
 
@@ -247,10 +259,9 @@ emit_runtime_include:
 	ldy runtimeIncludePath+1
 	jsr emit_string
 	bcc .failed
-	lda #'"'
-	jsr emit_output_byte
-	bcc .failed
-	jmp emit_newline
+	ldx #<runtimeIncludeSuffix
+	ldy #>runtimeIncludeSuffix
+	jmp emit_string
 .failed:
 	clc
 	rts
@@ -296,16 +307,17 @@ runtimeBssAssign:	byte ' ','=',' ','N','C','_','B','S','S','+','$',0
 runtimeLdaImmediate:	byte $09,'l','d','a',' ','#','$',0
 runtimeStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',0
 runtimeStaTmpHigh:	byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',0
-runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"',0
-
-runtimeMulPath:		byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','m','u','l','1','6','.','a','s','m',0
-runtimeComparePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','c','o','m','p','a','r','e','1','6','.','a','s','m',0
-runtimeCommonPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','o','m','m','o','n','.','a','s','m',0
-runtimeOpenPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','o','p','e','n','.','a','s','m',0
-runtimeReadPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','r','e','a','d','.','a','s','m',0
-runtimeCreatePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','r','e','a','t','e','.','a','s','m',0
-runtimeWritePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','w','r','i','t','e','.','a','s','m',0
-runtimeClosePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','l','o','s','e','.','a','s','m',0
+runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"','.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/',0
+runtimeIncludeSuffix:	byte '.','a','s','m','"',$0a,0
+runtimeMulPath:		byte 'm','u','l','1','6',0
+runtimeComparePath:	byte 'c','o','m','p','a','r','e','1','6',0
+runtimeIndexPath:	byte 'i','n','d','e','x','1','6',0
+runtimeCommonPath:	byte 'i','o','-','c','o','m','m','o','n',0
+runtimeOpenPath:	byte 'i','o','-','o','p','e','n',0
+runtimeReadPath:	byte 'i','o','-','r','e','a','d',0
+runtimeCreatePath:	byte 'i','o','-','c','r','e','a','t','e',0
+runtimeWritePath:	byte 'i','o','-','w','r','i','t','e',0
+runtimeClosePath:	byte 'i','o','-','c','l','o','s','e',0
 
 runtimeInitPrefix:
 	string "__nc_init:"

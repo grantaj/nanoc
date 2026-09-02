@@ -14,3 +14,4 @@ compareDoneLabel:	word 0
 expressionTruthInZ:	byte 0
 compareUsed:		byte 0
 multiplyUsed:		byte 0
+indexUsed:		byte 0

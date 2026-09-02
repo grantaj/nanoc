@@ -39,6 +39,7 @@ reset_call_translation_state:
 	lda #$00
 	sta compareUsed
 	sta multiplyUsed
+	sta indexUsed
 .loop:
 	sta runtimeParamAllocated,x
 	sta runtimeUsed,x

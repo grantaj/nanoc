@@ -58,6 +58,15 @@ IMMEDIATE_BINARY_CAPTURED_LITERAL = 1
 IMMEDIATE_BINARY_REDUCED          = 2
 IMMEDIATE_BINARY_CAPTURED_SCALAR  = 3
 
+;;; Index markers need only one byte of base identity. Ordinary expression
+;;; spills are 0..15; a fixed char array uses the unused range above them. The
+;;; pointer path keeps its old saved runtime value, which is required when an
+;;; index expression contains a call that could change a global pointer.
+INDEX_ARRAY_BIAS = EXPR_STACK_CAPACITY
+
+INDEXABLE_POINTER     = 1
+INDEXABLE_FIXED_ARRAY = 2
+
 ;;; Mutable expression tables are compiler work RAM, not loaded data. Define the
 ;;; fixed map before parser code references it so native ass sees constants, not
 ;;; forward labels that are later redefined.
@@ -500,7 +509,7 @@ parse_expression_primary:
 	sta expressionValueType
 	cmp #TYPE_CHAR_PTR
 	bne .loadScalar
-	lda #$01
+	lda #INDEXABLE_POINTER
 	sta expressionIndexable
 	lda #TYPE_CHAR
 	sta expressionElementType
@@ -515,14 +524,23 @@ parse_expression_primary:
 	sta expressionElementType
 	lda #TYPE_CHAR_PTR
 	sta expressionValueType
-	lda #$01
+	lda #INDEXABLE_POINTER
 	sta expressionIndexable
 	lda primarySymbolType
 	cmp #TYPE_CHAR
-	beq .arrayCanDecay
+	bne .arrayMustIndex
+	lda currentTokenKind
+	cmp #'['
+	bne .arrayAddress
+	;;; A fixed char array needs no runtime base value. The following index marker
+	;;; keeps this symbol index instead of allocating a two-byte spill.
+	lda #INDEXABLE_FIXED_ARRAY
+	sta expressionIndexable
+	jmp .primaryDone
+.arrayMustIndex:
 	lda #$01
 	sta expressionMustIndex
-.arrayCanDecay:
+.arrayAddress:
 	jsr emit_load_primary_address
 	bcs .primaryDone
 	lda #EXPR_EMIT_ERROR
@@ -587,8 +605,10 @@ capture_primary_identifier:
 ;;; after the ordinary expression code makes this primary a forward reference
 ;;; rather than placing the pending-call tables in the middle of the parser.
 
-;;; Postfix indexing uses a marker on the same explicit operator stack. The full
-;;; 16-bit base address is spilled before the index expression begins.
+;;; Postfix indexing uses the ordinary operator marker. A general base still
+;;; takes an expression spill, while a fixed char array can keep its source
+;;; identity in operatorSpill itself. Arrays have no runtime base value to lose,
+;;; so this is safe even when the index expression contains a call.
 handle_postfix_index:
 	lda currentTokenKind
 	cmp #'['
@@ -612,10 +632,6 @@ handle_postfix_index:
 	lda #TYPE_CHAR
 	sta expressionElementType
 .allowed:
-	jsr spill_current_value
-	bcs .baseSpilled
-	rts
-.baseSpilled:
 	ldx operatorCount
 	cpx #EXPR_STACK_CAPACITY
 	bcc .space
@@ -624,23 +640,35 @@ handle_postfix_index:
 .space:
 	lda #OP_INDEX
 	sta operatorKind,x
+	lda expressionElementType
+	sta operatorType,x
+
+	lda expressionIndexable
+	cmp #INDEXABLE_FIXED_ARRAY
+	beq .fixedArray
+	jsr spill_current_value
+	bcc .failed
+	ldx operatorCount
 	lda expressionSpillDepth
 	sec
 	sbc #$01
+	jmp .saveBase
+.fixedArray:
+	lda primarySymbolIndex
+	clc
+	adc #INDEX_ARRAY_BIAS
+.saveBase:
 	sta operatorSpill,x
-	lda expressionElementType
-	sta operatorType,x
 	inc operatorCount
 	jsr parser_next
-	bcs .advanced
-	rts
-.advanced:
+	bcc .failed
 	lda #$01
 	sta expressionNeedValue
 	lda #$00
 	sta expressionIndexable
 	sta expressionMustIndex
 	sec
+.failed:
 	rts
 
 ;;; push_simple_operator
@@ -1144,7 +1172,11 @@ pop_index_marker:
 	lda operatorType,x
 	sta reduceLeftType
 	dec operatorCount
+	lda reduceSpill
+	cmp #INDEX_ARRAY_BIAS
+	bcs .baseReleased
 	dec expressionSpillDepth
+.baseReleased:
 	jsr emit_index_load
 	bcs .emitted
 	lda #EXPR_EMIT_ERROR
