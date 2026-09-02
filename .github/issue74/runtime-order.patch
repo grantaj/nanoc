@@ -1,6 +1,6 @@
 --- a/nanoc0/runtime_codegen.asm
 +++ b/nanoc0/runtime_codegen.asm
-@@ -12,6 +12,86 @@
+@@ -12,6 +12,104 @@
  
  RUNTIME_HANDLE_CAPACITY = 6
  
@@ -105,7 +105,7 @@
  emit_runtime_support:
  	jsr prepare_runtime_storage
  	bcs .storageReady
-@@ -300,82 +380,3 @@
+@@ -300,97 +398,3 @@
  .failed:
  	clc
  	rts
@@ -173,6 +173,9 @@
 -	string "dec NC_TMP+1"
 -	string ".decrement_low:"
 -	byte $09
++	string "dec NC_TMP+1"
++	string ".decrement_low:"
++	byte $09
 -	string "dec NC_TMP"
 -	byte $09
 -	string "jmp .clear_globals"
