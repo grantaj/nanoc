@@ -1,0 +1,163 @@
+diff --git a/nanoc0/expression.asm b/nanoc0/expression.asm
+index c6b0176..f334475 100644
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -761,6 +761,8 @@ try_immediate_binary:
+ 	beq .supported
+ 	cmp #OP_OR
+ 	beq .supported
++	cmp #OP_SHR
++	beq .supported
+ 	cmp #OP_LT
+ 	beq .supported
+ 	cmp #OP_LE
+@@ -845,6 +847,17 @@ try_immediate_binary:
+ 	rts
+ 
+ .reduce:
++	;;; Only the literal count eight has a direct shift form. Other shifts
++	;;; rejoin the established expression path.
++	lda pendingOperator
++	cmp #OP_SHR
++	bne .reduceNow
++	lda expressionLiteralValue
++	cmp #$08
++	bne .done
++	lda expressionLiteralValue+1
++	bne .done
++.reduceNow:
+ 	lda pendingOperator
+ 	sta reduceOperator
+ 	lda expressionValueType
+diff --git a/nanoc0/expression_immediate.asm b/nanoc0/expression_immediate.asm
+index e47a47e..edf183c 100644
+--- a/nanoc0/expression_immediate.asm
++++ b/nanoc0/expression_immediate.asm
+@@ -20,6 +20,8 @@ emit_immediate_binary_reduction:
+ 	beq .arithmetic
+ 	cmp #OP_OR
+ 	beq .arithmetic
++	cmp #OP_SHR
++	beq .shift8
+ 	cmp #OP_LT
+ 	beq .compare
+ 	cmp #OP_LE
+@@ -36,11 +38,29 @@ emit_immediate_binary_reduction:
+ 	rts
+ .arithmetic:
+ 	jmp emit_arithmetic_immediate
++.shift8:
++	ldx #<exprImmediateShift8
++	ldy #>exprImmediateShift8
++	jmp emit_string
+ .compare:
+ 	jmp emit_compare_immediate
+ 
+ ;;; The four arithmetic/bitwise literal forms differ only in instruction name.
+ emit_arithmetic_immediate:
++	;;; AND $ffff is already the value in A/X. AND $00ff only clears X.
++	lda reduceOperator
++	cmp #OP_AND
++	bne .ordinary
++	lda expressionLiteralValue
++	cmp #$ff
++	bne .ordinary
++	lda expressionLiteralValue+1
++	beq emit_zero_high
++	cmp #$ff
++	bne .ordinary
++	sec
++	rts
++.ordinary:
+ 	jsr select_arithmetic_low
+ 	bcc .failed
+ 	jsr emit_string
+@@ -350,3 +370,7 @@ exprImmediateCompareFinish:
+ exprImmediateFinish:
+ 	byte $09,'t','a','x',$0a
+ 	byte $09,'t','y','a',$0a,0
++
++exprImmediateShift8:
++	byte $09,'t','x','a',$0a
++	byte $09,'l','d','x',' ','#','$','0','0',$0a,0
+diff --git a/tests/nanoc0-stmt/statements.c b/tests/nanoc0-stmt/statements.c
+index 4331d7a..149708c 100644
+--- a/tests/nanoc0-stmt/statements.c
++++ b/tests/nanoc0-stmt/statements.c
+@@ -332,6 +332,76 @@ int main()
+         return 115;
+     }
+ 
++    /* #74: exact self-updates lower to the machine operation at the target. */
++    c = 255;
++    c = c + 1;
++    if (c != 0) {
++        return 116;
++    }
++    c = 0;
++    c = c - 1;
++    if (c != 255) {
++        return 117;
++    }
++
++    x = 65535;
++    x = x + 1;
++    if (x != 0) {
++        return 118;
++    }
++    x = 0;
++    x = x - 1;
++    if (x != -1) {
++        return 119;
++    }
++
++    u = 65535;
++    u = u + 1;
++    if (u != 0) {
++        return 120;
++    }
++    u = 0;
++    u = u - 1;
++    if (u != 65535) {
++        return 121;
++    }
++
++    /* Width identities stay in A/X instead of entering general bit machinery. */
++    x = 4660;
++    x = x & 65535;
++    if (x != 4660) {
++        return 122;
++    }
++    x = x & 255;
++    if (x != 52) {
++        return 123;
++    }
++    x = 4660;
++    x = x >> 8;
++    if (x != 18) {
++        return 124;
++    }
++
++    x = -1;
++    x = x & 255;
++    if (x != 255) {
++        return 125;
++    }
++
++    /* Near misses must continue through the ordinary expression machinery. */
++    x = 5;
++    i = 2;
++    x = x + i;
++    if (x != 7) {
++        return 126;
++    }
++    x = 255;
++    x = x & 254;
++    x = x >> 4;
++    if (x != 15) {
++        return 127;
++    }
++
+     bytes[258] = bytes[257] + 1;
+     if (bytes[258] != 92) {
+         return 9;
