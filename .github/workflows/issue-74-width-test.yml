@@ -23,6 +23,8 @@ jobs:
           git apply .github/issue74/compact-direct-fix.patch
           git apply --check .github/issue74/arithmetic-shrink.patch
           git apply .github/issue74/arithmetic-shrink.patch
+          git apply --check .github/issue74/fix-word-update-label.patch
+          git apply .github/issue74/fix-word-update-label.patch
           git diff --check
           git diff --stat
       - name: Set up development environment
