@@ -1,6 +1,6 @@
 --- a/nanoc0/nanoc0.asm
 +++ b/nanoc0/nanoc0.asm
-@@ -54,5 +54,38 @@
+@@ -54,7 +54,40 @@
  	include "declarations.asm"
  	include "program_output.asm"
  	include "runtime_codegen.asm"
@@ -45,7 +45,7 @@
  .no:
  	clc
  	rts
--
+ 
 -;;; emit_runtime_lines writes these bytes verbatim. The indentation inside the
 -;;; instruction strings is therefore a real tab, just like the runtime slabs in
 -;;; runtime_codegen.asm; a backslash followed by 't' would reach ass literally.
