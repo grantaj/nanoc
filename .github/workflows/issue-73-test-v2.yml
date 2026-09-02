@@ -25,6 +25,8 @@ jobs:
           )
           git apply --check "${patches[@]}"
           git apply --whitespace=fix "${patches[@]}"
+          git apply --check .github/issue73v2/index-newline.patch
+          git apply .github/issue73v2/index-newline.patch
           git diff --check
           git diff --stat
 
