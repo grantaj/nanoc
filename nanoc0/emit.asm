@@ -22,6 +22,7 @@
 ;;;   global/function       __c_<source-name>
 ;;;   parameter/local       __c_<function-name>__vNN
 ;;;   expression spill      __c_<function-name>__sNN
+;;;   transient expression  NC_PTR
 ;;;   deferred string       __nc_stringNN
 ;;;   generic local label   .LNN
 ;;;   if labels             .ifFNN, .ifENN
@@ -50,8 +51,9 @@
 ;;; This file formats only the few things the compiler repeatedly needs. It is
 ;;; not printf and it is not an output representation.
 
-EMIT_PTR        = $fc
-EMIT_OUTPUT_LFN = 3
+EMIT_PTR             = $fc
+EMIT_OUTPUT_LFN      = 3
+EMIT_TRANSIENT_SPILL = $ff
 
 ;;; Four bytes preserve the compiler's two zero-page scratch pairs across KERNAL
 ;;; output. They are mutable compiler work RAM immediately after the statement
@@ -298,9 +300,15 @@ emit_current_name:
 	clc
 	rts
 
-;;; A=spill depth -> __c_<function-name>__sNN.
+;;; A=spill depth -> static spill name, or NC_PTR for the transient sentinel.
 emit_spill_name:
 	sta emitSavedValue
+	cmp #EMIT_TRANSIENT_SPILL
+	bne .static
+	ldx #<emitTransientSpill
+	ldy #>emitTransientSpill
+	jmp emit_string
+.static:
 	ldx #<emitCPrefix
 	ldy #>emitCPrefix
 	jsr emit_string
@@ -443,6 +451,7 @@ emitCPrefix:		byte '_','_','c','_',0
 emitCPrefixEnd = emitCPrefix+4
 emitValueSuffix:	byte '_','_','v',0
 emitSpillSuffix:	byte '_','_','s',0
+emitTransientSpill:	byte 'N','C','_','P','T','R',0
 emitStringPrefix:	byte '_','_','n','c','_','s','t','r','i','n','g',0
 emitLabelPrefix:	byte '.','L',0
 emitIfFalsePrefix:	byte '.','i','f','F',0
