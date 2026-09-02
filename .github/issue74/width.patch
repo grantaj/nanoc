@@ -1,17 +1,45 @@
 diff --git a/nanoc0/expression.asm b/nanoc0/expression.asm
-index c6b0176..369e64a 100644
+index c6b0176..7de8c2b 100644
 --- a/nanoc0/expression.asm
 +++ b/nanoc0/expression.asm
-@@ -761,6 +761,8 @@ try_immediate_binary:
- 	beq .supported
- 	cmp #OP_OR
- 	beq .supported
-+	cmp #OP_SHR
-+	beq .supported
- 	cmp #OP_LT
- 	beq .supported
- 	cmp #OP_LE
-@@ -816,7 +818,9 @@ try_immediate_binary:
+@@ -724,27 +724,17 @@ try_immediate_binary:
+ 	lda #IMMEDIATE_BINARY_NONE
+ 	sta immediateBinaryState
+ 
++	;;; Immediate RHS lowering covers +, -, comparisons, &, |, and the one
++	;;; exact shift count handled below. OP_SHL is the single hole in that range.
+ 	lda pendingOperator
+ 	cmp #OP_ADD
+-	beq .supported
+-	cmp #OP_SUB
+-	beq .supported
+-	cmp #OP_AND
+-	beq .supported
+-	cmp #OP_OR
+-	beq .supported
+-	cmp #OP_LT
+-	beq .supported
+-	cmp #OP_LE
+-	beq .supported
+-	cmp #OP_GT
+-	beq .supported
+-	cmp #OP_GE
+-	beq .supported
+-	cmp #OP_EQ
+-	beq .supported
+-	cmp #OP_NE
+-	beq .supported
++	bcc .notImmediate
++	cmp #OP_SHL
++	bcc .supported		; + or -
++	beq .notImmediate	; <<
++	cmp #OP_CALL
++	bcc .supported		; >>, comparisons, &, |
++.notImmediate:
+ 	sec
+ 	rts
+ 
+@@ -788,7 +778,9 @@ try_immediate_binary:
  
  .scalar:
  	jsr capture_primary_identifier
@@ -22,7 +50,7 @@ index c6b0176..369e64a 100644
  	lda primarySymbolKind
  	cmp #SYMBOL_GLOBAL
  	bne .done
-@@ -845,6 +849,17 @@ try_immediate_binary:
+@@ -817,6 +809,20 @@ try_immediate_binary:
  	rts
  
  .reduce:
@@ -31,6 +59,9 @@ index c6b0176..369e64a 100644
 +	lda pendingOperator
 +	cmp #OP_SHR
 +	bne .reduceNow
++	lda immediateBinaryState
++	cmp #IMMEDIATE_BINARY_CAPTURED_LITERAL
++	bne .done
 +	lda expressionLiteralValue
 +	cmp #$08
 +	bne .done
@@ -41,26 +72,55 @@ index c6b0176..369e64a 100644
  	sta reduceOperator
  	lda expressionValueType
 diff --git a/nanoc0/expression_immediate.asm b/nanoc0/expression_immediate.asm
-index e47a47e..02ac2b6 100644
+index e47a47e..26e2cb5 100644
 --- a/nanoc0/expression_immediate.asm
 +++ b/nanoc0/expression_immediate.asm
-@@ -20,6 +20,8 @@ emit_immediate_binary_reduction:
- 	beq .arithmetic
- 	cmp #OP_OR
- 	beq .arithmetic
+@@ -11,35 +11,50 @@
+ emit_immediate_binary_reduction:
+ 	lda #$00
+ 	sta expressionTruthInZ
+ 	lda reduceOperator
+ 	cmp #OP_ADD
+-	beq .arithmetic
+-	cmp #OP_SUB
+-	beq .arithmetic
+-	cmp #OP_AND
+-	beq .arithmetic
+-	cmp #OP_OR
+-	beq .arithmetic
++	bcc .unsupported
++	cmp #OP_SHL
++	bcc .arithmetic		; + or -
 +	cmp #OP_SHR
 +	beq .shift8
  	cmp #OP_LT
- 	beq .compare
- 	cmp #OP_LE
-@@ -36,11 +38,31 @@ emit_immediate_binary_reduction:
+-	beq .compare
+-	cmp #OP_LE
+-	beq .compare
+-	cmp #OP_GT
+-	beq .compare
+-	cmp #OP_GE
+-	beq .compare
+-	cmp #OP_EQ
+-	beq .compare
+-	cmp #OP_NE
+-	beq .compare
++	bcc .unsupported	; <<
++	cmp #OP_AND
++	bcc .compare		; < <= > >= == !=
++	cmp #OP_CALL
++	bcc .arithmetic		; & or |
++.unsupported:
+ 	clc
  	rts
  .arithmetic:
  	jmp emit_arithmetic_immediate
 +.shift8:
 +	ldx #<exprImmediateShift8
 +	ldy #>exprImmediateShift8
-+	jmp emit_string
++	jsr emit_string
++	bcc .unsupported
++	jmp emit_zero_high
  .compare:
  	jmp emit_compare_immediate
  
@@ -74,27 +134,130 @@ index e47a47e..02ac2b6 100644
 +	cmp #$ff
 +	bne .ordinary
 +	lda expressionLiteralValue+1
-+	bne .notLowMask
-+	jmp emit_zero_high
-+.notLowMask:
++	beq .lowMask
 +	cmp #$ff
 +	bne .ordinary
 +	sec
 +	rts
++.lowMask:
++	jmp emit_zero_high
 +.ordinary:
  	jsr select_arithmetic_low
  	bcc .failed
  	jsr emit_string
-@@ -350,3 +372,7 @@ exprImmediateCompareFinish:
+@@ -57,68 +72,43 @@ emit_arithmetic_immediate:
+ 	rts
+ 
+ select_arithmetic_low:
+-	lda reduceOperator
+-	cmp #OP_ADD
+-	beq .add
+-	cmp #OP_SUB
+-	beq .sub
+-	cmp #OP_AND
+-	beq .and
+-	cmp #OP_OR
+-	beq .or
+-	clc
+-	rts
+-.add:
+-	ldx #<exprImmediateAddLow
+-	ldy #>exprImmediateAddLow
+-	sec
+-	rts
+-.sub:
+-	ldx #<exprImmediateSubLow
+-	ldy #>exprImmediateSubLow
+-	sec
+-	rts
+-.and:
+-	ldx #<exprImmediateAndLow
+-	ldy #>exprImmediateAndLow
+-	sec
+-	rts
+-.or:
+-	ldx #<exprImmediateOrLow
+-	ldy #>exprImmediateOrLow
+-	sec
+-	rts
++	jsr arithmetic_immediate_index
++	ldy arithmeticLowHigh,x
++	lda arithmeticLowLow,x
++	tax
++	sec
++	rts
+ 
+ select_arithmetic_high:
++	jsr arithmetic_immediate_index
++	ldy arithmeticHighHigh,x
++	lda arithmeticHighLow,x
++	tax
++	sec
++	rts
++
++;;; The four immediate arithmetic operators are two adjacent pairs in the
++;;; operator numbering: +/-, then &/|. Return their compact table index in X.
++arithmetic_immediate_index:
+ 	lda reduceOperator
+-	cmp #OP_ADD
+-	beq .add
+-	cmp #OP_SUB
+-	beq .sub
+ 	cmp #OP_AND
+-	beq .and
+-	cmp #OP_OR
+-	beq .or
+-	clc
++	bcc .addSub
++	sec
++	sbc #(OP_AND-2)
++	tax
+ 	rts
+-.add:
+-	ldx #<exprImmediateAddHigh
+-	ldy #>exprImmediateAddHigh
+-	sec
+-	rts
+-.sub:
+-	ldx #<exprImmediateSubHigh
+-	ldy #>exprImmediateSubHigh
+-	sec
+-	rts
+-.and:
+-	ldx #<exprImmediateAndHigh
+-	ldy #>exprImmediateAndHigh
+-	sec
+-	rts
+-.or:
+-	ldx #<exprImmediateOrHigh
+-	ldy #>exprImmediateOrHigh
+-	sec
++.addSub:
++	sec
++	sbc #OP_ADD
++	tax
+ 	rts
+ 
+ emit_compare_immediate:
+@@ -350,3 +340,22 @@ exprImmediateCompareFinish:
  exprImmediateFinish:
  	byte $09,'t','a','x',$0a
  	byte $09,'t','y','a',$0a,0
 +
 +exprImmediateShift8:
-+	byte $09,'t','x','a',$0a
-+	byte $09,'l','d','x',' ','#','$','0','0',$0a,0
++	byte $09,'t','x','a',$0a,0
++
++;;; Pointer tables keep instruction selection smaller than four repeated branches.
++arithmeticLowLow:
++	byte <exprImmediateAddLow,<exprImmediateSubLow,<exprImmediateAndLow,<exprImmediateOrLow
++arithmeticLowHigh:
++	byte >exprImmediateAddLow,>exprImmediateSubLow,>exprImmediateAndLow,>exprImmediateOrLow
++arithmeticHighLow:
++	byte <exprImmediateAddHigh,<exprImmediateSubHigh,<exprImmediateAndHigh,<exprImmediateOrHigh
++arithmeticHighHigh:
++	byte >exprImmediateAddHigh,>exprImmediateSubHigh,>exprImmediateAndHigh,>exprImmediateOrHigh
 diff --git a/tests/nanoc0-stmt/statements.c b/tests/nanoc0-stmt/statements.c
-index 4331d7a..149708c 100644
+index 4331d7a..b89eb02 100644
 --- a/tests/nanoc0-stmt/statements.c
 +++ b/tests/nanoc0-stmt/statements.c
 @@ -332,6 +332,76 @@ int main()
