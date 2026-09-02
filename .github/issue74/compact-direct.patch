@@ -1,0 +1,225 @@
+--- a/nanoc0/statements.asm
++++ b/nanoc0/statements.asm
+@@ -39,6 +39,8 @@
+ ;;; recognized. The next identifier statement overwrites them normally.
+ STATEMENT_INDEX_ARRAY       = $80
+ STATEMENT_INDEX_CURRENT_PTR = $81
++STATEMENT_SCALAR_ASSIGNMENT = $82
++STATEMENT_DIRECT_UPDATE     = $83
+ 
+ ;;; parse_function_statements
+ ;;; currentToken is the first executable token after function-entry locals.
+@@ -585,6 +587,10 @@
+ 	lda #PARSE_BAD_ASSIGNMENT
+ 	jmp parser_fail
+ .targetOk:
++	;;; Mark this one expression as a scalar assignment so expression.asm may
++	;;; recognize only the exact source-shaped `x = x +/- 1` case.
++	lda #STATEMENT_SCALAR_ASSIGNMENT
++	sta statementTargetKind
+ 	jsr parser_next
+ 	bcc .failed
+ 	jsr parse_expression
+@@ -600,6 +606,17 @@
+ 	lda #PARSE_BAD_ASSIGNMENT
+ 	jmp parser_fail
+ .store:
++	lda statementTargetKind
++	cmp #STATEMENT_DIRECT_UPDATE
++	bne .ordinaryStore
++	jsr emit_direct_scalar_update
++	bcc .emitFail
++	jmp parser_next
++.ordinaryStore:
++	;;; The marker is statement-local; do not let a later condition look like
++	;;; another assignment candidate.
++	lda #$00
++	sta statementTargetKind
+ 	lda statementTargetArea
+ 	cmp #SYMBOL_AREA_CURRENT
+ 	bne .persistent
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -514,6 +514,33 @@
+ 	lda #TYPE_CHAR
+ 	sta expressionElementType
+ .loadScalar:
++	;;; A scalar assignment may defer exactly its own first load. If the next
++	;;; source proves to be literal +/- 1 followed by ';', statements.asm can
++	;;; update the named object directly. Nothing else is delayed.
++	lda statementTargetKind
++	cmp #STATEMENT_SCALAR_ASSIGNMENT
++	bne .emitScalar
++	lda operatorCount
++	bne .emitScalar
++	lda statementTargetType
++	cmp #TYPE_CHAR_PTR
++	beq .emitScalar
++	lda primarySymbolArea
++	cmp statementTargetArea
++	bne .emitScalar
++	lda primarySymbolIndex
++	cmp statementTargetIndex
++	bne .emitScalar
++	lda currentTokenKind
++	cmp #'+'
++	beq .deferScalar
++	cmp #'-'
++	bne .emitScalar
++.deferScalar:
++	lda #STATEMENT_DIRECT_UPDATE-$01
++	sta statementTargetKind
++	jmp .primaryDone
++.emitScalar:
+ 	jsr emit_load_primary_scalar
+ 	bcs .primaryDone
+ 	lda #EXPR_EMIT_ERROR
+@@ -749,6 +776,26 @@
+ ;;; precedence lookahead. A simple scalar keeps the left value in NC_PTR; a
+ ;;; nested/tighter RHS falls back to the ordinary static spill machine.
+ try_immediate_binary:
++	;;; The left load was deferred only for the exact assignment target followed
++	;;; by + or -. Literal one gets the existing one-token lookahead; every other
++	;;; RHS first materialises the saved target and rejoins the ordinary path.
++	lda statementTargetKind
++	cmp #STATEMENT_DIRECT_UPDATE-$01
++	bne .ordinary
++	lda currentTokenKind
++	cmp #TOKEN_INTEGER
++	bne .selfFallback
++	lda currentTokenValue
++	cmp #$01
++	bne .selfFallback
++	lda currentTokenValue+1
++	beq .integer
++.selfFallback:
++	jsr emit_load_primary_scalar_now
++	bcc .emitFailed
++	lda #$00
++	sta statementTargetKind
++.ordinary:
+ 	lda #IMMEDIATE_BINARY_NONE
+ 	sta immediateBinaryState
+ 
+@@ -821,6 +868,27 @@
+ 	bcs .advanced
+ 	rts
+ .advanced:
++	;;; Only literal one followed immediately by the assignment semicolon keeps
++	;;; the target load deferred. A longer expression materialises it here and
++	;;; continues through the existing captured-literal machinery.
++	lda statementTargetKind
++	cmp #STATEMENT_DIRECT_UPDATE-$01
++	bne .ordinaryAdvanced
++	lda currentTokenKind
++	cmp #';'
++	bne .selfLonger
++	lda #STATEMENT_DIRECT_UPDATE
++	sta statementTargetKind
++	lda #IMMEDIATE_BINARY_REDUCED
++	sta immediateBinaryState
++	sec
++	rts
++.selfLonger:
++	jsr emit_load_primary_scalar_now
++	bcc .emitFailed
++	lda #$00
++	sta statementTargetKind
++.ordinaryAdvanced:
+ 	;;; Keep postfix handling on the ordinary path. It may use NC_PTR itself and
+ 	;;; therefore must never overlap the transient-left convention.
+ 	lda currentTokenKind
+--- a/nanoc0/expression_immediate.asm
++++ b/nanoc0/expression_immediate.asm
+@@ -262,6 +262,7 @@
+ emit_cmp_primary_scalar:
+ 	ldx #<exprCmpSpace
+ 	ldy #>exprCmpSpace
++emit_primary_scalar_line:
+ 	jsr emit_string
+ 	bcc .failed
+ 	jsr emit_primary_scalar_name
+@@ -270,6 +271,16 @@
+ .failed:
+ 	clc
+ 	rts
++
++emit_primary_scalar_high_line:
++	jsr emit_string
++	bcc .failed
++	jsr emit_primary_scalar_name
++	bcc .failed
++	jmp emit_plus_one_newline
++.failed:
++	clc
++	rts
+ 
+ ;;; Format the captured scalar without emitting a load instruction.
+ emit_primary_scalar_name:
+--- a/nanoc0/statement_codegen.asm
++++ b/nanoc0/statement_codegen.asm
+@@ -37,6 +37,54 @@
+ .array:
+ 	jmp emit_load_primary_address
+ 
++;;; Exact scalar `x = x +/- 1` updates the named object in place. Byte objects
++;;; are one INC/DEC. A word increment carries only when the low INC wraps; word
++;;; decrement tests the old low byte before borrowing. `bne *+5` skips exactly
++;;; one adjacent three-byte absolute INC/DEC, so no generated label is needed.
++emit_direct_scalar_update:
++	lda pendingOperator
++	cmp #OP_SUB
++	beq .subtract
++	ldx #<statementIncSpace
++	ldy #>statementIncSpace
++	lda statementTargetType
++	cmp #TYPE_CHAR
++	beq emit_primary_scalar_line
++	jsr emit_primary_scalar_line
++	bcc .failed
++	jsr emit_update_skip
++	bcc .failed
++	ldx #<statementIncSpace
++	ldy #>statementIncSpace
++	jmp emit_primary_scalar_high_line
++
++.subtract:
++	lda statementTargetType
++	cmp #TYPE_CHAR
++	beq .decLow
++	ldx #<exprLdaSpace
++	ldy #>exprLdaSpace
++	jsr emit_primary_scalar_line
++	bcc .failed
++	jsr emit_update_skip
++	bcc .failed
++	ldx #<statementDecSpace
++	ldy #>statementDecSpace
++	jsr emit_primary_scalar_high_line
++	bcc .failed
++.decLow:
++	ldx #<statementDecSpace
++	ldy #>statementDecSpace
++	jmp emit_primary_scalar_line
++.failed:
++	clc
++	rts
++
++emit_update_skip:
++	ldx #<statementBneSkip
++	ldy #>statementBneSkip
++	jmp emit_string
++
+ emit_return_value:
+ 	ldx #<statementRts
+ 	ldy #>statementRts
+@@ -264,6 +312,9 @@
+ statementRts:		byte $09,'r','t','s',$0a,0
+ statementAddressSuffix:	byte '_','_','a',0
+ statementLdySpace:	byte $09,'l','d','y',' ',0
++statementIncSpace:	byte $09,'i','n','c',' ',0
++statementDecSpace:	byte $09,'d','e','c',' ',0
++statementBneSkip:	byte $09,'b','n','e',' ','*','+','5',$0a,0
+ statementByteTruthTest:
+ 	byte $09,'c','m','p',' ','#','$','0','0',$0a,0
+ statementTruthTest:
