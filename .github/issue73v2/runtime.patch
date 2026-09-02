@@ -8,7 +8,7 @@ index fc2d021..ab17a3d 100644
  multiplyUsed:		byte 0
 +indexUsed:		byte 0
 diff --git a/nanoc0/runtime_codegen.asm b/nanoc0/runtime_codegen.asm
-index 8d47a14..041a568 100644
+index 8d47a14..3f33d8b 100644
 --- a/nanoc0/runtime_codegen.asm
 +++ b/nanoc0/runtime_codegen.asm
 @@ -16,9 +16,13 @@ RUNTIME_HANDLE_CAPACITY = 6
@@ -49,29 +49,26 @@ index 8d47a14..041a568 100644
  .runtimeCheck:
  	jsr runtime_any_used
  	bcc .done
-@@ -243,10 +255,18 @@ emit_runtime_include:
- 	ldy #>runtimeIncludePrefix
- 	jsr emit_string
- 	bcc .failed
-+	ldx #<runtimeTargetPrefix
-+	ldy #>runtimeTargetPrefix
-+	jsr emit_string
-+	bcc .failed
- 	ldx runtimeIncludePath
+@@ -247,10 +259,9 @@ emit_runtime_include:
  	ldy runtimeIncludePath+1
  	jsr emit_string
  	bcc .failed
-+	ldx #<runtimeAsmSuffix
-+	ldy #>runtimeAsmSuffix
-+	jsr emit_string
-+	bcc .failed
- 	lda #'"'
- 	jsr emit_output_byte
- 	bcc .failed
-@@ -298,14 +318,17 @@ runtimeStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',0
+-	lda #'"'
+-	jsr emit_output_byte
+-	bcc .failed
+-	jmp emit_newline
++	ldx #<runtimeIncludeSuffix
++	ldy #>runtimeIncludeSuffix
++	jmp emit_string
+ .failed:
+ 	clc
+ 	rts
+@@ -296,16 +307,17 @@ runtimeBssAssign:	byte ' ','=',' ','N','C','_','B','S','S','+','$',0
+ runtimeLdaImmediate:	byte $09,'l','d','a',' ','#','$',0
+ runtimeStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',0
  runtimeStaTmpHigh:	byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',0
- runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"',0
- 
+-runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"',0
+-
 -runtimeMulPath:		byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','m','u','l','1','6','.','a','s','m',0
 -runtimeComparePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','c','o','m','p','a','r','e','1','6','.','a','s','m',0
 -runtimeCommonPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','o','m','m','o','n','.','a','s','m',0
@@ -80,8 +77,8 @@ index 8d47a14..041a568 100644
 -runtimeCreatePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','r','e','a','t','e','.','a','s','m',0
 -runtimeWritePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','w','r','i','t','e','.','a','s','m',0
 -runtimeClosePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','l','o','s','e','.','a','s','m',0
-+runtimeTargetPrefix:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/',0
-+runtimeAsmSuffix:	byte '.','a','s','m',0
++runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"','.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/',0
++runtimeIncludeSuffix:	byte '.','a','s','m','"',$0a,0
 +runtimeMulPath:		byte 'm','u','l','1','6',0
 +runtimeComparePath:	byte 'c','o','m','p','a','r','e','1','6',0
 +runtimeIndexPath:	byte 'i','n','d','e','x','1','6',0
