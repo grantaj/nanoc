@@ -5,6 +5,9 @@ on:
     branches:
       - issue-73-ci2
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -41,7 +44,6 @@ jobs:
         run: sh scripts/test-nanoc0-integration.sh
 
       - name: Record #73 measurements
-        if: always()
         run: |
           if [ -f build/nanoc0.prg ]; then
             bytes=$(wc -c < build/nanoc0.prg)
@@ -55,20 +57,16 @@ jobs:
             if [ -f "$f" ]; then
               echo "bootstrap generated source: $(wc -c < "$f") bytes"
               echo "NC_PTR references: $(grep -o 'NC_PTR' "$f" | wc -l)"
-              echo "saved indexed-lvalue references: $(grep -o '__a' "$f" | wc -l)"
-              echo "index16 calls: $(grep -o '__nc_index16' "$f" | wc -l)"
+              echo "index16 references: $(grep -o '__nc_index16' "$f" | wc -l)"
               break
             fi
           done
-          for f in build/nanoc0-integration/assfromc.prg; do
-            if [ -f "$f" ]; then
-              bytes=$(wc -c < "$f")
-              echo "bootstrap generated loaded image: $((bytes - 2)) bytes"
-            fi
-          done
+          if [ -f build/nanoc0-integration/assfromc.prg ]; then
+            bytes=$(wc -c < build/nanoc0-integration/assfromc.prg)
+            echo "bootstrap generated loaded image: $((bytes - 2)) bytes"
+          fi
 
-      - name: Capture generated assembly for diagnosis
-        if: always()
+      - name: Capture generated assembly
         uses: actions/upload-artifact@v4
         with:
           name: issue-73-generated
@@ -77,6 +75,41 @@ jobs:
             tests/nanoc0-stmt/stmtout.asm
             build/nanoc0-integration/ASSFROMC.ASM
             build/nanoc0-integration/assfromc.asm
-            build/nanoc0-integration/NCOUT.ASM
-            build/nanoc0-integration/ncout.asm
           if-no-files-found: ignore
+
+      - name: Materialize clean issue branch
+        run: |
+          mkdir -p /tmp/issue73
+          cp .github/issue73v2/*.patch /tmp/issue73/
+          git fetch origin main
+          git reset --hard origin/main
+          git clean -fdx
+          patches=(
+            /tmp/issue73/calls.patch
+            /tmp/issue73/expression.patch
+            /tmp/issue73/expression_codegen.patch
+            /tmp/issue73/runtime.patch
+            /tmp/issue73/statement_codegen.patch
+            /tmp/issue73/statements.patch
+            /tmp/issue73/index16.patch
+            /tmp/issue73/tests.patch
+            /tmp/issue73/docs.patch
+          )
+          git apply --check "${patches[@]}"
+          git apply --whitespace=fix "${patches[@]}"
+          git diff --check
+          git add \
+            docs/phase1-machine.md \
+            nanoc0/calls.asm \
+            nanoc0/expression.asm \
+            nanoc0/expression_codegen.asm \
+            nanoc0/expression_codegen_state.asm \
+            nanoc0/runtime_codegen.asm \
+            nanoc0/statement_codegen.asm \
+            nanoc0/statements.asm \
+            nanoc0/target/index16.asm \
+            tests/nanoc0-stmt/statements.c
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Generate C64-native indexing"
+          git push --force origin HEAD:issue-73-native-indexing
