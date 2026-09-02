@@ -7,11 +7,13 @@
 ;;; operator follows it, there is no value to preserve across later generated
 ;;; code: apply the literal to A/X directly instead of allocating a spill word.
 ;;;
-;;; Arithmetic/bitwise literals use direct immediate instructions. Comparisons
-;;; keep the same shared 16-bit helpers as ordinary reductions, but place the
-;;; literal straight in NC_TMP while preserving the left value in A/X.
+;;; Arithmetic/bitwise literals use direct immediate instructions. A char on the
+;;; left and a literal in the byte range also compare directly as bytes. Wider
+;;; comparisons retain the shared 16-bit helper path.
 
 emit_immediate_binary_reduction:
+	lda #$00
+	sta expressionTruthInZ
 	lda reduceOperator
 	cmp #OP_ADD
 	beq .add
@@ -179,6 +181,13 @@ emit_or_immediate:
 	jmp emit_immediate_finish
 
 emit_compare_immediate:
+	lda reduceLeftType
+	cmp #TYPE_CHAR
+	bne .word
+	lda expressionLiteralValue+1
+	bne .word
+	jmp emit_byte_compare_immediate
+.word:
 	ldx #<exprImmediateCompareLow
 	ldy #>exprImmediateCompareLow
 	jsr emit_string
@@ -216,6 +225,61 @@ emit_compare_immediate:
 	rts
 .call:
 	jmp emit_compare_helper_call
+
+;;; A char is already known to be 0..255. A literal with zero high byte occupies
+;;; that same domain after the normal integer promotions, so a byte CMP is exact.
+;;; For > and <=, comparing against literal+1 turns the test into >= or <. The
+;;; $ff edge is the corresponding constant false/true result; the literal scratch
+;;; is dead after this reduction, so incrementing it needs no retained state.
+emit_byte_compare_immediate:
+	lda reduceOperator
+	cmp #OP_EQ
+	beq .equality
+	cmp #OP_NE
+	beq .equality
+	cmp #OP_GT
+	beq .greater
+	cmp #OP_LE
+	beq .lessEqual
+	jsr emit_cmp_literal_byte
+	bcc .failed
+	lda reduceOperator
+	cmp #OP_GE
+	beq .carry
+	jmp emit_byte_not_carry_result
+.carry:
+	jmp emit_byte_carry_result
+
+.greater:
+	lda expressionLiteralValue
+	cmp #$ff
+	beq .false
+	inc expressionLiteralValue
+	jsr emit_cmp_literal_byte
+	bcc .failed
+	jmp emit_byte_carry_result
+.lessEqual:
+	lda expressionLiteralValue
+	cmp #$ff
+	beq .true
+	inc expressionLiteralValue
+	jsr emit_cmp_literal_byte
+	bcc .failed
+	jmp emit_byte_not_carry_result
+
+.equality:
+	jsr begin_byte_equality
+	bcc .failed
+	jsr emit_cmp_literal_byte
+	bcc .failed
+	jmp finish_byte_equality
+.false:
+	jmp emit_byte_false_result
+.true:
+	jmp emit_byte_true_result
+.failed:
+	clc
+	rts
 
 emit_immediate_finish:
 	ldx #<exprImmediateFinish

@@ -192,7 +192,11 @@ emit_copy_call_argument:
 	clc
 	rts
 
+;;; A call may freely change target flags. It therefore ends the lifetime of a
+;;; comparison's useful Z flag even when that comparison appeared in an argument.
 emit_call_instruction:
+	lda #$00
+	sta expressionTruthInZ
 	ldx #<callJsrSpace
 	ldy #>callJsrSpace
 	jsr emit_string

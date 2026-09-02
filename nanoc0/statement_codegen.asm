@@ -210,15 +210,28 @@ emit_indexed_store:
 	clc
 	rts
 
-;;; A/X is the condition result. Collapse both bytes to Z. STX/ORA is the
-;;; shortest explicit form because the value itself is dead once the condition
-;;; has been decided. The real semantic destination is an absolute JMP; the
-;;; relative BNE reaches only the adjacent near label.
+;;; A/X is the condition result. Comparisons deliberately leave Z matching their
+;;; canonical 0/1 result, so consuming that flag is the natural 6502 path. A
+;;; plain char needs only one CMP. Genuine 16-bit values retain the explicit
+;;; high/low collapse. In every case BNE skips the adjacent false-target JMP when
+;;; the condition is true.
 emit_statement_false_jump:
+	lda expressionTruthInZ
+	bne .branch
+	lda expressionValueType
+	cmp #TYPE_CHAR
+	bne .word
+	ldx #<statementByteTruthTest
+	ldy #>statementByteTruthTest
+	jsr emit_string
+	bcc .failed
+	jmp .branch
+.word:
 	ldx #<statementTruthTest
 	ldy #>statementTruthTest
 	jsr emit_string
 	bcc .failed
+.branch:
 	lda #exprBneEnd-exprBne
 	ldx #<exprBne
 	ldy #>exprBne
@@ -237,6 +250,8 @@ statementLdaPtr:		byte $09,'l','d','a',' ','N','C','_','P','T','R',$0a,0
 statementLdaPtrHigh:	byte $09,'l','d','a',' ','N','C','_','P','T','R','+','1',$0a,0
 statementStaPtr:		byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a,0
 statementStaPtrHigh:	byte $09,'s','t','a',' ','N','C','_','P','T','R','+','1',$0a,0
+statementByteTruthTest:
+	byte $09,'c','m','p',' ','#','$','0','0',$0a,0
 statementTruthTest:
 	byte $09,'s','t','x',' ','N','C','_','T','M','P',$0a
 	byte $09,'o','r','a',' ','N','C','_','T','M','P',$0a,0

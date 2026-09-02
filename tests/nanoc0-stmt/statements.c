@@ -112,6 +112,162 @@ int main()
         return 5;
     }
 
+    marker = 0;
+    global_char = 7;
+    c = 9;
+    if (global_char == c) {
+        return 30;
+    }
+    if (global_char != c) {
+        marker = marker + 1;
+    } else {
+        return 31;
+    }
+    if (global_char < c) {
+        marker = marker + 1;
+    } else {
+        return 32;
+    }
+    if (global_char <= c) {
+        marker = marker + 1;
+    } else {
+        return 33;
+    }
+    if (global_char > c) {
+        return 34;
+    }
+    if (global_char >= c) {
+        return 35;
+    }
+
+    c = 7;
+    if (global_char != c) {
+        return 36;
+    }
+    if (global_char == c) {
+        marker = marker + 1;
+    } else {
+        return 37;
+    }
+    if (global_char <= c) {
+        marker = marker + 1;
+    } else {
+        return 38;
+    }
+    if (global_char >= c) {
+        marker = marker + 1;
+    } else {
+        return 39;
+    }
+    if (global_char < c) {
+        return 40;
+    }
+    if (global_char > c) {
+        return 41;
+    }
+    if (marker != 6) {
+        return 42;
+    }
+
+    c = 0;
+    if (c) {
+        return 43;
+    }
+    if (c != 0) {
+        return 44;
+    }
+    if (c < 0) {
+        return 45;
+    }
+    if (c <= 0) {
+        marker = marker + 1;
+    } else {
+        return 46;
+    }
+    if (c > 0) {
+        return 47;
+    }
+    if (c >= 0) {
+        marker = marker + 1;
+    } else {
+        return 48;
+    }
+
+    c = 255;
+    if (c == 255) {
+        marker = marker + 1;
+    } else {
+        return 49;
+    }
+    if (c != 255) {
+        return 50;
+    }
+    if (c > 255) {
+        return 51;
+    }
+    if (c <= 255) {
+        marker = marker + 1;
+    } else {
+        return 52;
+    }
+    if (c < 255) {
+        return 53;
+    }
+    if (c >= 255) {
+        marker = marker + 1;
+    } else {
+        return 54;
+    }
+    if (c) {
+        marker = marker + 1;
+    } else {
+        return 55;
+    }
+
+    c = 7;
+    if (c >= 8) {
+        return 56;
+    }
+    if (c < 8) {
+        marker = marker + 1;
+    } else {
+        return 57;
+    }
+    if (c > 6) {
+        marker = marker + 1;
+    } else {
+        return 58;
+    }
+    if (c <= 6) {
+        return 59;
+    }
+
+    global_char = 9;
+    x = (c < global_char) + 300;
+    if (x != 301) {
+        return 60;
+    }
+
+    x = -1;
+    if (x >= 0) {
+        return 61;
+    }
+    if (x < 0) {
+        marker = marker + 1;
+    } else {
+        return 62;
+    }
+
+    u = 65535;
+    if (u <= 255) {
+        return 63;
+    }
+    if (u > 255) {
+        marker = marker + 1;
+    } else {
+        return 64;
+    }
+
     x = 4660;
     if (x != 4660) {
         return 6;
