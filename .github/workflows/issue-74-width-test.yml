@@ -17,12 +17,8 @@ jobs:
           git apply .github/issue74/width.patch
           git apply --check .github/issue74/shrink.patch
           git apply .github/issue74/shrink.patch
-          git apply --check .github/issue74/direct.patch
-          git apply .github/issue74/direct.patch
-          git apply --check .github/issue74/direct-label-fix.patch
-          git apply .github/issue74/direct-label-fix.patch
-          git apply --check .github/issue74/direct-branch-fix.patch
-          git apply .github/issue74/direct-branch-fix.patch
+          git apply --check .github/issue74/compact-direct.patch
+          git apply .github/issue74/compact-direct.patch
           git diff --check
           git diff --stat
       - name: Set up development environment
@@ -49,6 +45,7 @@ jobs:
               echo "bootstrap generated source: $(wc -c < "$f") bytes"
               echo "INC instructions: $(grep -Ec '^[[:space:]]*inc ' "$f" || true)"
               echo "DEC instructions: $(grep -Ec '^[[:space:]]*dec ' "$f" || true)"
+              echo "fixed update skips: $(grep -Ec '^[[:space:]]*bne \\*\\+5' "$f" || true)"
               echo "AND immediate ff: $(grep -Ec 'and #\\$ff' "$f" || true)"
               echo "shift loop LSR high: $(grep -Ec 'lsr NC_TMP\\+1' "$f" || true)"
               break
@@ -62,7 +59,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: issue-74-working-sources
+          name: issue-74-compact-working-sources
           if-no-files-found: error
           path: |
             nanoc0/expression.asm
