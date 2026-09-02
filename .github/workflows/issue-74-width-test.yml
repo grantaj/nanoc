@@ -13,6 +13,8 @@ jobs:
         run: |
           git apply --check .github/issue74/width.patch
           git apply .github/issue74/width.patch
+          git apply --check .github/issue74/shrink.patch
+          git apply .github/issue74/shrink.patch
           git diff --check
           git diff --stat
       - name: Set up development environment
