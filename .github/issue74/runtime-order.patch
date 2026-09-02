@@ -105,7 +105,7 @@
  emit_runtime_support:
  	jsr prepare_runtime_storage
  	bcs .storageReady
-@@ -300,95 +398,3 @@
+@@ -298,97 +396,3 @@
  .failed:
  	clc
  	rts
