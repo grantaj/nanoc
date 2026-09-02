@@ -1,5 +1,5 @@
 diff --git a/tests/nanoc0-stmt/statements.c b/tests/nanoc0-stmt/statements.c
-index 1bcce6a..72577b7 100644
+index 1bcce6a..4331d7a 100644
 --- a/tests/nanoc0-stmt/statements.c
 +++ b/tests/nanoc0-stmt/statements.c
 @@ -44,6 +44,7 @@ int take_pointer(char *value)
@@ -10,7 +10,7 @@ index 1bcce6a..72577b7 100644
      int x;
      unsigned u;
      char *p;
-@@ -284,6 +285,46 @@ int main()
+@@ -284,6 +285,53 @@ int main()
          return 8;
      }
  
@@ -52,6 +52,13 @@ index 1bcce6a..72577b7 100644
 +    bytes[bi] = bytes[4] + return_one();
 +    if (bytes[bi] != 96) {
 +        return 114;
++    }
++
++    /* Nested indexing must preserve the outer fixed-array marker. */
++    bytes[1] = 4;
++    bytes[4] = 98;
++    if (bytes[bytes[1]] != 98) {
++        return 115;
 +    }
 +
      bytes[258] = bytes[257] + 1;
