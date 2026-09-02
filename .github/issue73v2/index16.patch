@@ -1,0 +1,16 @@
+diff --git a/nanoc0/target/index16.asm b/nanoc0/target/index16.asm
+new file mode 100644
+index 0000000..7848807
+--- /dev/null
++++ b/nanoc0/target/index16.asm
+@@ -0,0 +1,10 @@
++;;; Add the 16-bit index in NC_TMP to the base in A/X.
++;;; The effective address is returned in NC_PTR. Y is unchanged.
++__nc_index16:
++	clc
++	adc NC_TMP
++	sta NC_PTR
++	txa
++	adc NC_TMP+1
++	sta NC_PTR+1
++	rts
