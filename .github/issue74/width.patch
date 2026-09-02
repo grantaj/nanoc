@@ -1,5 +1,5 @@
 diff --git a/nanoc0/expression.asm b/nanoc0/expression.asm
-index c6b0176..f334475 100644
+index c6b0176..369e64a 100644
 --- a/nanoc0/expression.asm
 +++ b/nanoc0/expression.asm
 @@ -761,6 +761,8 @@ try_immediate_binary:
@@ -11,7 +11,18 @@ index c6b0176..f334475 100644
  	cmp #OP_LT
  	beq .supported
  	cmp #OP_LE
-@@ -845,6 +847,17 @@ try_immediate_binary:
+@@ -816,7 +818,9 @@ try_immediate_binary:
+ 
+ .scalar:
+ 	jsr capture_primary_identifier
+-	bcc .failed
++	bcs .scalarCaptured
++	rts
++.scalarCaptured:
+ 	lda primarySymbolKind
+ 	cmp #SYMBOL_GLOBAL
+ 	bne .done
+@@ -845,6 +849,17 @@ try_immediate_binary:
  	rts
  
  .reduce:
@@ -30,7 +41,7 @@ index c6b0176..f334475 100644
  	sta reduceOperator
  	lda expressionValueType
 diff --git a/nanoc0/expression_immediate.asm b/nanoc0/expression_immediate.asm
-index e47a47e..edf183c 100644
+index e47a47e..02ac2b6 100644
 --- a/nanoc0/expression_immediate.asm
 +++ b/nanoc0/expression_immediate.asm
 @@ -20,6 +20,8 @@ emit_immediate_binary_reduction:
@@ -42,7 +53,7 @@ index e47a47e..edf183c 100644
  	cmp #OP_LT
  	beq .compare
  	cmp #OP_LE
-@@ -36,11 +38,29 @@ emit_immediate_binary_reduction:
+@@ -36,11 +38,31 @@ emit_immediate_binary_reduction:
  	rts
  .arithmetic:
  	jmp emit_arithmetic_immediate
@@ -63,7 +74,9 @@ index e47a47e..edf183c 100644
 +	cmp #$ff
 +	bne .ordinary
 +	lda expressionLiteralValue+1
-+	beq emit_zero_high
++	bne .notLowMask
++	jmp emit_zero_high
++.notLowMask:
 +	cmp #$ff
 +	bne .ordinary
 +	sec
@@ -72,7 +85,7 @@ index e47a47e..edf183c 100644
  	jsr select_arithmetic_low
  	bcc .failed
  	jsr emit_string
-@@ -350,3 +370,7 @@ exprImmediateCompareFinish:
+@@ -350,3 +372,7 @@ exprImmediateCompareFinish:
  exprImmediateFinish:
  	byte $09,'t','a','x',$0a
  	byte $09,'t','y','a',$0a,0
