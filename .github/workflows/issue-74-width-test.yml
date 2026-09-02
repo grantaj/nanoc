@@ -21,6 +21,8 @@ jobs:
           git apply .github/issue74/direct.patch
           git apply --check .github/issue74/direct-label-fix.patch
           git apply .github/issue74/direct-label-fix.patch
+          git apply --check .github/issue74/direct-branch-fix.patch
+          git apply .github/issue74/direct-branch-fix.patch
           git diff --check
           git diff --stat
       - name: Set up development environment
