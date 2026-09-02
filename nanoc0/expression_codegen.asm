@@ -8,6 +8,8 @@
 ;;; sequences a reader would write by hand.
 
 emit_load_literal:
+	lda #$00
+	sta expressionTruthInZ
 	ldx #<exprLdaImm
 	ldy #>exprLdaImm
 	jsr emit_string
@@ -66,6 +68,8 @@ emit_load_literal_address:
 	jmp emit_newline
 
 emit_load_primary_scalar:
+	lda #$00
+	sta expressionTruthInZ
 	lda primarySymbolArea
 	cmp #SYMBOL_AREA_CURRENT
 	beq .current
@@ -278,6 +282,8 @@ emit_store_current_value:
 	rts
 
 emit_unary_minus:
+	lda #$00
+	sta expressionTruthInZ
 	ldx #<exprNegate
 	ldy #>exprNegate
 	jmp emit_string
@@ -286,6 +292,8 @@ emit_unary_minus:
 ;;; is named explicitly; an unknown operator is an internal failure, not an
 ;;; accidental comparison.
 emit_binary_reduction:
+	lda #$00
+	sta expressionTruthInZ
 	lda reduceOperator
 	cmp #OP_ADD
 	beq .add
@@ -337,6 +345,11 @@ emit_binary_reduction:
 emit_save_right_tmp:
 	ldx #<exprSaveRight
 	ldy #>exprSaveRight
+	jmp emit_string
+
+emit_save_right_byte_tmp:
+	ldx #<exprStaTmp
+	ldy #>exprStaTmp
 	jmp emit_string
 
 emit_lda_reduce_spill:
@@ -687,12 +700,19 @@ emit_long_conditional_jump:
 	clc
 	rts
 
-;;; Comparisons are common enough in real C that spelling the complete 16-bit
-;;; decision tree at every use quickly dominates the generated program. Keep the
-;;; expression machine contract visible instead: right operand -> NC_TMP, reload
-;;; the saved left operand into A/X, then call the small target helper matching
-;;; the source operator. The helper returns the ordinary C value 0/1 in A/X.
+;;; Both char operands already occupy the exact 0..255 domain after promotion,
+;;; so their high bytes cannot affect a comparison. Use the ordinary 6502 byte
+;;; forms and leave X at zero. Wider operands retain the explicit 16-bit helper
+;;; path below.
 emit_compare_reduction:
+	lda reduceLeftType
+	cmp #TYPE_CHAR
+	bne .word
+	lda reduceRightType
+	cmp #TYPE_CHAR
+	bne .word
+	jmp emit_byte_compare_reduction
+.word:
 	jsr emit_save_right_tmp
 	bcs .leftLow
 	rts
@@ -706,6 +726,198 @@ emit_compare_reduction:
 	rts
 .call:
 	jmp emit_compare_helper_call
+
+;;; Equality uses CMP and one nearby result label. Relational comparisons use the
+;;; carry produced by CMP directly: LDA #0 / ROL turns carry into the C value
+;;; 0/1; EOR #1 supplies the complementary < or > case. For > and <= the right
+;;; operand is already in A, so comparing it against the saved left operand gives
+;;; the useful reversed carry without another temporary.
+emit_byte_compare_reduction:
+	lda reduceOperator
+	cmp #OP_EQ
+	beq .equality
+	cmp #OP_NE
+	beq .equality
+	cmp #OP_GT
+	beq .rightAgainstLeft
+	cmp #OP_LE
+	beq .rightAgainstLeft
+
+	jsr emit_save_right_byte_tmp
+	bcc .failed
+	jsr emit_lda_reduce_spill
+	bcc .failed
+	ldx #<exprCmpTmp
+	ldy #>exprCmpTmp
+	jsr emit_string
+	bcc .failed
+	lda reduceOperator
+	cmp #OP_GE
+	beq .carry
+	jmp emit_byte_not_carry_result
+
+.rightAgainstLeft:
+	jsr emit_cmp_reduce_spill
+	bcc .failed
+	lda reduceOperator
+	cmp #OP_LE
+	beq .carry
+	jmp emit_byte_not_carry_result
+.carry:
+	jmp emit_byte_carry_result
+
+.equality:
+	jsr begin_byte_equality
+	bcc .failed
+	jsr emit_cmp_reduce_spill
+	bcc .failed
+	jmp finish_byte_equality
+.failed:
+	clc
+	rts
+
+emit_cmp_reduce_spill:
+	ldx #<exprCmpSpace
+	ldy #>exprCmpSpace
+	jsr emit_string
+	bcs .name
+	rts
+.name:
+	lda reduceSpill
+	jsr emit_spill_name
+	bcs .done
+	rts
+.done:
+	jmp emit_newline
+
+emit_cmp_literal_byte:
+	ldx #<exprCmpImmediate
+	ldy #>exprCmpImmediate
+	jsr emit_string
+	bcs .value
+	rts
+.value:
+	lda expressionLiteralValue
+	jsr emit_hex_byte
+	bcs .done
+	rts
+.done:
+	jmp emit_newline
+
+;;; Reserve one local done label before CMP so the only relative branch emitted
+;;; by equality is visibly bounded by the following INY/DEY.
+begin_byte_equality:
+	lda #EMIT_LABEL_CMP_DONE
+	sta emitLabelKind
+	jsr reserve_generated_label
+	lda emitLabelValue
+	sta compareDoneLabel
+	lda emitLabelValue+1
+	sta compareDoneLabel+1
+	lda reduceOperator
+	cmp #OP_EQ
+	bne .notEqual
+	ldx #<exprLdyZero
+	ldy #>exprLdyZero
+	jmp emit_string
+.notEqual:
+	ldx #<exprLdyOne
+	ldy #>exprLdyOne
+	jmp emit_string
+
+finish_byte_equality:
+	ldx #<exprBne
+	ldy #>exprBne
+	jsr emit_string
+	bcc .failed
+	lda #EMIT_LABEL_CMP_DONE
+	sta emitLabelKind
+	lda compareDoneLabel
+	sta emitLabelValue
+	lda compareDoneLabel+1
+	sta emitLabelValue+1
+	jsr emit_generated_label_name
+	bcc .failed
+	jsr emit_newline
+	bcc .failed
+	lda reduceOperator
+	cmp #OP_EQ
+	bne .notEqual
+	ldx #<exprIny
+	ldy #>exprIny
+	jmp .adjust
+.notEqual:
+	ldx #<exprDey
+	ldy #>exprDey
+.adjust:
+	jsr emit_string
+	bcc .failed
+	lda #EMIT_LABEL_CMP_DONE
+	sta emitLabelKind
+	lda compareDoneLabel
+	sta emitLabelValue
+	lda compareDoneLabel+1
+	sta emitLabelValue+1
+	jsr emit_label_definition
+	bcc .failed
+	ldx #<exprTya
+	ldy #>exprTya
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_truth
+.failed:
+	clc
+	rts
+
+emit_byte_carry_result:
+	ldx #<exprByteCarryResult
+	ldy #>exprByteCarryResult
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_truth
+.failed:
+	clc
+	rts
+
+emit_byte_not_carry_result:
+	ldx #<exprByteCarryResult
+	ldy #>exprByteCarryResult
+	jsr emit_string
+	bcc .failed
+	ldx #<exprByteInvertResult
+	ldy #>exprByteInvertResult
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_truth
+.failed:
+	clc
+	rts
+
+emit_byte_false_result:
+	ldx #<exprByteFalse
+	ldy #>exprByteFalse
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_truth
+.failed:
+	clc
+	rts
+
+emit_byte_true_result:
+	ldx #<exprByteTrue
+	ldy #>exprByteTrue
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_truth
+.failed:
+	clc
+	rts
+
+mark_expression_truth:
+	lda #$01
+	sta expressionTruthInZ
+	sec
+	rts
 
 ;;; A/X is already the left operand and NC_TMP is the right operand. Select the
 ;;; one shared 16-bit comparison helper from the source operator and the normal
@@ -780,10 +992,15 @@ emit_compare_helper_call:
 
 emit_compare_call:
 	jsr emit_string
-	bcs .done
+	bcs .newline
 	rts
-.done:
-	jmp emit_newline
+.newline:
+	jsr emit_newline
+	bcc .failed
+	jmp mark_expression_truth
+.failed:
+	clc
+	rts
 
 emit_ldx_reduce_spill_high:
 	ldx #<exprLdxSpace
@@ -861,6 +1078,8 @@ emit_index_address:
 	jmp emit_string
 
 emit_index_load:
+	lda #$00
+	sta expressionTruthInZ
 	jsr emit_index_address
 	bcs .load
 	rts
@@ -996,6 +1215,21 @@ exprLoadTmpResult:
 	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a
 	byte $09,'l','d','x',' ','N','C','_','T','M','P','+','1',$0a
 exprLoadTmpResultEnd:	byte 0
+
+exprCmpSpace:		byte $09,'c','m','p',' ',0
+exprCmpImmediate:	byte $09,'c','m','p',' ','#','$',0
+exprCmpTmp:		byte $09,'c','m','p',' ','N','C','_','T','M','P',$0a,0
+exprByteCarryResult:
+	byte $09,'l','d','a',' ','#','$','0','0',$0a
+	byte $09,'r','o','l',$0a,0
+exprByteInvertResult:	byte $09,'e','o','r',' ','#','$','0','1',$0a,0
+exprByteFalse:		byte $09,'l','d','a',' ','#','$','0','0',$0a,0
+exprByteTrue:		byte $09,'l','d','a',' ','#','$','0','1',$0a,0
+exprLdyZero:		byte $09,'l','d','y',' ','#','$','0','0',$0a,0
+exprLdyOne:		byte $09,'l','d','y',' ','#','$','0','1',$0a,0
+exprIny:		byte $09,'i','n','y',$0a,0
+exprDey:		byte $09,'d','e','y',$0a,0
+exprTya:		byte $09,'t','y','a',$0a,0
 
 exprBne:		byte $09,'b','n','e',' '
 exprBneEnd:		byte 0
