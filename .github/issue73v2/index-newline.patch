@@ -1,0 +1,14 @@
+diff --git a/nanoc0/expression_codegen.asm b/nanoc0/expression_codegen.asm
+--- a/nanoc0/expression_codegen.asm
++++ b/nanoc0/expression_codegen.asm
+@@ -1324,8 +1324,8 @@ exprCallUgt16:		byte $09
+ 			string "jsr __nc_ugt16"
+ exprCallUge16:		byte $09
+ 			string "jsr __nc_uge16"
+-exprCallIndex16:	byte $09
+-			string "jsr __nc_index16"
++exprCallIndex16:
++	byte $09,'j','s','r',' ','_','_','n','c','_','i','n','d','e','x','1','6',$0a,0
+ 
+ exprScaleIndex:
+ 	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
