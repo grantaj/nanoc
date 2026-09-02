@@ -1,0 +1,12 @@
+diff --git a/nanoc0/calls.asm b/nanoc0/calls.asm
+index f26cb4c..33461bd 100644
+--- a/nanoc0/calls.asm
++++ b/nanoc0/calls.asm
+@@ -39,6 +39,7 @@ reset_call_translation_state:
+ 	lda #$00
+ 	sta compareUsed
+ 	sta multiplyUsed
++	sta indexUsed
+ .loop:
+ 	sta runtimeParamAllocated,x
+ 	sta runtimeUsed,x
