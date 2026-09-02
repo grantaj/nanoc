@@ -1,0 +1,155 @@
+diff --git a/nanoc0/expression_immediate.asm b/nanoc0/expression_immediate.asm
+--- a/nanoc0/expression_immediate.asm
++++ b/nanoc0/expression_immediate.asm
+@@ -38,7 +38,9 @@
+ .compare:
+ 	jmp emit_compare_immediate
+ 
+-;;; The four arithmetic/bitwise literal forms differ only in instruction name.
++;;; The four arithmetic/bitwise literal forms share one operator prefix. Add
++;;; and subtract only add their carry setup before the low byte; the high byte
++;;; always begins with the same A/X shuffle.
+ emit_arithmetic_immediate:
+ 	;;; AND $ffff is already the value in A/X. AND $00ff only clears X.
+ 	lda reduceOperator
+@@ -56,8 +58,9 @@
+ .lowMask:
+ 	jmp emit_zero_high
+ .ordinary:
+-	jsr select_arithmetic_low
++	jsr emit_arithmetic_carry
+ 	bcc .failed
++	jsr select_arithmetic_operator
+ 	jsr emit_string
+ 	bcc .failed
+ 	lda expressionLiteralValue
+@@ -65,8 +68,11 @@
+ 	bcc .failed
+ 	jsr emit_newline
+ 	bcc .failed
+-	jsr select_arithmetic_high
++	ldx #<exprImmediateHigh
++	ldy #>exprImmediateHigh
++	jsr emit_string
+ 	bcc .failed
++	jsr select_arithmetic_operator
+ 	jsr emit_string
+ 	bcc .failed
+ 	lda expressionLiteralValue+1
+@@ -79,36 +85,41 @@
+ 	clc
+ 	rts
+ 
+-select_arithmetic_low:
+-	jsr arithmetic_immediate_index
+-	ldy arithmeticLowHigh,x
+-	lda arithmeticLowLow,x
+-	tax
+-	sec
+-	rts
+-
+-select_arithmetic_high:
+-	jsr arithmetic_immediate_index
+-	ldy arithmeticHighHigh,x
+-	lda arithmeticHighLow,x
+-	tax
++;;; Only + and - need explicit carry state before the low byte.
++emit_arithmetic_carry:
++	lda reduceOperator
++	cmp #OP_ADD
++	beq .add
++	cmp #OP_SUB
++	bne .none
++	ldx #<exprImmediateSec
++	ldy #>exprImmediateSec
++	jmp emit_string
++.add:
++	ldx #<exprImmediateClc
++	ldy #>exprImmediateClc
++	jmp emit_string
++.none:
+ 	sec
+ 	rts
+ 
+ ;;; The four immediate arithmetic operators are two adjacent pairs in the
+-;;; operator numbering: +/-, then &/|. Return their compact table index in X.
+-arithmetic_immediate_index:
++;;; operator numbering: +/-, then &/|. Return their shared mnemonic prefix.
++select_arithmetic_operator:
+ 	lda reduceOperator
+ 	cmp #OP_AND
+ 	bcc .addSub
+ 	sec
+ 	sbc #OP_AND
+ 	ora #$02
+-	tax
+-	rts
++	bne .indexed
+ .addSub:
+ 	sec
+ 	sbc #OP_ADD
++.indexed:
++	tax
++	ldy arithmeticOperatorHigh,x
++	lda arithmeticOperatorLow,x
+ 	tax
+ 	rts
+ 
+@@ -294,31 +305,20 @@
+ 	ldy #>exprImmediateFinish
+ 	jmp emit_string
+ 
+-exprImmediateAddLow:
+-	byte $09,'c','l','c',$0a
+-	byte $09,'a','d','c',' ','#','$',0
+-exprImmediateAddHigh:
++exprImmediateClc:
++	byte $09,'c','l','c',$0a,0
++exprImmediateSec:
++	byte $09,'s','e','c',$0a,0
++exprImmediateHigh:
+ 	byte $09,'t','a','y',$0a
+-	byte $09,'t','x','a',$0a
++	byte $09,'t','x','a',$0a,0
++exprImmediateAdd:
+ 	byte $09,'a','d','c',' ','#','$',0
+-exprImmediateSubLow:
+-	byte $09,'s','e','c',$0a
+-	byte $09,'s','b','c',' ','#','$',0
+-exprImmediateSubHigh:
+-	byte $09,'t','a','y',$0a
+-	byte $09,'t','x','a',$0a
++exprImmediateSub:
+ 	byte $09,'s','b','c',' ','#','$',0
+-exprImmediateAndLow:
++exprImmediateAnd:
+ 	byte $09,'a','n','d',' ','#','$',0
+-exprImmediateAndHigh:
+-	byte $09,'t','a','y',$0a
+-	byte $09,'t','x','a',$0a
+-	byte $09,'a','n','d',' ','#','$',0
+-exprImmediateOrLow:
+-	byte $09,'o','r','a',' ','#','$',0
+-exprImmediateOrHigh:
+-	byte $09,'t','a','y',$0a
+-	byte $09,'t','x','a',$0a
++exprImmediateOr:
+ 	byte $09,'o','r','a',' ','#','$',0
+ exprImmediateCompareLow:
+ 	byte $09,'t','a','y',$0a
+@@ -337,11 +337,7 @@
+ 	byte $09,'t','x','a',$0a,0
+ 
+ ;;; Pointer tables keep instruction selection smaller than four repeated branches.
+-arithmeticLowLow:
+-	byte <exprImmediateAddLow,<exprImmediateSubLow,<exprImmediateAndLow,<exprImmediateOrLow
+-arithmeticLowHigh:
+-	byte >exprImmediateAddLow,>exprImmediateSubLow,>exprImmediateAndLow,>exprImmediateOrLow
+-arithmeticHighLow:
+-	byte <exprImmediateAddHigh,<exprImmediateSubHigh,<exprImmediateAndHigh,<exprImmediateOrHigh
+-arithmeticHighHigh:
+-	byte >exprImmediateAddHigh,>exprImmediateSubHigh,>exprImmediateAndHigh,>exprImmediateOrHigh
++arithmeticOperatorLow:
++	byte <exprImmediateAdd,<exprImmediateSub,<exprImmediateAnd,<exprImmediateOr
++arithmeticOperatorHigh:
++	byte >exprImmediateAdd,>exprImmediateSub,>exprImmediateAnd,>exprImmediateOr
