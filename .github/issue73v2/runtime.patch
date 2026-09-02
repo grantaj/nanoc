@@ -8,10 +8,26 @@ index fc2d021..ab17a3d 100644
  multiplyUsed:		byte 0
 +indexUsed:		byte 0
 diff --git a/nanoc0/runtime_codegen.asm b/nanoc0/runtime_codegen.asm
-index 8d47a14..12a82f7 100644
+index 8d47a14..041a568 100644
 --- a/nanoc0/runtime_codegen.asm
 +++ b/nanoc0/runtime_codegen.asm
-@@ -29,12 +29,20 @@ emit_runtime_support:
+@@ -16,9 +16,13 @@ RUNTIME_HANDLE_CAPACITY = 6
+ 
+ emit_runtime_support:
+ 	jsr prepare_runtime_storage
+-	bcc .failed
++	bcs .storageReady
++	rts
++.storageReady:
+ 	jsr emit_runtime_init
+-	bcc .failed
++	bcs .initReady
++	rts
++.initReady:
+ 
+ 	lda multiplyUsed
+ 	beq .compareCheck
+@@ -29,12 +33,20 @@ emit_runtime_support:
  
  .compareCheck:
  	lda compareUsed
@@ -33,7 +49,7 @@ index 8d47a14..12a82f7 100644
  .runtimeCheck:
  	jsr runtime_any_used
  	bcc .done
-@@ -243,10 +251,18 @@ emit_runtime_include:
+@@ -243,10 +255,18 @@ emit_runtime_include:
  	ldy #>runtimeIncludePrefix
  	jsr emit_string
  	bcc .failed
@@ -52,7 +68,7 @@ index 8d47a14..12a82f7 100644
  	lda #'"'
  	jsr emit_output_byte
  	bcc .failed
-@@ -298,14 +314,17 @@ runtimeStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',0
+@@ -298,14 +318,17 @@ runtimeStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',0
  runtimeStaTmpHigh:	byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',0
  runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"',0
  
