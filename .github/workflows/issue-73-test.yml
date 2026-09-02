@@ -1,0 +1,29 @@
+name: issue-73-test
+
+on:
+  push:
+    branches:
+      - issue-73-ci
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Apply staged #73 patch
+        run: cat .github/issue73.part0 .github/issue73.part1 .github/issue73.part2 .github/issue73.part3 | git apply --check - && cat .github/issue73.part0 .github/issue73.part1 .github/issue73.part2 .github/issue73.part3 | git apply -
+      - name: Set up development environment
+        run: make setup
+      - name: Build all targets
+        run: make
+      - name: Run focused statement tests
+        run: make test-nanoc0-statements
+      - name: Run production integration
+        run: sh scripts/test-nanoc0-integration.sh
+      - name: Record generated measurements
+        if: always()
+        run: |
+          if [ -f build/nanoc0-core.prg ]; then bytes=$(wc -c < build/nanoc0-core.prg); echo "nanoc0-core-prg=$bytes"; echo "nanoc0-core-resident=$((bytes-2))"; fi
+          for f in build/nanoc0-integration/ASSFROMC.ASM build/nanoc0-integration/assfromc.asm build/nanoc0-integration/NCOUT.ASM build/nanoc0-integration/ncout.asm; do
+            if [ -f "$f" ]; then echo "$f $(wc -c < "$f") bytes"; echo "NC_PTR $(grep -o 'NC_PTR' "$f" | wc -l)"; echo "saved-address $(grep -o '__a' "$f" | wc -l)"; fi
+          done
