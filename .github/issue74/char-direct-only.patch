@@ -1,0 +1,109 @@
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -585,8 +585,8 @@ mark_scalar_self_update:
+ 	lda operatorCount
+ 	bne .done
+ 	lda primarySymbolType
+-	cmp #TYPE_CHAR_PTR
+-	beq .done
++	cmp #TYPE_CHAR
++	bne .done
+ 	lda primarySymbolArea
+ 	cmp statementTargetArea
+ 	bne .done
+--- a/nanoc0/statement_codegen.asm
++++ b/nanoc0/statement_codegen.asm
+@@ -37,71 +37,20 @@ load_statement_target_base:
+ .array:
+ 	jmp emit_load_primary_address
+ 
+-;;; Exact scalar `x = x +/- 1` updates the named object in place. A char is one
+-;;; INC/DEC. A word uses the ordinary 6502 carry/borrow shape with one generated
+-;;; local label; no expression spill or branch-distance machinery is involved.
++;;; Exact byte `x = x +/- 1` updates the named object in place. Word values
++;;; stay on the ordinary immediate arithmetic path, which already carries or
++;;; borrows explicitly across A/X.
+ emit_direct_scalar_update:
+ 	lda pendingOperator
+ 	cmp #OP_SUB
+ 	beq .subtract
+ 	ldx #<statementIncSpace
+ 	ldy #>statementIncSpace
+-	lda statementTargetType
+-	cmp #TYPE_CHAR
+-	bne .incWord
+ 	jmp emit_primary_scalar_line
+-.incWord:
+-	jsr reserve_generated_label
+-	lda #EMIT_LABEL_GENERIC
+-	sta emitLabelKind
+-	jsr emit_primary_scalar_line
+-	bcc .failed
+-	jsr emit_update_skip
+-	bcc .failed
+-	ldx #<statementIncSpace
+-	ldy #>statementIncSpace
+-	jsr emit_primary_scalar_high_line
+-	bcc .failed
+-	jmp emit_label_definition
+-
+ .subtract:
+-	lda statementTargetType
+-	cmp #TYPE_CHAR
+-	beq .decLow
+-	jsr reserve_generated_label
+-	lda #EMIT_LABEL_GENERIC
+-	sta emitLabelKind
+-	ldx #<exprLdaSpace
+-	ldy #>exprLdaSpace
+-	jsr emit_primary_scalar_line
+-	bcc .failed
+-	jsr emit_update_skip
+-	bcc .failed
+-	ldx #<statementDecSpace
+-	ldy #>statementDecSpace
+-	jsr emit_primary_scalar_high_line
+-	bcc .failed
+-	jsr emit_label_definition
+-	bcc .failed
+-.decLow:
+ 	ldx #<statementDecSpace
+ 	ldy #>statementDecSpace
+ 	jmp emit_primary_scalar_line
+-.failed:
+-	clc
+-	rts
+-
+-emit_update_skip:
+-	ldx #<exprBne
+-	ldy #>exprBne
+-	jsr emit_string
+-	bcc .failed
+-	jsr emit_generated_label_name
+-	bcc .failed
+-	jmp emit_newline
+-.failed:
+-	clc
+-	rts
+ 
+ emit_return_value:
+ 	ldx #<statementRts
+--- a/nanoc0/expression_immediate.asm
++++ b/nanoc0/expression_immediate.asm
+@@ -274,16 +274,6 @@ emit_primary_scalar_line:
+ 	clc
+ 	rts
+ 
+-emit_primary_scalar_high_line:
+-	jsr emit_string
+-	bcc .failed
+-	jsr emit_primary_scalar_name
+-	bcc .failed
+-	jmp emit_plus_one_newline
+-.failed:
+-	clc
+-	rts
+-
+ ;;; Format the captured scalar without emitting a load instruction.
+ emit_primary_scalar_name:
+ 	lda primarySymbolArea
