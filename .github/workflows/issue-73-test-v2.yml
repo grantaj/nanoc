@@ -24,7 +24,7 @@ jobs:
             .github/issue73v2/tests.patch
           )
           git apply --check "${patches[@]}"
-          git apply "${patches[@]}"
+          git apply --whitespace=fix "${patches[@]}"
           git diff --check
           git diff --stat
 
