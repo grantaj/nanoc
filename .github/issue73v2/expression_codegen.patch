@@ -1,5 +1,5 @@
 diff --git a/nanoc0/expression_codegen.asm b/nanoc0/expression_codegen.asm
-index 361cfd8..a6efa95 100644
+index 361cfd8..c94f8b1 100644
 --- a/nanoc0/expression_codegen.asm
 +++ b/nanoc0/expression_codegen.asm
 @@ -84,6 +84,7 @@ emit_load_primary_scalar:
@@ -10,10 +10,10 @@ index 361cfd8..a6efa95 100644
  	lda #$00
  	sta expressionTruthInZ
  	ldx #<exprLdaSpace
-@@ -194,6 +195,14 @@ emit_store_spill:
- 	sec
- 	rts
- .store:
+@@ -182,6 +183,13 @@ emit_spill_definition:
+ .done:
+ 	jmp emit_newline
+ 
 +;;; Store target A/X in the fixed NC_PTR scratch pair without applying the
 +;;; simple-scalar suppression used by emit_store_spill.
 +emit_store_transient:
@@ -21,6 +21,13 @@ index 361cfd8..a6efa95 100644
 +	sta emitSpillIndex
 +	jmp emit_store_spill_now
 +
+ ;;; The transient sentinel means a simple scalar RHS. Operators which can address
+ ;;; that scalar directly need no spill at all; GT/LE retain the old NC_PTR
+ ;;; transient sequence because its reversed compare already expresses equality.
+@@ -194,6 +202,7 @@ emit_store_spill:
+ 	sec
+ 	rts
+ .store:
 +emit_store_spill_now:
  	ldx #<exprStaSpace
  	ldy #>exprStaSpace
@@ -57,7 +64,7 @@ index 361cfd8..a6efa95 100644
 -.leftLow:
 -	jsr emit_lda_reduce_spill
 -	bcs .addressLow
-+ 	jmp emit_string
++	jmp emit_string
 +.done:
 +	sec
  	rts
@@ -183,8 +190,8 @@ index 361cfd8..a6efa95 100644
  			string "jsr __nc_ugt16"
  exprCallUge16:		byte $09
  			string "jsr __nc_uge16"
-+exprCallIndex16:	byte $09
-+			string "jsr __nc_index16"
++exprCallIndex16:
++	byte $09,'j','s','r',' ','_','_','n','c','_','i','n','d','e','x','1','6',$0a,0
  
  exprScaleIndex:
  	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
