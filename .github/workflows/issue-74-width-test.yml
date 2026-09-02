@@ -9,14 +9,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: Apply width-form patch
+      - name: Apply green width-form patches
         run: |
           git apply --check .github/issue74/width.patch
           git apply .github/issue74/width.patch
           git apply --check .github/issue74/shrink.patch
           git apply .github/issue74/shrink.patch
-          git apply --check .github/issue74/admission-shrink.patch
-          git apply .github/issue74/admission-shrink.patch
           git diff --check
           git diff --stat
       - name: Set up development environment
@@ -50,14 +48,17 @@ jobs:
             bytes=$(wc -c < build/nanoc0-integration/assfromc.prg)
             echo "bootstrap generated loaded image: $((bytes - 2)) bytes"
           fi
-      - name: Capture generated assembly
+      - name: Capture issue 74 working sources
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: issue-74-width-generated
-          if-no-files-found: ignore
+          name: issue-74-green-working-sources
+          if-no-files-found: error
           path: |
-            tests/nanoc0-stmt/STMTOUT.ASM
-            tests/nanoc0-stmt/stmtout.asm
+            nanoc0/expression.asm
+            nanoc0/expression_immediate.asm
+            nanoc0/statements.asm
+            nanoc0/statement_codegen.asm
+            tests/nanoc0-stmt/statements.c
             build/nanoc0-integration/ASSFROMC.ASM
             build/nanoc0-integration/assfromc.asm
