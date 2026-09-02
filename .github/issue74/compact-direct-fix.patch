@@ -1,0 +1,199 @@
+--- a/nanoc0/statements.asm
++++ b/nanoc0/statements.asm
+@@ -40,7 +40,8 @@
+ STATEMENT_INDEX_ARRAY       = $80
+ STATEMENT_INDEX_CURRENT_PTR = $81
+ STATEMENT_SCALAR_ASSIGNMENT = $82
+-STATEMENT_DIRECT_UPDATE     = $83
++STATEMENT_SELF_UPDATE       = $83
++STATEMENT_DIRECT_UPDATE     = $84
+ 
+ ;;; parse_function_statements
+ ;;; currentToken is the first executable token after function-entry locals.
+@@ -587,8 +588,8 @@
+ 	lda #PARSE_BAD_ASSIGNMENT
+ 	jmp parser_fail
+ .targetOk:
+-	;;; Mark this one expression as a scalar assignment so expression.asm may
+-	;;; recognize only the exact source-shaped `x = x +/- 1` case.
++	;;; This marker lives only for the following scalar RHS. expression.asm may
++	;;; narrow it to the exact `x = x +/- 1` case; ordinary stores clear it.
+ 	lda #STATEMENT_SCALAR_ASSIGNMENT
+ 	sta statementTargetKind
+ 	jsr parser_next
+@@ -613,8 +614,6 @@
+ 	bcc .emitFail
+ 	jmp parser_next
+ .ordinaryStore:
+-	;;; The marker is statement-local; do not let a later condition look like
+-	;;; another assignment candidate.
+ 	lda #$00
+ 	sta statementTargetKind
+ 	lda statementTargetArea
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -514,33 +514,8 @@
+ 	lda #TYPE_CHAR
+ 	sta expressionElementType
+ .loadScalar:
+-	;;; A scalar assignment may defer exactly its own first load. If the next
+-	;;; source proves to be literal +/- 1 followed by ';', statements.asm can
+-	;;; update the named object directly. Nothing else is delayed.
+-	lda statementTargetKind
+-	cmp #STATEMENT_SCALAR_ASSIGNMENT
+-	bne .emitScalar
+-	lda operatorCount
+-	bne .emitScalar
+-	lda statementTargetType
+-	cmp #TYPE_CHAR_PTR
+-	beq .emitScalar
+-	lda primarySymbolArea
+-	cmp statementTargetArea
+-	bne .emitScalar
+-	lda primarySymbolIndex
+-	cmp statementTargetIndex
+-	bne .emitScalar
+-	lda currentTokenKind
+-	cmp #'+'
+-	beq .deferScalar
+-	cmp #'-'
+-	bne .emitScalar
+-.deferScalar:
+-	lda #STATEMENT_DIRECT_UPDATE-$01
+-	sta statementTargetKind
+-	jmp .primaryDone
+-.emitScalar:
++	jsr defer_scalar_self_update
++	bcs .primaryDone
+ 	jsr emit_load_primary_scalar
+ 	bcs .primaryDone
+ 	lda #EXPR_EMIT_ERROR
+@@ -601,6 +576,39 @@
+ ;;; Resolve one identifier while its scanner text is still current and retain
+ ;;; exactly the same small symbol facts used by ordinary primary emission. The
+ ;;; simple-RHS lookahead reuses this rather than carrying a second lookup path.
++;;; A scalar assignment can avoid loading its first RHS value only when that
++;;; value is the assignment target itself and the following operator is + or -.
++;;; The literal/semicolon checks happen in try_immediate_binary; every near miss
++;;; materialises this delayed load before using the ordinary expression path.
++defer_scalar_self_update:
++	lda statementTargetKind
++	cmp #STATEMENT_SCALAR_ASSIGNMENT
++	bne .ordinary
++	lda operatorCount
++	bne .ordinary
++	lda statementTargetType
++	cmp #TYPE_CHAR_PTR
++	beq .ordinary
++	lda primarySymbolArea
++	cmp statementTargetArea
++	bne .ordinary
++	lda primarySymbolIndex
++	cmp statementTargetIndex
++	bne .ordinary
++	lda currentTokenKind
++	cmp #'+'
++	beq .defer
++	cmp #'-'
++	bne .ordinary
++.defer:
++	lda #STATEMENT_SELF_UPDATE
++	sta statementTargetKind
++	sec
++	rts
++.ordinary:
++	clc
++	rts
++
+ capture_primary_identifier:
+ 	jsr lookup_symbol
+ 	bcs .found
+@@ -776,12 +784,12 @@
+ ;;; precedence lookahead. A simple scalar keeps the left value in NC_PTR; a
+ ;;; nested/tighter RHS falls back to the ordinary static spill machine.
+ try_immediate_binary:
+-	;;; The left load was deferred only for the exact assignment target followed
+-	;;; by + or -. Literal one gets the existing one-token lookahead; every other
+-	;;; RHS first materialises the saved target and rejoins the ordinary path.
++	;;; The primary load was deferred only for the matching scalar target followed
++	;;; by + or -. Literal one can reuse the existing one-token lookahead. Any
++	;;; other first RHS token restores the ordinary machine before proceeding.
+ 	lda statementTargetKind
+-	cmp #STATEMENT_DIRECT_UPDATE-$01
+-	bne .ordinary
++	cmp #STATEMENT_SELF_UPDATE
++	bne .ordinaryStart
+ 	lda currentTokenKind
+ 	cmp #TOKEN_INTEGER
+ 	bne .selfFallback
+@@ -789,13 +797,16 @@
+ 	cmp #$01
+ 	bne .selfFallback
+ 	lda currentTokenValue+1
+-	beq .integer
++	beq .ordinaryStart
+ .selfFallback:
+ 	jsr emit_load_primary_scalar_now
+-	bcc .emitFailed
++	bcs .selfLoaded
++	lda #EXPR_EMIT_ERROR
++	jmp expression_fail
++.selfLoaded:
+ 	lda #$00
+ 	sta statementTargetKind
+-.ordinary:
++.ordinaryStart:
+ 	lda #IMMEDIATE_BINARY_NONE
+ 	sta immediateBinaryState
+ 
+@@ -869,10 +880,10 @@
+ 	rts
+ .advanced:
+ 	;;; Only literal one followed immediately by the assignment semicolon keeps
+-	;;; the target load deferred. A longer expression materialises it here and
+-	;;; continues through the existing captured-literal machinery.
++	;;; the target load deferred. A longer expression restores the load and then
++	;;; continues through the existing captured-literal path.
+ 	lda statementTargetKind
+-	cmp #STATEMENT_DIRECT_UPDATE-$01
++	cmp #STATEMENT_SELF_UPDATE
+ 	bne .ordinaryAdvanced
+ 	lda currentTokenKind
+ 	cmp #';'
+@@ -885,7 +896,10 @@
+ 	rts
+ .selfLonger:
+ 	jsr emit_load_primary_scalar_now
+-	bcc .emitFailed
++	bcs .selfLongerLoaded
++	lda #EXPR_EMIT_ERROR
++	jmp expression_fail
++.selfLongerLoaded:
+ 	lda #$00
+ 	sta statementTargetKind
+ .ordinaryAdvanced:
+--- a/nanoc0/statement_codegen.asm
++++ b/nanoc0/statement_codegen.asm
+@@ -38,9 +38,8 @@
+ 	jmp emit_load_primary_address
+ 
+ ;;; Exact scalar `x = x +/- 1` updates the named object in place. Byte objects
+-;;; are one INC/DEC. A word increment carries only when the low INC wraps; word
+-;;; decrement tests the old low byte before borrowing. `bne *+5` skips exactly
+-;;; one adjacent three-byte absolute INC/DEC, so no generated label is needed.
++;;; are one INC/DEC. Word updates use one local branch over the adjacent high-byte
++;;; update: `bne *+5` skips a three-byte absolute INC/DEC and nothing else.
+ emit_direct_scalar_update:
+ 	lda pendingOperator
+ 	cmp #OP_SUB
+@@ -49,7 +48,9 @@
+ 	ldy #>statementIncSpace
+ 	lda statementTargetType
+ 	cmp #TYPE_CHAR
+-	beq emit_primary_scalar_line
++	bne .incWord
++	jmp emit_primary_scalar_line
++.incWord:
+ 	jsr emit_primary_scalar_line
+ 	bcc .failed
+ 	jsr emit_update_skip
