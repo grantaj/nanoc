@@ -5,6 +5,8 @@ char byte_value = 255;
 int two = 2;
 int three = 3;
 int four = 4;
+char low = 1;
+char high = 2;
 
 int main()
 {
@@ -38,4 +40,8 @@ int main()
     int r27 = words[1];
     int r28 = ('A' == 65) & (5 != 6);
     int r29 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH"[70];
+    int r30 = ((low == low) - 1)
+            | ((low != high) - 1)
+            | ((low < high) - 1)
+            | ((high >= low) - 1);
 }

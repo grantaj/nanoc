@@ -244,14 +244,12 @@ scalar_operator_is_direct:
 	cmp #TYPE_CHAR
 	bne .no
 	lda reduceOperator
-	cmp #OP_EQ
-	beq .yes
-	cmp #OP_NE
-	beq .yes
 	cmp #OP_LT
 	beq .yes
 	cmp #OP_GE
-	beq .yes
+	bcc .no
+	cmp #OP_AND
+	bcc .yes
 .no:
 	clc
 	rts
@@ -259,11 +257,9 @@ scalar_operator_is_direct:
 	sec
 	rts
 
+;;; Both labels name the same byte-comparison emitter. The generic codegen seam
+;;; calls the first name; the second states what the routine actually emits.
 emit_scalar_binary_reduction:
-	lda #$00
-	sta expressionTruthInZ
-	jmp emit_byte_compare_scalar
-
 emit_byte_compare_scalar:
 	lda reduceOperator
 	cmp #OP_EQ
