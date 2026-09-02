@@ -84,6 +84,7 @@ emit_load_primary_scalar:
 	rts
 
 .emit:
+emit_load_primary_scalar_now:
 	lda #$00
 	sta expressionTruthInZ
 	ldx #<exprLdaSpace
@@ -182,6 +183,13 @@ emit_spill_definition:
 .done:
 	jmp emit_newline
 
+;;; Store target A/X in the fixed NC_PTR scratch pair without applying the
+;;; simple-scalar suppression used by emit_store_spill.
+emit_store_transient:
+	lda #EMIT_TRANSIENT_SPILL
+	sta emitSpillIndex
+	jmp emit_store_spill_now
+
 ;;; The transient sentinel means a simple scalar RHS. Operators which can address
 ;;; that scalar directly need no spill at all; GT/LE retain the old NC_PTR
 ;;; transient sequence because its reversed compare already expresses equality.
@@ -194,6 +202,7 @@ emit_store_spill:
 	sec
 	rts
 .store:
+emit_store_spill_now:
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
 	jsr emit_string
@@ -1038,49 +1047,106 @@ emit_label_definition:
 .done:
 	jmp emit_newline
 
-;;; Index value is in target A/X. reduceSpill is the saved full 16-bit base.
-;;; Non-char global arrays scale the index by two before address addition.
-;;; This routine ends with the effective address in NC_PTR and emits no load.
-;;; Indexed reads call it and then load; indexed assignments reuse it directly.
-emit_index_address:
+;;; Save the target index in NC_TMP and apply element scaling. Both expression
+;;; reads and statement lvalues use this exact preparation before choosing where
+;;; their base address comes from.
+emit_index_offset:
+	lda #$01
+	sta indexUsed
 	jsr emit_save_right_tmp
-	bcs .scale
-	rts
-.scale:
+	bcc .failed
 	lda reduceLeftType
 	cmp #TYPE_CHAR
-	beq .leftLow
+	beq .done
 	ldx #<exprScaleIndex
 	ldy #>exprScaleIndex
-	jsr emit_string
-	bcs .leftLow
+	jmp emit_string
+.done:
+	sec
 	rts
-.leftLow:
+.failed:
+	clc
+	rts
+
+;;; Ordinary bases are saved in reduceSpill; a fixed char array is encoded as
+;;; INDEX_ARRAY_BIAS + persistent symbol index. The uncommon 16-bit add lives in
+;;; one generated support routine rather than a large inline template.
+emit_index_address:
+	jsr emit_index_offset
+	bcc .failed
+	lda reduceSpill
+	cmp #INDEX_ARRAY_BIAS
+	bcc .spilled
+	sec
+	sbc #INDEX_ARRAY_BIAS
+	sta primarySymbolIndex
+	jsr emit_load_primary_address
+	jmp .call
+.spilled:
 	jsr emit_lda_reduce_spill
-	bcs .addressLow
+	bcc .failed
+	jsr emit_ldx_reduce_spill_high
+.call:
+	bcs emit_index_address_call
+.failed:
+	clc
 	rts
-.addressLow:
-	ldx #<exprIndexLow
-	ldy #>exprIndexLow
-	jsr emit_string
-	bcs .leftHigh
-	rts
-.leftHigh:
-	jsr emit_lda_reduce_spill_high
-	bcs .addressHigh
-	rts
-.addressHigh:
-	ldx #<exprIndexHigh
-	ldy #>exprIndexHigh
+
+emit_index_address_call:
+	ldx #<exprCallIndex16
+	ldy #>exprCallIndex16
 	jmp emit_string
 
 emit_index_load:
 	lda #$00
 	sta expressionTruthInZ
+	lda reduceLeftType
+	cmp #TYPE_CHAR
+	bne .general
+	lda expressionValueType
+	cmp #TYPE_CHAR
+	bne .general
+
+	;;; Byte indexes belong in Y. Fixed arrays use absolute,Y directly. Pointer
+	;;; values were already saved before the index expression, so restore that
+	;;; exact value to NC_PTR and use (NC_PTR),Y without 16-bit addition.
+	ldx #<exprTay
+	ldy #>exprTay
+	jsr emit_string
+	bcc .failed
+	lda reduceSpill
+	cmp #INDEX_ARRAY_BIAS
+	bcs .fixedArray
+	jsr emit_lda_reduce_spill
+	bcc .failed
+	jsr emit_ldx_reduce_spill_high
+	bcc .failed
+	jsr emit_store_transient
+	bcc .failed
+	ldx #<exprCharIndirectY
+	ldy #>exprCharIndirectY
+	jmp emit_string
+
+.fixedArray:
+	ldx #<exprLdaSpace
+	ldy #>exprLdaSpace
+	jsr emit_string
+	bcc .failed
+	lda reduceSpill
+	sec
+	sbc #INDEX_ARRAY_BIAS
+	tax
+	jsr emit_persistent_name
+	bcc .failed
+	ldx #<exprIndexYSuffix
+	ldy #>exprIndexYSuffix
+	jsr emit_string
+	bcc .failed
+	jmp emit_zero_high
+
+.general:
 	jsr emit_index_address
-	bcs .load
-	rts
-.load:
+	bcc .failed
 	lda reduceLeftType
 	cmp #TYPE_CHAR
 	beq .char
@@ -1091,6 +1157,9 @@ emit_index_load:
 	ldx #<exprCharIndirect
 	ldy #>exprCharIndirect
 	jmp emit_string
+.failed:
+	clc
+	rts
 
 ;;; ---------------------------------------------------------------------------
 ;;; Fixed target-source fragments
@@ -1182,6 +1251,7 @@ exprOrHigh:
 	byte $09,'t','y','a',$0a
 exprOrHighEnd:		byte 0
 
+exprTay:
 exprMulSaveLow:		byte $09,'t','a','y',$0a
 exprMulSaveLowEnd:	byte 0
 exprStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
@@ -1254,25 +1324,20 @@ exprCallUgt16:		byte $09
 			string "jsr __nc_ugt16"
 exprCallUge16:		byte $09
 			string "jsr __nc_uge16"
+exprCallIndex16:
+	byte $09,'j','s','r',' ','_','_','n','c','_','i','n','d','e','x','1','6',$0a,0
 
 exprScaleIndex:
 	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
 	byte $09,'r','o','l',' ','N','C','_','T','M','P','+','1',$0a
 exprScaleIndexEnd:	byte 0
-exprIndexLow:
-	byte $09,'c','l','c',$0a
-	byte $09,'a','d','c',' ','N','C','_','T','M','P',$0a
-	byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a
-exprIndexLowEnd:	byte 0
-exprIndexHigh:
-	byte $09,'a','d','c',' ','N','C','_','T','M','P','+','1',$0a
-	byte $09,'s','t','a',' ','N','C','_','P','T','R','+','1',$0a
-exprIndexHighEnd:	byte 0
 exprCharIndirect:
 	byte $09,'l','d','y',' ','#','$','0','0',$0a
+exprCharIndirectY:
 	byte $09,'l','d','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
 	byte $09,'l','d','x',' ','#','$','0','0',$0a
 exprCharIndirectEnd:	byte 0
+exprIndexYSuffix:	byte ',', 'y', $0a, 0
 exprWordIndirect:
 	byte $09,'l','d','y',' ','#','$','0','0',$0a
 	byte $09,'l','d','a',' ','(','N','C','_','P','T','R',')',',','y',$0a

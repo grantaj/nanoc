@@ -44,6 +44,7 @@ int take_pointer(char *value)
 int main()
 {
     char c;
+    char bi;
     int x;
     unsigned u;
     char *p;
@@ -282,6 +283,53 @@ int main()
     p[1] = 91;
     if (bytes[257] != 91) {
         return 8;
+    }
+
+    /* #73: byte indexes should look like native 6502 indexing, not address math. */
+    bi = 3;
+    bytes[bi] = 93;
+    if (bytes[bi] != 93) {
+        return 109;
+    }
+
+    p = bytes + 240;
+    bi = 7;
+    p[bi] = take_char(94);
+    if (p[bi] != 94) {
+        return 110;
+    }
+
+    /* Literal and genuine 16-bit indexes retain the explicit fallback. */
+    bytes[4] = 95;
+    if (bytes[4] != 95) {
+        return 111;
+    }
+    p = bytes;
+    i = 259;
+    p[i] = 96;
+    if (bytes[259] != 96) {
+        return 112;
+    }
+
+    /* A call in a wide index must not lose the pointer value captured first. */
+    global_pointer = bytes + 250;
+    bytes[251] = 97;
+    if (global_pointer[return_one()] != 97) {
+        return 113;
+    }
+
+    /* The saved byte index must also survive a nontrivial RHS with a call. */
+    bi = 5;
+    bytes[bi] = bytes[4] + return_one();
+    if (bytes[bi] != 96) {
+        return 114;
+    }
+
+    /* Nested indexing must preserve the outer fixed-array marker. */
+    bytes[1] = 4;
+    bytes[4] = 98;
+    if (bytes[bytes[1]] != 98) {
+        return 115;
     }
 
     bytes[258] = bytes[257] + 1;
