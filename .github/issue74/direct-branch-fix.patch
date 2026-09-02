@@ -1,0 +1,23 @@
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -848,14 +848,18 @@
+ 	bcc .deferredFailed
+ .capturedOneFallback:
+ 	jsr emit_load_primary_scalar_now
+-	bcc .emitFailed
++	bcc .deferredEmitFailed
+ 	lda #IMMEDIATE_BINARY_CAPTURED_LITERAL
+ 	sta immediateBinaryState
+ 	jmp .advanced
+ 
+ .materialise:
+ 	jsr emit_load_primary_scalar_now
+-	bcc .emitFailed
++	bcs .ordinary
++.deferredEmitFailed:
++	lda #EXPR_EMIT_ERROR
++	jmp expression_fail
++
+ .ordinary:
+ 	lda #IMMEDIATE_BINARY_NONE
+ 	sta immediateBinaryState
