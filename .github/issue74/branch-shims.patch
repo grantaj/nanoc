@@ -1,0 +1,78 @@
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -523,6 +523,27 @@
+ 	beq .function
+ 	cmp #SYMBOL_ARRAY
+ 	beq .array
++	jmp .ordinaryScalar
++
++.function:
++	lda currentTokenKind
++	cmp #'('
++	beq .call
++	lda #EXPR_BAD_PRIMARY
++	jmp expression_fail
++.call:
++	ldx primarySymbolIndex
++	jsr expression_call_primary
++	bcc .callFailed
++	lda expressionNeedValue
++	bne .callOpened
++	jmp .primaryDone
++.callOpened:
++	sec
++	rts
++.callFailed:
++	rts
++
+ .ordinaryScalar:
+ 	lda primarySymbolType
+ 	sta expressionValueType
+@@ -589,25 +610,6 @@
+ 	lda #EXPR_EMIT_ERROR
+ 	jmp expression_fail
+ 
+-.function:
+-	lda currentTokenKind
+-	cmp #'('
+-	beq .call
+-	lda #EXPR_BAD_PRIMARY
+-	jmp expression_fail
+-.call:
+-	ldx primarySymbolIndex
+-	jsr expression_call_primary
+-	bcc .callFailed
+-	lda expressionNeedValue
+-	bne .callOpened
+-	jmp .primaryDone
+-.callOpened:
+-	sec
+-	rts
+-.callFailed:
+-	rts
+-
+ .primaryDone:
+ 	lda #$00
+ 	sta expressionNeedValue
+@@ -826,7 +828,9 @@
+ 	cmp #TOKEN_INTEGER
+ 	beq .integer
+ 	jsr materialize_deferred_update
+-	bcc .failed
++	bcs .materialized
++	rts
++.materialized:
+ 	lda currentTokenKind
+ 	cmp #TOKEN_CHARACTER
+ 	beq .character
+@@ -864,7 +868,9 @@
+ 
+ .scalar:
+ 	jsr capture_primary_identifier
+-	bcc .failed
++	bcs .scalarCaptured
++	rts
++.scalarCaptured:
+ 	lda primarySymbolKind
+ 	cmp #SYMBOL_GLOBAL
+ 	bne .done
