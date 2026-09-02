@@ -27,7 +27,7 @@
 ;;;   generic local label   .LNN
 ;;;   if labels             .ifFNN, .ifENN
 ;;;   while labels          .wtNN, .weNN
-;;;   comparison labels     .ctNN, .cfNN, .cdNN, .csNN
+;;;   comparison label      .cdNN
 ;;;   branch trampoline     .nNN
 ;;;
 ;;; Generated control/comparison labels are local to the C function's assembler
@@ -60,16 +60,13 @@ EMIT_TRANSIENT_SPILL = $ff
 ;;; control stack, not loaded program data.
 emitOutputSavedScratch = $b39a
 
-EMIT_LABEL_GENERIC       = 0
-EMIT_LABEL_IF_FALSE      = 1
-EMIT_LABEL_IF_END        = 2
-EMIT_LABEL_WHILE_TOP     = 3
-EMIT_LABEL_WHILE_END     = 4
-EMIT_LABEL_NEAR          = 5
-EMIT_LABEL_CMP_TRUE      = 6
-EMIT_LABEL_CMP_FALSE     = 7
-EMIT_LABEL_CMP_DONE      = 8
-EMIT_LABEL_CMP_SAME_SIGN = 9
+EMIT_LABEL_GENERIC   = 0
+EMIT_LABEL_IF_FALSE  = 1
+EMIT_LABEL_IF_END    = 2
+EMIT_LABEL_WHILE_TOP = 3
+EMIT_LABEL_WHILE_END = 4
+EMIT_LABEL_NEAR      = 5
+EMIT_LABEL_CMP_DONE  = 8
 
 ;;; emit_output_byte
 ;;; A=byte. Carry set success. X/Y and $fc-$ff preserved.
@@ -355,14 +352,8 @@ emit_generated_label_name:
 	beq .whileEnd
 	cmp #EMIT_LABEL_NEAR
 	beq .near
-	cmp #EMIT_LABEL_CMP_TRUE
-	beq .cmpTrue
-	cmp #EMIT_LABEL_CMP_FALSE
-	beq .cmpFalse
 	cmp #EMIT_LABEL_CMP_DONE
 	beq .cmpDone
-	cmp #EMIT_LABEL_CMP_SAME_SIGN
-	beq .cmpSameSign
 	ldx #<emitLabelPrefix
 	ldy #>emitLabelPrefix
 	jmp .prefix
@@ -386,21 +377,9 @@ emit_generated_label_name:
 	ldx #<emitNearPrefix
 	ldy #>emitNearPrefix
 	jmp .prefix
-.cmpTrue:
-	ldx #<emitCmpTruePrefix
-	ldy #>emitCmpTruePrefix
-	jmp .prefix
-.cmpFalse:
-	ldx #<emitCmpFalsePrefix
-	ldy #>emitCmpFalsePrefix
-	jmp .prefix
 .cmpDone:
 	ldx #<emitCmpDonePrefix
 	ldy #>emitCmpDonePrefix
-	jmp .prefix
-.cmpSameSign:
-	ldx #<emitCmpSameSignPrefix
-	ldy #>emitCmpSameSignPrefix
 .prefix:
 	jsr emit_string
 	bcc .failed
@@ -459,10 +438,7 @@ emitIfEndPrefix:	byte '.','i','f','E',0
 emitWhileTopPrefix:	byte '.','w','t',0
 emitWhileEndPrefix:	byte '.','w','e',0
 emitNearPrefix:	byte '.','n',0
-emitCmpTruePrefix:	byte '.','c','t',0
-emitCmpFalsePrefix:	byte '.','c','f',0
 emitCmpDonePrefix:	byte '.','c','d',0
-emitCmpSameSignPrefix:	byte '.','c','s',0
 
 emitOutputEnabled:	byte 0
 emitOutputByte:		byte 0
