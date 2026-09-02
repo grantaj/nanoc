@@ -25,8 +25,6 @@ jobs:
           )
           git apply --check "${patches[@]}"
           git apply --whitespace=fix "${patches[@]}"
-          git apply --check .github/issue73v2/index-newline.patch
-          git apply .github/issue73v2/index-newline.patch
           git diff --check
           git diff --stat
 
@@ -49,11 +47,16 @@ jobs:
             bytes=$(wc -c < build/nanoc0.prg)
             echo "production nanoc0 loaded image: $((bytes - 2)) bytes"
           fi
+          if [ -f build/nanoc0-core.prg ]; then
+            bytes=$(wc -c < build/nanoc0-core.prg)
+            echo "nanoc0 resident core: $((bytes - 2)) bytes"
+          fi
           for f in build/nanoc0-integration/ASSFROMC.ASM build/nanoc0-integration/assfromc.asm; do
             if [ -f "$f" ]; then
               echo "bootstrap generated source: $(wc -c < "$f") bytes"
               echo "NC_PTR references: $(grep -o 'NC_PTR' "$f" | wc -l)"
               echo "saved indexed-lvalue references: $(grep -o '__a' "$f" | wc -l)"
+              echo "index16 calls: $(grep -o '__nc_index16' "$f" | wc -l)"
               break
             fi
           done
