@@ -3,6 +3,8 @@ name: issue-74-width-test
 on:
   push:
     branches: [issue-74-ci3]
+  pull_request:
+    branches: [main]
 
 jobs:
   test:
