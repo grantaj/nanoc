@@ -1,0 +1,59 @@
+diff --git a/nanoc0/expression.asm b/nanoc0/expression.asm
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -728,16 +728,24 @@ try_immediate_binary:
+-	;;; Immediate RHS lowering covers +, -, comparisons, &, |, and the one
+-	;;; exact shift count handled below. OP_SHL is the single hole in that range.
++	;;; Every current Phase 1 binary operator reaches here. Multiply and left
++	;;; shift keep their ordinary lowering; the rest have simple-RHS forms.
+ 	lda pendingOperator
+-	cmp #OP_ADD
+-	bcc .notImmediate
++	cmp #OP_MUL
++	beq .notImmediate
+ 	cmp #OP_SHL
+-	bcc .supported		; + or -
+-	beq .notImmediate	; <<
+-	cmp #OP_CALL
+-	bcc .supported		; >>, comparisons, &, |
++	bne .checkShift
++.notImmediate:
++	sec
++	rts
++
++.checkShift:
++	;;; Right shift has one source-recognised direct count: exactly integer 8.
++	cmp #OP_SHR
++	bne .supported
++	lda currentTokenKind
++	cmp #TOKEN_INTEGER
++	bne .notImmediate
++	lda currentTokenValue
++	cmp #$08
++	bne .notImmediate
++	lda currentTokenValue+1
++	bne .notImmediate
++.supported:
+-	sec
+-	rts
+-
+-.supported:
+ 	lda currentTokenKind
+@@ -809,20 +817,6 @@ try_immediate_binary:
+ .reduce:
+-	;;; Only the literal count eight has a direct shift form. Other shifts
+-	;;; rejoin the established expression path.
+-	lda pendingOperator
+-	cmp #OP_SHR
+-	bne .reduceNow
+-	lda immediateBinaryState
+-	cmp #IMMEDIATE_BINARY_CAPTURED_LITERAL
+-	bne .done
+-	lda expressionLiteralValue
+-	cmp #$08
+-	bne .done
+-	lda expressionLiteralValue+1
+-	bne .done
+-.reduceNow:
+ 	lda pendingOperator
+ 	sta reduceOperator
