@@ -1,6 +1,6 @@
 --- a/nanoc0/expression.asm
 +++ b/nanoc0/expression.asm
-@@ -516,12 +516,15 @@
+@@ -516,11 +516,14 @@
  	lda primarySymbolArea
  	cmp #SYMBOL_AREA_PERSISTENT
  	bne .ordinaryScalar
