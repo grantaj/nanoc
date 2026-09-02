@@ -62,12 +62,14 @@ jobs:
             fi
           done
 
-      - name: Capture generated bootstrap assembly
+      - name: Capture generated assembly for diagnosis
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: issue-73-generated
           path: |
+            tests/nanoc0-stmt/STMTOUT.ASM
+            tests/nanoc0-stmt/stmtout.asm
             build/nanoc0-integration/ASSFROMC.ASM
             build/nanoc0-integration/assfromc.asm
             build/nanoc0-integration/NCOUT.ASM
