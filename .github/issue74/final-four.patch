@@ -1,0 +1,40 @@
+--- a/nanoc0/statements.asm
++++ b/nanoc0/statements.asm
+@@ -605,17 +605,15 @@
+ 	lda #PARSE_BAD_ASSIGNMENT
+ 	jmp parser_fail
+ .store:
+-	lda statementTargetKind
+-	cmp #STATEMENT_SELF_UPDATE
+-	bne .ordinaryStore
++	ldx statementTargetKind
+ 	lda #$00
+ 	sta statementTargetKind
++	cpx #STATEMENT_SELF_UPDATE
++	bne .ordinaryStore
+ 	jsr emit_direct_scalar_update
+ 	bcc .emitFail
+ 	jmp parser_next
+ .ordinaryStore:
+-	lda #$00
+-	sta statementTargetKind
+ 	lda statementTargetArea
+ 	cmp #SYMBOL_AREA_CURRENT
+ 	bne .persistent
+--- a/nanoc0/expression_immediate.asm
++++ b/nanoc0/expression_immediate.asm
+@@ -271,13 +271,12 @@
+ 
+ ;;; Format the captured scalar without emitting a load instruction.
+ emit_primary_scalar_name:
++	ldx primarySymbolIndex
+ 	lda primarySymbolArea
+ 	cmp #SYMBOL_AREA_CURRENT
+ 	beq .current
+-	ldx primarySymbolIndex
+ 	jmp emit_persistent_name
+ .current:
+-	ldx primarySymbolIndex
+ 	jmp emit_current_name
+ 
+ emit_immediate_finish:
