@@ -41,11 +41,11 @@
  compilerMain:
  	lda #$00
  	sta NANOC_COMMAND_STATUS
-@@ -313,34 +346,4 @@ source_has_zero_arg_main:
+@@ -313,34 +346,3 @@ source_has_zero_arg_main:
  .no:
  	clc
  	rts
- 
+-
 -;;; emit_runtime_lines writes these bytes verbatim. The indentation inside the
 -;;; instruction strings is therefore a real tab, just like the runtime slabs in
 -;;; runtime_codegen.asm; a backslash followed by 't' would reach ass literally.
