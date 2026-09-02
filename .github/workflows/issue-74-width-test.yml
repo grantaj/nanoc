@@ -69,5 +69,7 @@ jobs:
             nanoc0/statements.asm
             nanoc0/statement_codegen.asm
             tests/nanoc0-stmt/statements.c
+            tests/nanoc0-stmt/STMTOUT.ASM
+            tests/nanoc0-stmt/stmtout.asm
             build/nanoc0-integration/ASSFROMC.ASM
             build/nanoc0-integration/assfromc.asm
