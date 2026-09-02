@@ -37,6 +37,8 @@ jobs:
           git apply .github/issue74/final-four.patch
           git apply --check .github/issue74/native-order.patch
           git apply .github/issue74/native-order.patch
+          git apply --check .github/issue74/runtime-order.patch
+          git apply .github/issue74/runtime-order.patch
           git diff --check
           git diff --stat
       - name: Set up development environment
@@ -84,6 +86,7 @@ jobs:
             nanoc0/expression_immediate.asm
             nanoc0/statements.asm
             nanoc0/statement_codegen.asm
+            nanoc0/runtime_codegen.asm
             tests/nanoc0-stmt/statements.c
             tests/nanoc0-stmt/STMTOUT.ASM
             tests/nanoc0-stmt/stmtout.asm
