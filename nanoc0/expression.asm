@@ -5,10 +5,10 @@
 ;;; This is one explicit bounded state machine, not recursive descent. The
 ;;; generated program's current value is always in A/X. A binary left operand
 ;;; that must survive later source is emitted to a reusable fixed per-function
-;;; spill slot. A simple literal right operand may instead reduce immediately in
-;;; A/X when precedence proves there is nothing later that needs the left value.
-;;; The compiler retains no expression tree, RPN stream or generic intermediate
-;;; representation.
+;;; spill slot. A simple literal or scalar right operand may instead reduce
+;;; immediately when precedence proves there is nothing later that can clobber
+;;; the left value. The compiler retains no expression tree, RPN stream or
+;;; generic intermediate representation.
 ;;;
 ;;; The important state is deliberately small:
 ;;;
@@ -53,9 +53,10 @@ EXPR_LITERAL_CAPACITY = 16
 EXPR_LITERAL_BYTES    = 512
 EXPR_LITERAL_ROW      = 16
 
-IMMEDIATE_BINARY_NONE     = 0
-IMMEDIATE_BINARY_CAPTURED = 1
-IMMEDIATE_BINARY_REDUCED  = 2
+IMMEDIATE_BINARY_NONE             = 0
+IMMEDIATE_BINARY_CAPTURED_LITERAL = 1
+IMMEDIATE_BINARY_REDUCED          = 2
+IMMEDIATE_BINARY_CAPTURED_SCALAR  = 3
 
 ;;; Mutable expression tables are compiler work RAM, not loaded data. Define the
 ;;; fixed map before parser code references it so native ass sees constants, not
@@ -237,9 +238,9 @@ parse_expression:
 	bcs .precedenceDone
 	rts
 .precedenceDone:
-	;;; Advancing the source does not disturb target A/X. Looking at one literal
-	;;; here lets the common `value op constant` case reduce before we allocate a
-	;;; spill, while ordinary RHS expressions still take the old path unchanged.
+	;;; Advancing the source does not disturb target A/X. One literal or ordinary
+	;;; scalar can be consumed here and reduced immediately when the following
+	;;; token proves there is no tighter RHS operation.
 	jsr parser_next
 	bcs .rightStarted
 	rts
@@ -261,16 +262,24 @@ parse_expression:
 	rts
 .binaryPushed:
 	lda immediateBinaryState
-	cmp #IMMEDIATE_BINARY_CAPTURED
+	cmp #IMMEDIATE_BINARY_CAPTURED_LITERAL
 	beq .capturedLiteral
+	cmp #IMMEDIATE_BINARY_CAPTURED_SCALAR
+	beq .capturedScalar
 	lda #$01
 	sta expressionNeedValue
 	jmp .value
 
+.capturedScalar:
+	;;; A tighter operator followed the scalar. The left value now uses the normal
+	;;; static spill, so materialise the consumed scalar and resume the old path.
+	jsr emit_load_primary_scalar
+	jmp .capturedLoadDone
 .capturedLiteral:
 	;;; A tighter operator followed the literal. We already consumed that literal
 	;;; while looking ahead, so materialise it now and resume the normal machine.
 	jsr emit_load_literal
+.capturedLoadDone:
 	bcs .capturedLoaded
 	lda #EXPR_EMIT_ERROR
 	jmp expression_fail
@@ -283,7 +292,7 @@ parse_expression:
 	jmp .primaryActions
 
 .immediateReduced:
-	;;; currentToken is already the token after the literal and A/X contains the
+	;;; currentToken is already the token after the simple RHS and A/X contains the
 	;;; reduction result.
 	jmp .operator
 
@@ -467,28 +476,9 @@ parse_expression_primary:
 	rts
 
 .identifier:
-	jsr lookup_symbol
-	bcs .found
-	lda #EXPR_UNDECLARED
-	jmp expression_fail
-.found:
-	stx primarySymbolIndex
-	lda lookupArea
-	sta primarySymbolArea
-	cmp #SYMBOL_AREA_CURRENT
-	beq .current
-	ldx primarySymbolIndex
-	lda persistentKind,x
-	sta primarySymbolKind
-	lda persistentType,x
-	sta primarySymbolType
-	jmp .advanceName
-.current:
-	lda #SYMBOL_GLOBAL
-	sta primarySymbolKind
-	ldx primarySymbolIndex
-	lda currentType,x
-	sta primarySymbolType
+	jsr capture_primary_identifier
+	bcs .advanceName
+	rts
 .advanceName:
 	jsr parser_next
 	bcs .nameAdvanced
@@ -560,6 +550,36 @@ parse_expression_primary:
 .primaryDone:
 	lda #$00
 	sta expressionNeedValue
+	sec
+	rts
+
+;;; Resolve one identifier while its scanner text is still current and retain
+;;; exactly the same small symbol facts used by ordinary primary emission. The
+;;; simple-RHS lookahead reuses this rather than carrying a second lookup path.
+capture_primary_identifier:
+	jsr lookup_symbol
+	bcs .found
+	lda #EXPR_UNDECLARED
+	jmp expression_fail
+.found:
+	stx primarySymbolIndex
+	lda lookupArea
+	sta primarySymbolArea
+	cmp #SYMBOL_AREA_CURRENT
+	beq .current
+	ldx primarySymbolIndex
+	lda persistentKind,x
+	sta primarySymbolKind
+	lda persistentType,x
+	sta primarySymbolType
+	sec
+	rts
+.current:
+	lda #SYMBOL_GLOBAL
+	sta primarySymbolKind
+	ldx primarySymbolIndex
+	lda currentType,x
+	sta primarySymbolType
 	sec
 	rts
 
@@ -696,11 +716,10 @@ push_pending_binary:
 	rts
 
 ;;; try_immediate_binary
-;;; currentToken is the first RHS token and A/X still contains the left value.
-;;; For direct arithmetic/bitwise operations and comparisons, one literal can be
-;;; reduced immediately when the following token does not bind more tightly. If a
-;;; tighter operator follows, remember the consumed literal so parse_expression can
-;;; materialise it after taking the ordinary spill path.
+;;; currentToken is the first RHS token and A/X still describes the left value.
+;;; The existing literal fast path and a plain scalar use the same one-token
+;;; precedence lookahead. A simple scalar keeps the left value in NC_PTR; a
+;;; nested/tighter RHS falls back to the ordinary static spill machine.
 try_immediate_binary:
 	lda #IMMEDIATE_BINARY_NONE
 	sta immediateBinaryState
@@ -735,6 +754,8 @@ try_immediate_binary:
 	beq .integer
 	cmp #TOKEN_CHARACTER
 	beq .character
+	cmp #TOKEN_IDENTIFIER
+	beq .scalar
 	sec
 	rts
 
@@ -752,7 +773,7 @@ try_immediate_binary:
 	lda #TYPE_INT
 .typeDone:
 	sta reduceRightType
-	jmp .captured
+	jmp .literalCaptured
 
 .character:
 	lda currentTokenValue
@@ -761,17 +782,27 @@ try_immediate_binary:
 	sta expressionLiteralValue+1
 	lda #TYPE_INT
 	sta reduceRightType
+.literalCaptured:
+	lda #IMMEDIATE_BINARY_CAPTURED_LITERAL
+	jmp .captured
 
+.scalar:
+	jsr capture_primary_identifier
+	bcc .failed
+	lda primarySymbolKind
+	cmp #SYMBOL_GLOBAL
+	bne .done
+	lda primarySymbolType
+	sta reduceRightType
+	lda #IMMEDIATE_BINARY_CAPTURED_SCALAR
 .captured:
-	lda #IMMEDIATE_BINARY_CAPTURED
 	sta immediateBinaryState
 	jsr parser_next
 	bcs .advanced
 	rts
 .advanced:
-	;;; Keep postfix handling on the ordinary path. A literal followed by '[' is
-	;;; invalid today, and the normal expression machine should remain the one
-	;;; place that diagnoses it.
+	;;; Keep postfix handling on the ordinary path. It may use NC_PTR itself and
+	;;; therefore must never overlap the transient-left convention.
 	lda currentTokenKind
 	cmp #'['
 	beq .done
@@ -792,8 +823,27 @@ try_immediate_binary:
 	sta reduceLeftType
 	jsr validate_binary_types
 	bcc .failed
+	lda immediateBinaryState
+	cmp #IMMEDIATE_BINARY_CAPTURED_SCALAR
+	beq .scalarReduction
 	jsr emit_immediate_binary_reduction
 	bcs .emitted
+	jmp .emitFailed
+
+.scalarReduction:
+	;;; The RHS is one ordinary scalar and the lookahead proved it has no tighter
+	;;; work. NC_PTR is dead at this point, so it is the natural transient word for
+	;;; the left value; all ordinary reduction emitters can then be reused unchanged.
+	lda #EMIT_TRANSIENT_SPILL
+	jsr emit_store_spill
+	bcc .emitFailed
+	jsr emit_load_primary_scalar
+	bcc .emitFailed
+	lda #EMIT_TRANSIENT_SPILL
+	sta reduceSpill
+	jsr emit_binary_reduction
+	bcs .emitted
+.emitFailed:
 	lda #EXPR_EMIT_ERROR
 	jmp expression_fail
 .emitted:
@@ -1176,8 +1226,8 @@ reduce_top_binary:
 	lda #EXPR_EXPECTED_VALUE
 	jmp expression_fail
 
-;;; Both the ordinary spill reduction and the immediate-literal reduction finish
-;;; with the same type/indexability bookkeeping.
+;;; Ordinary static spills, immediate literals and transient scalar reductions
+;;; all finish with the same type/indexability bookkeeping.
 finish_binary_result:
 	lda reduceResultType
 	sta expressionValueType
