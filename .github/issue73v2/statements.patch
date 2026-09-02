@@ -1,5 +1,5 @@
 diff --git a/nanoc0/statements.asm b/nanoc0/statements.asm
-index 84a7ae5..a0f731f 100644
+index 84a7ae5..1f4bcc5 100644
 --- a/nanoc0/statements.asm
 +++ b/nanoc0/statements.asm
 @@ -35,6 +35,11 @@ CONTROL_IF_TRUE = 2
@@ -14,7 +14,7 @@ index 84a7ae5..a0f731f 100644
  ;;; parse_function_statements
  ;;; currentToken is the first executable token after function-entry locals.
  ;;; Carry set returns with currentToken already advanced beyond the function's
-@@ -632,10 +637,10 @@ scalar_assignment_type_ok:
+@@ -632,15 +637,23 @@ scalar_assignment_type_ok:
  	sec
  	rts
  
@@ -28,8 +28,23 @@ index 84a7ae5..a0f731f 100644
 +;;; because no callee can name this function's static parameter/local slot.
  parse_indexed_assignment:
  	jsr validate_indexed_target
- 	bcc .badTarget
-@@ -650,21 +655,40 @@ parse_indexed_assignment:
+-	bcc .badTarget
++	bcs .targetOk
++.badTarget:
++	lda #PARSE_BAD_ASSIGNMENT
++	jmp parser_fail
++.targetOk:
+ 	jsr parser_next
+-	bcc .failed
++	bcs .indexStarted
++.failed:
++	clc
++	rts
++.indexStarted:
+ 	jsr parse_expression
+ 	bcs .indexParsed
+ 	jmp statement_expression_failed
+@@ -650,21 +663,40 @@ parse_indexed_assignment:
  	bcc .badTarget
  	lda currentTokenKind
  	cmp #']'
@@ -80,3 +95,19 @@ index 84a7ae5..a0f731f 100644
  	jsr parser_next
  	bcc .failed
  	lda currentTokenKind
+@@ -691,15 +723,9 @@ parse_indexed_assignment:
+ 	jsr emit_indexed_store
+ 	bcc .emitFail
+ 	jmp parser_next
+-.badTarget:
+-	lda #PARSE_BAD_ASSIGNMENT
+-	jmp parser_fail
+ .emitFail:
+ 	lda #PARSE_EMIT_ERROR
+ 	jmp parser_fail
+-.failed:
+-	clc
+-	rts
+ 
+ validate_indexed_target:
+ 	lda statementTargetArea
