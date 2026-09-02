@@ -15,6 +15,8 @@ jobs:
         run: |
           git apply --check .github/issue74/issue74.patch
           git apply .github/issue74/issue74.patch
+          git apply --check .github/issue74/branch-shims.patch
+          git apply .github/issue74/branch-shims.patch
           git diff --check
           git diff --stat
 
@@ -52,7 +54,7 @@ jobs:
             fi
           done
           if [ -f build/nanoc0-integration/assfromc.prg ]; then
-            bytes=$(wc -c < build/nanoc0-integration/assfromc.prg)
+            bytes=$(wc -c < "$f")
             echo "bootstrap generated loaded image: $((bytes - 2)) bytes"
           fi
 
