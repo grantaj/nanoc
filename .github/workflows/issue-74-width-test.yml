@@ -13,6 +13,7 @@ jobs:
         run: |
           git apply --check .github/issue74/width.patch
           git apply .github/issue74/width.patch
+          nl -ba nanoc0/expression_immediate.asm | sed -n '1,140p'
           git apply --check .github/issue74/shrink.patch
           git apply .github/issue74/shrink.patch
           git diff --check
