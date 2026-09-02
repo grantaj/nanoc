@@ -1,0 +1,226 @@
+ 	ldx #<exprCharIndirect
+ 	ldy #>exprCharIndirect
+ 	jmp emit_string
++.failed:
++	clc
++	rts
+ 
+ ;;; ---------------------------------------------------------------------------
+ ;;; Fixed target-source fragments
+@@ -1182,6 +1250,7 @@ exprOrHigh:
+ 	byte $09,'t','y','a',$0a
+ exprOrHighEnd:		byte 0
+ 
++exprTay:
+ exprMulSaveLow:		byte $09,'t','a','y',$0a
+ exprMulSaveLowEnd:	byte 0
+ exprStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
+@@ -1254,25 +1323,20 @@ exprCallUgt16:		byte $09
+ 			string "jsr __nc_ugt16"
+ exprCallUge16:		byte $09
+ 			string "jsr __nc_uge16"
++exprCallIndex16:	byte $09
++			string "jsr __nc_index16"
+ 
+ exprScaleIndex:
+ 	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
+ 	byte $09,'r','o','l',' ','N','C','_','T','M','P','+','1',$0a
+ exprScaleIndexEnd:	byte 0
+-exprIndexLow:
+-	byte $09,'c','l','c',$0a
+-	byte $09,'a','d','c',' ','N','C','_','T','M','P',$0a
+-	byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a
+-exprIndexLowEnd:	byte 0
+-exprIndexHigh:
+-	byte $09,'a','d','c',' ','N','C','_','T','M','P','+','1',$0a
+-	byte $09,'s','t','a',' ','N','C','_','P','T','R','+','1',$0a
+-exprIndexHighEnd:	byte 0
+ exprCharIndirect:
+ 	byte $09,'l','d','y',' ','#','$','0','0',$0a
++exprCharIndirectY:
+ 	byte $09,'l','d','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
+ 	byte $09,'l','d','x',' ','#','$','0','0',$0a
+ exprCharIndirectEnd:	byte 0
++exprIndexYSuffix:	byte ',', 'y', $0a, 0
+ exprWordIndirect:
+ 	byte $09,'l','d','y',' ','#','$','0','0',$0a
+ 	byte $09,'l','d','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
+diff --git a/nanoc0/expression_codegen_state.asm b/nanoc0/expression_codegen_state.asm
+index fc2d021..ab17a3d 100644
+--- a/nanoc0/expression_codegen_state.asm
++++ b/nanoc0/expression_codegen_state.asm
+@@ -14,3 +14,4 @@ compareDoneLabel:	word 0
+ expressionTruthInZ:	byte 0
+ compareUsed:		byte 0
+ multiplyUsed:		byte 0
++indexUsed:		byte 0
+diff --git a/nanoc0/runtime_codegen.asm b/nanoc0/runtime_codegen.asm
+index 8d47a14..12a82f7 100644
+--- a/nanoc0/runtime_codegen.asm
++++ b/nanoc0/runtime_codegen.asm
+@@ -29,12 +29,20 @@ emit_runtime_support:
+ 
+ .compareCheck:
+ 	lda compareUsed
+-	beq .runtimeCheck
++	beq .indexCheck
+ 	ldx #<runtimeComparePath
+ 	ldy #>runtimeComparePath
+ 	jsr emit_runtime_include
+ 	bcc .failed
+ 
++.indexCheck:
++	lda indexUsed
++	beq .runtimeCheck
++	ldx #<runtimeIndexPath
++	ldy #>runtimeIndexPath
++	jsr emit_runtime_include
++	bcc .failed
++
+ .runtimeCheck:
+ 	jsr runtime_any_used
+ 	bcc .done
+@@ -243,10 +251,18 @@ emit_runtime_include:
+ 	ldy #>runtimeIncludePrefix
+ 	jsr emit_string
+ 	bcc .failed
++	ldx #<runtimeTargetPrefix
++	ldy #>runtimeTargetPrefix
++	jsr emit_string
++	bcc .failed
+ 	ldx runtimeIncludePath
+ 	ldy runtimeIncludePath+1
+ 	jsr emit_string
+ 	bcc .failed
++	ldx #<runtimeAsmSuffix
++	ldy #>runtimeAsmSuffix
++	jsr emit_string
++	bcc .failed
+ 	lda #'"'
+ 	jsr emit_output_byte
+ 	bcc .failed
+@@ -298,14 +314,17 @@ runtimeStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',0
+ runtimeStaTmpHigh:	byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',0
+ runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"',0
+ 
+-runtimeMulPath:		byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','m','u','l','1','6','.','a','s','m',0
+-runtimeComparePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','c','o','m','p','a','r','e','1','6','.','a','s','m',0
+-runtimeCommonPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','o','m','m','o','n','.','a','s','m',0
+-runtimeOpenPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','o','p','e','n','.','a','s','m',0
+-runtimeReadPath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','r','e','a','d','.','a','s','m',0
+-runtimeCreatePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','r','e','a','t','e','.','a','s','m',0
+-runtimeWritePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','w','r','i','t','e','.','a','s','m',0
+-runtimeClosePath:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/','i','o','-','c','l','o','s','e','.','a','s','m',0
++runtimeTargetPrefix:	byte '.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/',0
++runtimeAsmSuffix:	byte '.','a','s','m',0
++runtimeMulPath:		byte 'm','u','l','1','6',0
++runtimeComparePath:	byte 'c','o','m','p','a','r','e','1','6',0
++runtimeIndexPath:	byte 'i','n','d','e','x','1','6',0
++runtimeCommonPath:	byte 'i','o','-','c','o','m','m','o','n',0
++runtimeOpenPath:	byte 'i','o','-','o','p','e','n',0
++runtimeReadPath:	byte 'i','o','-','r','e','a','d',0
++runtimeCreatePath:	byte 'i','o','-','c','r','e','a','t','e',0
++runtimeWritePath:	byte 'i','o','-','w','r','i','t','e',0
++runtimeClosePath:	byte 'i','o','-','c','l','o','s','e',0
+ 
+ runtimeInitPrefix:
+ 	string "__nc_init:"
+diff --git a/nanoc0/statement_codegen.asm b/nanoc0/statement_codegen.asm
+index 5f7e00d..9a17021 100644
+--- a/nanoc0/statement_codegen.asm
++++ b/nanoc0/statement_codegen.asm
+@@ -6,45 +6,18 @@
+ ;;; source construct it has and calls the obvious emitter immediately. There is
+ ;;; no statement representation between the two files.
+ 
+-;;; Index is in target A/X on entry. The normal expression spill stack is idle
+-;;; because parse_expression has completed, so one spill may temporarily hold
+-;;; the lvalue base. #55's emit_index_address performs the one authoritative
+-;;; scale-and-add operation and leaves the complete effective address in NC_PTR.
+-;;;
+-;;; Saving the index to NC_TMP before loading the base keeps the machine sequence
+-;;; explicit. We reload that value into A/X only because emit_index_address has
+-;;; the same A/X entry contract as an indexed read; the address arithmetic itself
+-;;; is not duplicated here.
++;;; The statement target is already a named array or pointer. Save the index in
++;;; NC_TMP, scale it when required, load the named base into A/X, then call the
++;;; same tiny 16-bit address helper used by expression reads.
+ emit_statement_index_address:
+-	jsr emit_save_right_tmp
+-	bcc .emitFailed
+-	jsr load_statement_target_base
+-	bcc .emitFailed
+-	jsr spill_current_value
+-	bcs .baseSpilled
+-	clc
+-	rts
+-.baseSpilled:
+-	lda expressionSpillDepth
+-	sec
+-	sbc #$01
+-	sta reduceSpill
+ 	lda statementElementType
+ 	sta reduceLeftType
+-
+-	lda #exprLoadTmpResultEnd-exprLoadTmpResult
+-	ldx #<exprLoadTmpResult
+-	ldy #>exprLoadTmpResult
+-	jsr emit_text
+-	bcc .releaseFailed
+-	jsr emit_index_address
+-	php
+-	dec expressionSpillDepth
+-	plp
+-	rts
+-.releaseFailed:
+-	dec expressionSpillDepth
+-.emitFailed:
++	jsr emit_index_offset
++	bcc .failed
++	jsr load_statement_target_base
++	bcc .failed
++	jmp emit_index_address_call
++.failed:
+ 	clc
+ 	rts
+ 
+@@ -60,7 +33,7 @@ load_statement_target_base:
+ 	lda statementTargetKind
+ 	cmp #SYMBOL_ARRAY
+ 	beq .array
+-	jmp emit_load_primary_scalar
++	jmp emit_load_primary_scalar_now
+ .array:
+ 	jmp emit_load_primary_address
+ 
+@@ -134,29 +107,21 @@ emit_statement_address_definition:
+ 	clc
+ 	rts
+ 
+-emit_save_statement_address:
+-	ldx #<statementLdaPtr
+-	ldy #>statementLdaPtr
++;;; X/Y names an instruction prefix such as "sta " or "ldx ". Spell that
++;;; instruction with the current function's one reusable indexed-lvalue slot.
++emit_statement_address_low:
+ 	jsr emit_string
+ 	bcc .failed
+-	lda #exprStaSpaceEnd-exprStaSpace
+-	ldx #<exprStaSpace
+-	ldy #>exprStaSpace
+-	jsr emit_text
+-	bcc .failed
+ 	jsr emit_statement_address_name
+ 	bcc .failed
+-	jsr emit_newline
+-	bcc .failed
+-	ldx #<statementLdaPtrHigh
+-	ldy #>statementLdaPtrHigh
++	jmp emit_newline
++.failed:
++	clc
++	rts
++
++emit_statement_address_high:
+ 	jsr emit_string
+ 	bcc .failed
