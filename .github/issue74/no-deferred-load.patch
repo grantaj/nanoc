@@ -1,0 +1,152 @@
+--- a/nanoc0/statements.asm
++++ b/nanoc0/statements.asm
+@@ -587,21 +587,11 @@
+ 	lda #PARSE_BAD_ASSIGNMENT
+ 	jmp parser_fail
+ .targetOk:
+-	;;; Only an integer scalar whose RHS starts with an identifier can possibly be
+-	;;; the exact `x = x +/- 1` form. Mark that one first primary for expression.asm.
+-	lda #$00
++	;;; expression.asm may narrow this marker to the exact `x = x +/- 1` form.
++	lda #STATEMENT_SCALAR_ASSIGNMENT
+ 	sta statementTargetKind
+ 	jsr parser_next
+ 	bcc .failed
+-	lda statementTargetType
+-	cmp #TYPE_CHAR_PTR
+-	beq .parseRhs
+-	lda currentTokenKind
+-	cmp #TOKEN_IDENTIFIER
+-	bne .parseRhs
+-	lda #STATEMENT_SCALAR_ASSIGNMENT
+-	sta statementTargetKind
+-.parseRhs:
+ 	jsr parse_expression
+ 	bcs .rhsParsed
+ 	jmp statement_expression_failed
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -514,8 +514,7 @@
+ 	lda #TYPE_CHAR
+ 	sta expressionElementType
+ .loadScalar:
+-	jsr defer_scalar_self_update
+-	bcs .primaryDone
++	jsr mark_scalar_self_update
+ 	jsr emit_load_primary_scalar
+ 	bcs .primaryDone
+ 	lda #EXPR_EMIT_ERROR
+@@ -576,34 +575,33 @@
+ ;;; Resolve one identifier while its scanner text is still current and retain
+ ;;; exactly the same small symbol facts used by ordinary primary emission. The
+ ;;; simple-RHS lookahead reuses this rather than carrying a second lookup path.
+-;;; A scalar assignment can avoid loading its first RHS value only when that
+-;;; value is the assignment target itself and the following operator is + or -.
+-;;; The literal/semicolon checks happen in try_immediate_binary; every near miss
+-;;; materialises this delayed load before using the ordinary expression path.
+-defer_scalar_self_update:
++;;; A scalar assignment marks its first matching `x +` / `x -` primary as a
++;;; possible direct self-update. The ordinary load is still emitted; only the
++;;; final arithmetic/store is replaced when literal one and `;` prove the form.
++mark_scalar_self_update:
+ 	lda statementTargetKind
+ 	cmp #STATEMENT_SCALAR_ASSIGNMENT
+-	bne .ordinary
+-	lda #$00
+-	sta statementTargetKind	; only the first RHS primary is a candidate
++	bne .done
++	lda operatorCount
++	bne .done
++	lda primarySymbolType
++	cmp #TYPE_CHAR_PTR
++	beq .done
+ 	lda primarySymbolArea
+ 	cmp statementTargetArea
+-	bne .ordinary
++	bne .done
+ 	lda primarySymbolIndex
+ 	cmp statementTargetIndex
+-	bne .ordinary
++	bne .done
+ 	lda currentTokenKind
+ 	cmp #'+'
+-	beq .defer
++	beq .mark
+ 	cmp #'-'
+-	bne .ordinary
+-.defer:
++	bne .done
++.mark:
+ 	lda #STATEMENT_SELF_UPDATE
+ 	sta statementTargetKind
+-	sec
+-	rts
+-.ordinary:
+-	clc
++.done:
+ 	rts
+ 
+ capture_primary_identifier:
+@@ -775,27 +773,15 @@
+ 	sec
+ 	rts
+ 
+-;;; A deferred self-update that proves not to be exact rejoins the ordinary
+-;;; expression machine by materialising the target load once.
+-restore_deferred_self_update:
+-	jsr emit_load_primary_scalar_now
+-	bcs .loaded
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
+-.loaded:
+-	lda #$00
+-	sta statementTargetKind
+-	rts
+-
+ ;;; try_immediate_binary
+ ;;; currentToken is the first RHS token and A/X still describes the left value.
+ ;;; The existing literal fast path and a plain scalar use the same one-token
+ ;;; precedence lookahead. A simple scalar keeps the left value in NC_PTR; a
+ ;;; nested/tighter RHS falls back to the ordinary static spill machine.
+ try_immediate_binary:
+-	;;; The primary load was deferred only for the matching scalar target followed
+-	;;; by + or -. Literal one can reuse the existing one-token lookahead. Any
+-	;;; other first RHS token restores the ordinary machine before proceeding.
++	;;; A matching scalar target followed by + or - is a possible self-update.
++	;;; Literal one reuses the existing one-token lookahead; any near miss simply
++	;;; clears the statement marker and follows the ordinary expression path.
+ 	lda statementTargetKind
+ 	cmp #STATEMENT_SELF_UPDATE
+ 	bne .ordinaryStart
+@@ -808,7 +794,8 @@
+ 	lda currentTokenValue+1
+ 	beq .ordinaryStart
+ .selfFallback:
+-	jsr restore_deferred_self_update
++	lda #$00
++	sta statementTargetKind
+ .ordinaryStart:
+ 	lda #IMMEDIATE_BINARY_NONE
+ 	sta immediateBinaryState
+@@ -882,9 +869,8 @@
+ 	bcs .advanced
+ 	rts
+ .advanced:
+-	;;; Only literal one followed immediately by the assignment semicolon keeps
+-	;;; the target load deferred. A longer expression restores the load and then
+-	;;; continues through the existing captured-literal path.
++	;;; Only literal one followed immediately by the assignment semicolon confirms
++	;;; the direct update. A longer expression keeps the normal loaded value.
+ 	lda statementTargetKind
+ 	cmp #STATEMENT_SELF_UPDATE
+ 	bne .ordinaryAdvanced
+@@ -896,7 +882,8 @@
+ 	sec
+ 	rts
+ .selfLonger:
+-	jsr restore_deferred_self_update
++	lda #$00
++	sta statementTargetKind
+ .ordinaryAdvanced:
+ 	;;; Keep postfix handling on the ordinary path. It may use NC_PTR itself and
+ 	;;; therefore must never overlap the transient-left convention.
