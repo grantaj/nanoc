@@ -1,0 +1,17 @@
++    /* A call in a wide index must not lose the pointer value captured first. */
++    global_pointer = bytes + 250;
++    bytes[251] = 97;
++    if (global_pointer[return_one()] != 97) {
++        return 113;
++    }
++
++    /* The saved byte index must also survive a nontrivial RHS with a call. */
++    bi = 5;
++    bytes[bi] = bytes[4] + return_one();
++    if (bytes[bi] != 96) {
++        return 114;
++    }
++
+     bytes[258] = bytes[257] + 1;
+     if (bytes[258] != 92) {
+         return 9;
