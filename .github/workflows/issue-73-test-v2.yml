@@ -1,0 +1,75 @@
+name: issue-73-test-v2
+
+on:
+  push:
+    branches:
+      - issue-73-ci2
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Apply exact current #73 patch
+        run: |
+          patches=(
+            .github/issue73v2/calls.patch
+            .github/issue73v2/expression.patch
+            .github/issue73v2/expression_codegen.patch
+            .github/issue73v2/runtime.patch
+            .github/issue73v2/statement_codegen.patch
+            .github/issue73v2/statements.patch
+            .github/issue73v2/index16.patch
+            .github/issue73v2/tests.patch
+          )
+          git apply --check "${patches[@]}"
+          git apply "${patches[@]}"
+          git diff --check
+          git diff --stat
+
+      - name: Set up development environment
+        run: make setup
+
+      - name: Build all targets
+        run: make
+
+      - name: Run focused production statement tests
+        run: make test-nanoc0-statements
+
+      - name: Run production nanoc0 integration
+        run: sh scripts/test-nanoc0-integration.sh
+
+      - name: Record #73 measurements
+        if: always()
+        run: |
+          if [ -f build/nanoc0.prg ]; then
+            bytes=$(wc -c < build/nanoc0.prg)
+            echo "production nanoc0 loaded image: $((bytes - 2)) bytes"
+          fi
+          for f in build/nanoc0-integration/ASSFROMC.ASM build/nanoc0-integration/assfromc.asm; do
+            if [ -f "$f" ]; then
+              echo "bootstrap generated source: $(wc -c < "$f") bytes"
+              echo "NC_PTR references: $(grep -o 'NC_PTR' "$f" | wc -l)"
+              echo "saved indexed-lvalue references: $(grep -o '__a' "$f" | wc -l)"
+              break
+            fi
+          done
+          for f in build/nanoc0-integration/assfromc.prg; do
+            if [ -f "$f" ]; then
+              bytes=$(wc -c < "$f")
+              echo "bootstrap generated loaded image: $((bytes - 2)) bytes"
+            fi
+          done
+
+      - name: Capture generated bootstrap assembly
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-73-generated
+          path: |
+            build/nanoc0-integration/ASSFROMC.ASM
+            build/nanoc0-integration/assfromc.asm
+            build/nanoc0-integration/NCOUT.ASM
+            build/nanoc0-integration/ncout.asm
+          if-no-files-found: ignore
