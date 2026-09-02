@@ -1,5 +1,5 @@
 diff --git a/nanoc0/expression_codegen.asm b/nanoc0/expression_codegen.asm
-index 361cfd8..e423525 100644
+index 361cfd8..a6efa95 100644
 --- a/nanoc0/expression_codegen.asm
 +++ b/nanoc0/expression_codegen.asm
 @@ -84,6 +84,7 @@ emit_load_primary_scalar:
@@ -25,7 +25,7 @@ index 361cfd8..e423525 100644
  	ldx #<exprStaSpace
  	ldy #>exprStaSpace
  	jsr emit_string
-@@ -1038,49 +1047,105 @@ emit_label_definition:
+@@ -1038,49 +1047,106 @@ emit_label_definition:
  .done:
  	jmp emit_newline
  
@@ -57,25 +57,21 @@ index 361cfd8..e423525 100644
 -.leftLow:
 -	jsr emit_lda_reduce_spill
 -	bcs .addressLow
--	rts
++ 	jmp emit_string
++.done:
++	sec
+ 	rts
 -.addressLow:
 -	ldx #<exprIndexLow
 -	ldy #>exprIndexLow
 -	jsr emit_string
 -	bcs .leftHigh
-+	jmp emit_string
-+.done:
-+	sec
++.failed:
++	clc
  	rts
 -.leftHigh:
 -	jsr emit_lda_reduce_spill_high
 -	bcs .addressHigh
-+.failed:
-+	clc
- 	rts
--.addressHigh:
--	ldx #<exprIndexHigh
--	ldy #>exprIndexHigh
 +
 +;;; Ordinary bases are saved in reduceSpill; a fixed char array is encoded as
 +;;; INDEX_ARRAY_BIAS + persistent symbol index. The uncommon 16-bit add lives in
@@ -96,14 +92,18 @@ index 361cfd8..e423525 100644
 +	bcc .failed
 +	jsr emit_ldx_reduce_spill_high
 +.call:
-+	bcc .failed
++	bcs emit_index_address_call
++.failed:
++	clc
+ 	rts
+-.addressHigh:
+-	ldx #<exprIndexHigh
+-	ldy #>exprIndexHigh
++
 +emit_index_address_call:
 +	ldx #<exprCallIndex16
 +	ldy #>exprCallIndex16
  	jmp emit_string
-+.failed:
-+	clc
-+	rts
  
  emit_index_load:
  	lda #$00
@@ -161,7 +161,7 @@ index 361cfd8..e423525 100644
  	lda reduceLeftType
  	cmp #TYPE_CHAR
  	beq .char
-@@ -1091,6 +1156,9 @@ emit_index_load:
+@@ -1091,6 +1157,9 @@ emit_index_load:
  	ldx #<exprCharIndirect
  	ldy #>exprCharIndirect
  	jmp emit_string
@@ -171,7 +171,7 @@ index 361cfd8..e423525 100644
  
  ;;; ---------------------------------------------------------------------------
  ;;; Fixed target-source fragments
-@@ -1182,6 +1250,7 @@ exprOrHigh:
+@@ -1182,6 +1251,7 @@ exprOrHigh:
  	byte $09,'t','y','a',$0a
  exprOrHighEnd:		byte 0
  
@@ -179,7 +179,7 @@ index 361cfd8..e423525 100644
  exprMulSaveLow:		byte $09,'t','a','y',$0a
  exprMulSaveLowEnd:	byte 0
  exprStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
-@@ -1254,25 +1323,20 @@ exprCallUgt16:		byte $09
+@@ -1254,25 +1324,20 @@ exprCallUgt16:		byte $09
  			string "jsr __nc_ugt16"
  exprCallUge16:		byte $09
  			string "jsr __nc_uge16"
