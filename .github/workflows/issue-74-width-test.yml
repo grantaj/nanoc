@@ -39,6 +39,8 @@ jobs:
           git apply .github/issue74/native-order.patch
           git apply --check .github/issue74/runtime-order.patch
           git apply .github/issue74/runtime-order.patch
+          git apply --check .github/issue74/driver-order.patch
+          git apply .github/issue74/driver-order.patch
           git diff --check
           git diff --stat
       - name: Set up development environment
@@ -82,6 +84,7 @@ jobs:
           name: issue-74-compact-working-sources
           if-no-files-found: error
           path: |
+            nanoc0/nanoc0.asm
             nanoc0/expression.asm
             nanoc0/expression_immediate.asm
             nanoc0/statements.asm
