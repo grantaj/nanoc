@@ -11,12 +11,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: Apply green width-form patches
+      - name: Apply issue 74 patches
         run: |
           git apply --check .github/issue74/width.patch
           git apply .github/issue74/width.patch
           git apply --check .github/issue74/shrink.patch
           git apply .github/issue74/shrink.patch
+          git apply --check .github/issue74/direct.patch
+          git apply .github/issue74/direct.patch
           git diff --check
           git diff --stat
       - name: Set up development environment
@@ -41,6 +43,8 @@ jobs:
           for f in build/nanoc0-integration/ASSFROMC.ASM build/nanoc0-integration/assfromc.asm; do
             if [ -f "$f" ]; then
               echo "bootstrap generated source: $(wc -c < "$f") bytes"
+              echo "INC instructions: $(grep -Ec '^[[:space:]]*inc ' "$f" || true)"
+              echo "DEC instructions: $(grep -Ec '^[[:space:]]*dec ' "$f" || true)"
               echo "AND immediate ff: $(grep -Ec 'and #\\$ff' "$f" || true)"
               echo "shift loop LSR high: $(grep -Ec 'lsr NC_TMP\\+1' "$f" || true)"
               break
@@ -54,7 +58,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: issue-74-green-working-sources
+          name: issue-74-working-sources
           if-no-files-found: error
           path: |
             nanoc0/expression.asm
