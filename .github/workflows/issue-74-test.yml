@@ -13,8 +13,8 @@ jobs:
 
       - name: Apply compact issue 74 width patch
         run: |
-          git apply --check .github/issue74/width-only.patch
-          git apply .github/issue74/width-only.patch
+          git apply --check .github/issue74/width2.patch
+          git apply .github/issue74/width2.patch
           git diff --check
           git diff --stat
 
