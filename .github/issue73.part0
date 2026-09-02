@@ -1,0 +1,307 @@
+diff --git a/nanoc0/calls.asm b/nanoc0/calls.asm
+index f26cb4c..33461bd 100644
+--- a/nanoc0/calls.asm
++++ b/nanoc0/calls.asm
+@@ -39,6 +39,7 @@ reset_call_translation_state:
+ 	lda #$00
+ 	sta compareUsed
+ 	sta multiplyUsed
++	sta indexUsed
+ .loop:
+ 	sta runtimeParamAllocated,x
+ 	sta runtimeUsed,x
+diff --git a/nanoc0/expression.asm b/nanoc0/expression.asm
+index 74f20de..120cb75 100644
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -58,6 +58,15 @@ IMMEDIATE_BINARY_CAPTURED_LITERAL = 1
+ IMMEDIATE_BINARY_REDUCED          = 2
+ IMMEDIATE_BINARY_CAPTURED_SCALAR  = 3
+ 
++;;; Index markers need only one byte of base identity. Ordinary expression
++;;; spills are 0..15; a fixed char array uses the unused range above them. The
++;;; pointer path keeps its old saved runtime value, which is required when an
++;;; index expression contains a call that could change a global pointer.
++INDEX_ARRAY_BIAS = EXPR_STACK_CAPACITY
++
++INDEXABLE_POINTER     = 1
++INDEXABLE_FIXED_ARRAY = 2
++
+ ;;; Mutable expression tables are compiler work RAM, not loaded data. Define the
+ ;;; fixed map before parser code references it so native ass sees constants, not
+ ;;; forward labels that are later redefined.
+@@ -500,7 +509,7 @@ parse_expression_primary:
+ 	sta expressionValueType
+ 	cmp #TYPE_CHAR_PTR
+ 	bne .loadScalar
+-	lda #$01
++	lda #INDEXABLE_POINTER
+ 	sta expressionIndexable
+ 	lda #TYPE_CHAR
+ 	sta expressionElementType
+@@ -515,14 +524,22 @@ parse_expression_primary:
+ 	sta expressionElementType
+ 	lda #TYPE_CHAR_PTR
+ 	sta expressionValueType
+-	lda #$01
++	lda #INDEXABLE_POINTER
+ 	sta expressionIndexable
+ 	lda primarySymbolType
+ 	cmp #TYPE_CHAR
+-	beq .arrayCanDecay
++	bne .arrayMustIndex
++	lda currentTokenKind
++	cmp #'['
++	bne .arrayAddress
++	;;; A fixed char array needs no runtime base value. The following index marker
++	;;; keeps this symbol index instead of allocating a two-byte spill.
++	inc expressionIndexable
++	jmp .primaryDone
++.arrayMustIndex:
+ 	lda #$01
+ 	sta expressionMustIndex
+-.arrayCanDecay:
++.arrayAddress:
+ 	jsr emit_load_primary_address
+ 	bcs .primaryDone
+ 	lda #EXPR_EMIT_ERROR
+@@ -587,8 +604,10 @@ capture_primary_identifier:
+ ;;; after the ordinary expression code makes this primary a forward reference
+ ;;; rather than placing the pending-call tables in the middle of the parser.
+ 
+-;;; Postfix indexing uses a marker on the same explicit operator stack. The full
+-;;; 16-bit base address is spilled before the index expression begins.
++;;; Postfix indexing uses the ordinary operator marker. A general base still
++;;; takes an expression spill, while a fixed char array can keep its source
++;;; identity in operatorSpill itself. Arrays have no runtime base value to lose,
++;;; so this is safe even when the index expression contains a call.
+ handle_postfix_index:
+ 	lda currentTokenKind
+ 	cmp #'['
+@@ -612,10 +631,6 @@ handle_postfix_index:
+ 	lda #TYPE_CHAR
+ 	sta expressionElementType
+ .allowed:
+-	jsr spill_current_value
+-	bcs .baseSpilled
+-	rts
+-.baseSpilled:
+ 	ldx operatorCount
+ 	cpx #EXPR_STACK_CAPACITY
+ 	bcc .space
+@@ -624,23 +639,35 @@ handle_postfix_index:
+ .space:
+ 	lda #OP_INDEX
+ 	sta operatorKind,x
++	lda expressionElementType
++	sta operatorType,x
++
++	lda expressionIndexable
++	cmp #INDEXABLE_FIXED_ARRAY
++	beq .fixedArray
++	jsr spill_current_value
++	bcc .failed
++	ldx operatorCount
+ 	lda expressionSpillDepth
+ 	sec
+ 	sbc #$01
++	jmp .saveBase
++.fixedArray:
++	lda primarySymbolIndex
++	clc
++	adc #INDEX_ARRAY_BIAS
++.saveBase:
+ 	sta operatorSpill,x
+-	lda expressionElementType
+-	sta operatorType,x
+ 	inc operatorCount
+ 	jsr parser_next
+-	bcs .advanced
+-	rts
+-.advanced:
++	bcc .failed
+ 	lda #$01
+ 	sta expressionNeedValue
+ 	lda #$00
+ 	sta expressionIndexable
+ 	sta expressionMustIndex
+ 	sec
++.failed:
+ 	rts
+ 
+ ;;; push_simple_operator
+@@ -1144,7 +1171,11 @@ pop_index_marker:
+ 	lda operatorType,x
+ 	sta reduceLeftType
+ 	dec operatorCount
++	lda reduceSpill
++	cmp #INDEX_ARRAY_BIAS
++	bcs .baseReleased
+ 	dec expressionSpillDepth
++.baseReleased:
+ 	jsr emit_index_load
+ 	bcs .emitted
+ 	lda #EXPR_EMIT_ERROR
+diff --git a/nanoc0/expression_codegen.asm b/nanoc0/expression_codegen.asm
+index 361cfd8..e423525 100644
+--- a/nanoc0/expression_codegen.asm
++++ b/nanoc0/expression_codegen.asm
+@@ -84,6 +84,7 @@ emit_load_primary_scalar:
+ 	rts
+ 
+ .emit:
++emit_load_primary_scalar_now:
+ 	lda #$00
+ 	sta expressionTruthInZ
+ 	ldx #<exprLdaSpace
+@@ -194,6 +195,14 @@ emit_store_spill:
+ 	sec
+ 	rts
+ .store:
++;;; Store target A/X in the fixed NC_PTR scratch pair without applying the
++;;; simple-scalar suppression used by emit_store_spill.
++emit_store_transient:
++	lda #EMIT_TRANSIENT_SPILL
++	sta emitSpillIndex
++	jmp emit_store_spill_now
++
++emit_store_spill_now:
+ 	ldx #<exprStaSpace
+ 	ldy #>exprStaSpace
+ 	jsr emit_string
+@@ -1038,49 +1047,105 @@ emit_label_definition:
+ .done:
+ 	jmp emit_newline
+ 
+-;;; Index value is in target A/X. reduceSpill is the saved full 16-bit base.
+-;;; Non-char global arrays scale the index by two before address addition.
+-;;; This routine ends with the effective address in NC_PTR and emits no load.
+-;;; Indexed reads call it and then load; indexed assignments reuse it directly.
+-emit_index_address:
++;;; Save the target index in NC_TMP and apply element scaling. Both expression
++;;; reads and statement lvalues use this exact preparation before choosing where
++;;; their base address comes from.
++emit_index_offset:
++	lda #$01
++	sta indexUsed
+ 	jsr emit_save_right_tmp
+-	bcs .scale
+-	rts
+-.scale:
++	bcc .failed
+ 	lda reduceLeftType
+ 	cmp #TYPE_CHAR
+-	beq .leftLow
++	beq .done
+ 	ldx #<exprScaleIndex
+ 	ldy #>exprScaleIndex
+-	jsr emit_string
+-	bcs .leftLow
+-	rts
+-.leftLow:
+-	jsr emit_lda_reduce_spill
+-	bcs .addressLow
+-	rts
+-.addressLow:
+-	ldx #<exprIndexLow
+-	ldy #>exprIndexLow
+-	jsr emit_string
+-	bcs .leftHigh
++	jmp emit_string
++.done:
++	sec
+ 	rts
+-.leftHigh:
+-	jsr emit_lda_reduce_spill_high
+-	bcs .addressHigh
++.failed:
++	clc
+ 	rts
+-.addressHigh:
+-	ldx #<exprIndexHigh
+-	ldy #>exprIndexHigh
++
++;;; Ordinary bases are saved in reduceSpill; a fixed char array is encoded as
++;;; INDEX_ARRAY_BIAS + persistent symbol index. The uncommon 16-bit add lives in
++;;; one generated support routine rather than a large inline template.
++emit_index_address:
++	jsr emit_index_offset
++	bcc .failed
++	lda reduceSpill
++	cmp #INDEX_ARRAY_BIAS
++	bcc .spilled
++	sec
++	sbc #INDEX_ARRAY_BIAS
++	sta primarySymbolIndex
++	jsr emit_load_primary_address
++	jmp .call
++.spilled:
++	jsr emit_lda_reduce_spill
++	bcc .failed
++	jsr emit_ldx_reduce_spill_high
++.call:
++	bcc .failed
++emit_index_address_call:
++	ldx #<exprCallIndex16
++	ldy #>exprCallIndex16
+ 	jmp emit_string
++.failed:
++	clc
++	rts
+ 
+ emit_index_load:
+ 	lda #$00
+ 	sta expressionTruthInZ
++	lda reduceLeftType
++	cmp #TYPE_CHAR
++	bne .general
++	lda expressionValueType
++	cmp #TYPE_CHAR
++	bne .general
++
++	;;; Byte indexes belong in Y. Fixed arrays use absolute,Y directly. Pointer
++	;;; values were already saved before the index expression, so restore that
++	;;; exact value to NC_PTR and use (NC_PTR),Y without 16-bit addition.
++	ldx #<exprTay
++	ldy #>exprTay
++	jsr emit_string
++	bcc .failed
++	lda reduceSpill
++	cmp #INDEX_ARRAY_BIAS
++	bcs .fixedArray
++	jsr emit_lda_reduce_spill
++	bcc .failed
++	jsr emit_ldx_reduce_spill_high
++	bcc .failed
++	jsr emit_store_transient
++	bcc .failed
++	ldx #<exprCharIndirectY
++	ldy #>exprCharIndirectY
++	jmp emit_string
++
++.fixedArray:
++	ldx #<exprLdaSpace
++	ldy #>exprLdaSpace
++	jsr emit_string
++	bcc .failed
++	lda reduceSpill
++	sec
++	sbc #INDEX_ARRAY_BIAS
++	tax
++	jsr emit_persistent_name
++	bcc .failed
++	ldx #<exprIndexYSuffix
++	ldy #>exprIndexYSuffix
++	jsr emit_string
++	bcc .failed
++	jmp emit_zero_high
++
++.general:
+ 	jsr emit_index_address
+-	bcs .load
+-	rts
+-.load:
++	bcc .failed
+ 	lda reduceLeftType
+ 	cmp #TYPE_CHAR
+ 	beq .char
