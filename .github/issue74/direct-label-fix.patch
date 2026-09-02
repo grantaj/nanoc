@@ -1,0 +1,29 @@
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -823,7 +823,7 @@
+ .selfTypeDone:
+ 	sta reduceRightType
+ 	jsr parser_next
+-	bcc .failed
++	bcc .deferredFailed
+ 	lda currentTokenKind
+ 	cmp #';'
+ 	bne .capturedOneFallback
+@@ -845,7 +845,7 @@
+ .fallbackTypeDone:
+ 	sta reduceRightType
+ 	jsr parser_next
+-	bcc .failed
++	bcc .deferredFailed
+ .capturedOneFallback:
+ 	jsr emit_load_primary_scalar_now
+ 	bcc .emitFailed
+@@ -873,7 +873,7 @@
+ .notImmediate:
+ 	sec
+ 	rts
+-.failed:
++.deferredFailed:
+ 	clc
+ 	rts
+ 
