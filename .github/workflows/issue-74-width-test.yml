@@ -33,6 +33,8 @@ jobs:
           git apply .github/issue74/char-direct-only.patch
           git apply --check .github/issue74/last-39-shrink.patch
           git apply .github/issue74/last-39-shrink.patch
+          git apply --check .github/issue74/final-four.patch
+          git apply .github/issue74/final-four.patch
           git diff --check
           git diff --stat
       - name: Set up development environment
