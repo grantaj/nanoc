@@ -1,0 +1,32 @@
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -58,6 +58,13 @@
+ IMMEDIATE_BINARY_REDUCED          = 2
+ IMMEDIATE_BINARY_CAPTURED_SCALAR  = 3
+ 
++;;; Scalar assignment and expression parsing share these two temporary target
++;;; states. Define them here, before expression code can reference them: native
++;;; ass is deliberately one-pass and does not turn a forward label into a later
++;;; constant definition.
++STATEMENT_SCALAR_ASSIGNMENT = $82
++STATEMENT_SELF_UPDATE       = $83
++
+ ;;; Index markers need only one byte of base identity. Ordinary expression
+ ;;; spills are 0..15; a fixed char array uses the unused range above them. The
+ ;;; pointer path keeps its old saved runtime value, which is required when an
+--- a/nanoc0/statements.asm
++++ b/nanoc0/statements.asm
+@@ -36,11 +36,10 @@
+ CONTROL_WHILE   = 4
+ 
+ ;;; Temporary statementTargetKind values after a byte-index lvalue has been
+-;;; recognized. The next identifier statement overwrites them normally.
++;;; recognized. The next identifier statement overwrites them normally. Scalar
++;;; assignment states are defined in expression.asm, before their first use.
+ STATEMENT_INDEX_ARRAY       = $80
+ STATEMENT_INDEX_CURRENT_PTR = $81
+-STATEMENT_SCALAR_ASSIGNMENT = $82
+-STATEMENT_SELF_UPDATE       = $83
+ 
+ ;;; parse_function_statements
+ ;;; currentToken is the first executable token after function-entry locals.
