@@ -1,0 +1,110 @@
+--- a/nanoc0/statements.asm
++++ b/nanoc0/statements.asm
+@@ -41,7 +41,6 @@
+ STATEMENT_INDEX_CURRENT_PTR = $81
+ STATEMENT_SCALAR_ASSIGNMENT = $82
+ STATEMENT_SELF_UPDATE       = $83
+-STATEMENT_DIRECT_UPDATE     = $84
+ 
+ ;;; parse_function_statements
+ ;;; currentToken is the first executable token after function-entry locals.
+@@ -608,7 +607,7 @@
+ 	jmp parser_fail
+ .store:
+ 	lda statementTargetKind
+-	cmp #STATEMENT_DIRECT_UPDATE
++	cmp #STATEMENT_SELF_UPDATE
+ 	bne .ordinaryStore
+ 	jsr emit_direct_scalar_update
+ 	bcc .emitFail
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -888,8 +888,6 @@
+ 	lda currentTokenKind
+ 	cmp #';'
+ 	bne .selfLonger
+-	lda #STATEMENT_DIRECT_UPDATE
+-	sta statementTargetKind
+ 	lda #IMMEDIATE_BINARY_REDUCED
+ 	sta immediateBinaryState
+ 	sec
+--- a/nanoc0/statement_codegen.asm
++++ b/nanoc0/statement_codegen.asm
+@@ -37,9 +37,9 @@
+ .array:
+ 	jmp emit_load_primary_address
+ 
+-;;; Exact scalar `x = x +/- 1` updates the named object in place. Byte objects
+-;;; are one INC/DEC. Word updates use one local branch over the adjacent high-byte
+-;;; update: `bne *+5` skips a three-byte absolute INC/DEC and nothing else.
++;;; Exact scalar `x = x +/- 1` updates the named object in place. A char is one
++;;; INC/DEC. A word uses the ordinary 6502 carry/borrow shape with one generated
++;;; local label; no expression spill or branch-distance machinery is involved.
+ emit_direct_scalar_update:
+ 	lda pendingOperator
+ 	cmp #OP_SUB
+@@ -51,18 +51,26 @@
+ 	bne .incWord
+ 	jmp emit_primary_scalar_line
+ .incWord:
++	jsr reserve_generated_label
++	lda #EMIT_LABEL_GENERIC
++	sta emitLabelKind
+ 	jsr emit_primary_scalar_line
+ 	bcc .failed
+ 	jsr emit_update_skip
+ 	bcc .failed
+ 	ldx #<statementIncSpace
+ 	ldy #>statementIncSpace
+-	jmp emit_primary_scalar_high_line
++	jsr emit_primary_scalar_high_line
++	bcc .failed
++	jmp emit_label_definition
+ 
+ .subtract:
+ 	lda statementTargetType
+ 	cmp #TYPE_CHAR
+ 	beq .decLow
++	jsr reserve_generated_label
++	lda #EMIT_LABEL_GENERIC
++	sta emitLabelKind
+ 	ldx #<exprLdaSpace
+ 	ldy #>exprLdaSpace
+ 	jsr emit_primary_scalar_line
+@@ -73,6 +81,8 @@
+ 	ldy #>statementDecSpace
+ 	jsr emit_primary_scalar_high_line
+ 	bcc .failed
++	jsr emit_label_definition
++	bcc .failed
+ .decLow:
+ 	ldx #<statementDecSpace
+ 	ldy #>statementDecSpace
+@@ -82,9 +92,16 @@
+ 	rts
+ 
+ emit_update_skip:
+-	ldx #<statementBneSkip
+-	ldy #>statementBneSkip
+-	jmp emit_string
++	ldx #<exprBne
++	ldy #>exprBne
++	jsr emit_string
++	bcc .failed
++	jsr emit_generated_label_name
++	bcc .failed
++	jmp emit_newline
++.failed:
++	clc
++	rts
+ 
+ emit_return_value:
+ 	ldx #<statementRts
+@@ -315,7 +332,6 @@
+ statementLdySpace:	byte $09,'l','d','y',' ',0
+ statementIncSpace:	byte $09,'i','n','c',' ',0
+ statementDecSpace:	byte $09,'d','e','c',' ',0
+-statementBneSkip:	byte $09,'b','n','e',' ','*','+','5',$0a,0
+ statementByteTruthTest:
+ 	byte $09,'c','m','p',' ','#','$','0','0',$0a,0
+ statementTruthTest:
