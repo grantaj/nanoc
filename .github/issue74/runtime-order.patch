@@ -105,7 +105,7 @@
  emit_runtime_support:
  	jsr prepare_runtime_storage
  	bcs .storageReady
-@@ -300,97 +398,3 @@
+@@ -300,95 +398,3 @@
  .failed:
  	clc
  	rts
@@ -173,9 +173,6 @@
 -	string "dec NC_TMP+1"
 -	string ".decrement_low:"
 -	byte $09
-+	string "dec NC_TMP+1"
-+	string ".decrement_low:"
-+	byte $09
 -	string "dec NC_TMP"
 -	byte $09
 -	string "jmp .clear_globals"
