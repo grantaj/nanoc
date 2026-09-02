@@ -1,0 +1,284 @@
+-	ldy #>exprStaSpace
+-	jsr emit_text
+-	bcc .failed
+ 	jsr emit_statement_address_name
+ 	bcc .failed
+ 	jmp emit_plus_one_newline
+@@ -164,36 +129,51 @@ emit_save_statement_address:
+ 	clc
+ 	rts
+ 
+-;;; RHS A/X is saved in NC_TMP while the static lvalue address is restored to
+-;;; NC_PTR. Store one byte for char elements, both bytes for word elements.
+-emit_indexed_store:
+-	jsr emit_save_right_tmp
+-	bcc .failed
+-	lda #exprLdaSpaceEnd-exprLdaSpace
+-	ldx #<exprLdaSpace
+-	ldy #>exprLdaSpace
+-	jsr emit_text
++;;; A direct byte-index lvalue needs only the low index byte across its RHS.
++emit_save_statement_index:
++	ldx #<exprStaSpace
++	ldy #>exprStaSpace
++	jmp emit_statement_address_low
++
++emit_save_statement_address:
++	lda #EMIT_TRANSIENT_SPILL
++	sta reduceSpill
++	jsr emit_lda_reduce_spill
+ 	bcc .failed
+-	jsr emit_statement_address_name
++	ldx #<exprStaSpace
++	ldy #>exprStaSpace
++	jsr emit_statement_address_low
+ 	bcc .failed
+-	jsr emit_newline
++	jsr emit_lda_reduce_spill_high
+ 	bcc .failed
+-	ldx #<statementStaPtr
+-	ldy #>statementStaPtr
+-	jsr emit_string
++	ldx #<exprStaSpace
++	ldy #>exprStaSpace
++	jmp emit_statement_address_high
++.failed:
++	clc
++	rts
++
++;;; Direct char[] stores keep only the byte index and use absolute,X. A current
++;;; char * reloads its named pointer into NC_PTR and uses the saved byte as Y.
++;;; Every other case retains the saved full-address fallback below.
++emit_indexed_store:
++	lda statementTargetKind
++	cmp #STATEMENT_INDEX_ARRAY
++	beq emit_indexed_array_store
++	cmp #STATEMENT_INDEX_CURRENT_PTR
++	beq emit_indexed_current_pointer_store
++
++	jsr emit_save_right_tmp
+ 	bcc .failed
+-	lda #exprLdaSpaceEnd-exprLdaSpace
+ 	ldx #<exprLdaSpace
+ 	ldy #>exprLdaSpace
+-	jsr emit_text
++	jsr emit_statement_address_low
+ 	bcc .failed
+-	jsr emit_statement_address_name
++	ldx #<exprLdxSpace
++	ldy #>exprLdxSpace
++	jsr emit_statement_address_high
+ 	bcc .failed
+-	jsr emit_plus_one_newline
+-	bcc .failed
+-	ldx #<statementStaPtrHigh
+-	ldy #>statementStaPtrHigh
+-	jsr emit_string
++	jsr emit_store_transient
+ 	bcc .failed
+ 
+ 	lda statementElementType
+@@ -210,6 +190,43 @@ emit_indexed_store:
+ 	clc
+ 	rts
+ 
++emit_indexed_array_store:
++	ldx #<statementLdySpace
++	ldy #>statementLdySpace
++	jsr emit_statement_address_low
++	bcc .failed
++	ldx #<exprStaSpace
++	ldy #>exprStaSpace
++	jsr emit_string
++	bcc .failed
++	ldx statementTargetIndex
++	jsr emit_persistent_name
++	bcc .failed
++	ldx #<exprIndexYSuffix
++	ldy #>exprIndexYSuffix
++	jmp emit_string
++.failed:
++	clc
++	rts
++
++emit_indexed_current_pointer_store:
++	jsr emit_save_right_byte_tmp
++	bcc .failed
++	jsr load_statement_target_base
++	bcc .failed
++	jsr emit_store_transient
++	bcc .failed
++	ldx #<statementLdySpace
++	ldy #>statementLdySpace
++	jsr emit_statement_address_low
++	bcc .failed
++	ldx #<statementStoreCharY
++	ldy #>statementStoreCharY
++	jmp emit_string
++.failed:
++	clc
++	rts
++
+ ;;; A/X is the condition result. Comparisons deliberately leave Z matching their
+ ;;; canonical 0/1 result, so consuming that flag is the natural 6502 path. A
+ ;;; plain char needs only one CMP. Genuine 16-bit values retain the explicit
+@@ -246,10 +263,7 @@ emit_statement_false_jump:
+ 
+ statementRts:		byte $09,'r','t','s',$0a,0
+ statementAddressSuffix:	byte '_','_','a',0
+-statementLdaPtr:		byte $09,'l','d','a',' ','N','C','_','P','T','R',$0a,0
+-statementLdaPtrHigh:	byte $09,'l','d','a',' ','N','C','_','P','T','R','+','1',$0a,0
+-statementStaPtr:		byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a,0
+-statementStaPtrHigh:	byte $09,'s','t','a',' ','N','C','_','P','T','R','+','1',$0a,0
++statementLdySpace:	byte $09,'l','d','y',' ',0
+ statementByteTruthTest:
+ 	byte $09,'c','m','p',' ','#','$','0','0',$0a,0
+ statementTruthTest:
+@@ -257,6 +271,7 @@ statementTruthTest:
+ 	byte $09,'o','r','a',' ','N','C','_','T','M','P',$0a,0
+ statementStoreChar:
+ 	byte $09,'l','d','y',' ','#','$','0','0',$0a
++statementStoreCharY:
+ 	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a
+ 	byte $09,'s','t','a',' ','(','N','C','_','P','T','R',')',',','y',$0a,0
+ statementStoreWord:
+diff --git a/nanoc0/statements.asm b/nanoc0/statements.asm
+index 84a7ae5..a0f731f 100644
+--- a/nanoc0/statements.asm
++++ b/nanoc0/statements.asm
+@@ -35,6 +35,11 @@ CONTROL_IF_TRUE = 2
+ CONTROL_IF_ELSE = 3
+ CONTROL_WHILE   = 4
+ 
++;;; Temporary statementTargetKind values after a byte-index lvalue has been
++;;; recognized. The next identifier statement overwrites them normally.
++STATEMENT_INDEX_ARRAY       = $80
++STATEMENT_INDEX_CURRENT_PTR = $81
++
+ ;;; parse_function_statements
+ ;;; currentToken is the first executable token after function-entry locals.
+ ;;; Carry set returns with currentToken already advanced beyond the function's
+@@ -632,10 +637,10 @@ scalar_assignment_type_ok:
+ 	sec
+ 	rts
+ 
+-;;; Indexed assignment follows the literal machine shape from phase1-machine.md:
+-;;; compute the complete lvalue address first, save it in static function storage,
+-;;; evaluate the RHS freely, restore NC_PTR, then store. Address arithmetic itself
+-;;; is shared with indexed reads through #55's emit_index_address.
++;;; Indexed assignment normally computes and saves the full lvalue address before
++;;; the RHS. Two byte-index cases need less state: a fixed char array needs only
++;;; its index, and a current-function char * can safely be reloaded after the RHS
++;;; because no callee can name this function's static parameter/local slot.
+ parse_indexed_assignment:
+ 	jsr validate_indexed_target
+ 	bcc .badTarget
+@@ -650,21 +655,40 @@ parse_indexed_assignment:
+ 	bcc .badTarget
+ 	lda currentTokenKind
+ 	cmp #']'
+-	beq .address
+-	lda #PARSE_BAD_ASSIGNMENT
+-	jmp parser_fail
+-.address:
++	bne .badTarget
++
++	lda statementElementType
++	cmp #TYPE_CHAR
++	bne .fullAddress
++	lda expressionValueType
++	cmp #TYPE_CHAR
++	bne .fullAddress
++	lda statementTargetKind
++	cmp #SYMBOL_ARRAY
++	beq .directArray
++	lda statementTargetArea
++	cmp #SYMBOL_AREA_CURRENT
++	bne .fullAddress
++	lda #STATEMENT_INDEX_CURRENT_PTR
++	jmp .saveIndex
++.directArray:
++	lda #STATEMENT_INDEX_ARRAY
++.saveIndex:
++	sta statementTargetKind
++	jsr ensure_statement_address_slot
++	bcc .failed
++	jsr emit_save_statement_index
++	bcc .emitFail
++	jmp .addressDone
++
++.fullAddress:
+ 	jsr emit_statement_index_address
+-	bcs .addressDone
+-	lda expressionError
+-	beq .emitFail
+-	jmp statement_expression_failed
+-.addressDone:
++	bcc .emitFail
+ 	jsr ensure_statement_address_slot
+ 	bcc .failed
+ 	jsr emit_save_statement_address
+ 	bcc .emitFail
+-
++.addressDone:
+ 	jsr parser_next
+ 	bcc .failed
+ 	lda currentTokenKind
+diff --git a/nanoc0/target/index16.asm b/nanoc0/target/index16.asm
+new file mode 100644
+index 0000000..7848807
+--- /dev/null
++++ b/nanoc0/target/index16.asm
+@@ -0,0 +1,10 @@
++;;; Add the 16-bit index in NC_TMP to the base in A/X.
++;;; The effective address is returned in NC_PTR. Y is unchanged.
++__nc_index16:
++	clc
++	adc NC_TMP
++	sta NC_PTR
++	txa
++	adc NC_TMP+1
++	sta NC_PTR+1
++	rts
+diff --git a/tests/nanoc0-stmt/statements.c b/tests/nanoc0-stmt/statements.c
+index 1bcce6a..72577b7 100644
+--- a/tests/nanoc0-stmt/statements.c
++++ b/tests/nanoc0-stmt/statements.c
+@@ -44,6 +44,7 @@ int take_pointer(char *value)
+ int main()
+ {
+     char c;
++    char bi;
+     int x;
+     unsigned u;
+     char *p;
+@@ -284,6 +285,46 @@ int main()
+         return 8;
+     }
+ 
++    /* #73: byte indexes should look like native 6502 indexing, not address math. */
++    bi = 3;
++    bytes[bi] = 93;
++    if (bytes[bi] != 93) {
++        return 109;
++    }
++
++    p = bytes + 240;
++    bi = 7;
++    p[bi] = take_char(94);
++    if (p[bi] != 94) {
++        return 110;
++    }
++
++    /* Literal and genuine 16-bit indexes retain the explicit fallback. */
++    bytes[4] = 95;
++    if (bytes[4] != 95) {
++        return 111;
++    }
++    p = bytes;
++    i = 259;
++    p[i] = 96;
++    if (bytes[259] != 96) {
++        return 112;
++    }
++
