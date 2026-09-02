@@ -11,12 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - name: Apply current issue 74 patch
+      - name: Apply compact issue 74 width patch
         run: |
-          git apply --check .github/issue74/issue74.patch
-          git apply .github/issue74/issue74.patch
-          git apply --check .github/issue74/branch-shims.patch
-          git apply .github/issue74/branch-shims.patch
+          git apply --check .github/issue74/width-only.patch
+          git apply .github/issue74/width-only.patch
           git diff --check
           git diff --stat
 
@@ -43,26 +41,12 @@ jobs:
             bytes=$(wc -c < build/nanoc0-core.prg)
             echo "nanoc0 resident core: $((bytes - 2)) bytes"
           fi
-          for f in build/nanoc0-integration/ASSFROMC.ASM build/nanoc0-integration/assfromc.asm; do
-            if [ -f "$f" ]; then
-              echo "bootstrap generated source: $(wc -c < "$f") bytes"
-              echo "INC instructions: $(grep -Ec '^[[:space:]]*inc ' "$f" || true)"
-              echo "DEC instructions: $(grep -Ec '^[[:space:]]*dec ' "$f" || true)"
-              echo "AND immediate ff: $(grep -Ec 'and #\\$ff' "$f" || true)"
-              echo "shift loop LSR high: $(grep -Ec 'lsr NC_TMP\\+1' "$f" || true)"
-              break
-            fi
-          done
-          if [ -f build/nanoc0-integration/assfromc.prg ]; then
-            bytes=$(wc -c < "$f")
-            echo "bootstrap generated loaded image: $((bytes - 2)) bytes"
-          fi
 
       - name: Capture generated assembly
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: issue-74-generated
+          name: issue-74-width-generated
           path: |
             tests/nanoc0-stmt/STMTOUT.ASM
             tests/nanoc0-stmt/stmtout.asm
