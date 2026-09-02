@@ -37,15 +37,14 @@ diff --git a/nanoc0/expression_immediate.asm b/nanoc0/expression_immediate.asm
  	jmp emit_zero_high
  .compare:
  	jmp emit_compare_immediate
-@@ -55,52 +51,49 @@ emit_arithmetic_immediate:
+@@ -58,6 +54,5 @@ emit_arithmetic_immediate:
  .ordinary:
  	jsr select_arithmetic_low
 -	bcc .failed
  	jsr emit_string
  	bcc .failed
  	lda expressionLiteralValue
- 	jsr emit_hex_byte
- 	bcc .failed
+@@ -66,7 +61,6 @@ emit_arithmetic_immediate:
  	jsr emit_newline
  	bcc .failed
  	jsr select_arithmetic_high
@@ -53,15 +52,7 @@ diff --git a/nanoc0/expression_immediate.asm b/nanoc0/expression_immediate.asm
  	jsr emit_string
  	bcc .failed
  	lda expressionLiteralValue+1
- 	jsr emit_hex_byte
- 	bcc .failed
- 	jsr emit_newline
- 	bcc .failed
- 	jmp emit_immediate_finish
- .failed:
- 	clc
- 	rts
- 
+@@ -82,9 +76,10 @@ emit_arithmetic_immediate:
 +;;; These selectors are called only for the four admitted arithmetic operators,
 +;;; so they cannot fail.
  select_arithmetic_low:
@@ -73,7 +64,7 @@ diff --git a/nanoc0/expression_immediate.asm b/nanoc0/expression_immediate.asm
  	rts
  
  select_arithmetic_high:
- 	jsr arithmetic_immediate_index
+@@ -90,7 +85,6 @@ select_arithmetic_high:
  	ldy arithmeticHighHigh,x
  	lda arithmeticHighLow,x
  	tax
@@ -81,18 +72,11 @@ diff --git a/nanoc0/expression_immediate.asm b/nanoc0/expression_immediate.asm
  	rts
  
  ;;; The four immediate arithmetic operators are two adjacent pairs in the
- ;;; operator numbering: +/-, then &/|. Return their compact table index in X.
- arithmetic_immediate_index:
+@@ -101,7 +95,6 @@ arithmetic_immediate_index:
  	lda reduceOperator
  	cmp #OP_AND
  	bcc .addSub
 -	sec
--	sbc #(OP_AND-2)
-+	sbc #(OP_AND-2)		; CMP left carry set.
+ 	sbc #OP_AND		; AND/OR become 0/1
+ 	ora #$02		; table slots 2/3
  	tax
- 	rts
- .addSub:
- 	sec
- 	sbc #OP_ADD
- 	tax
- 	rts
