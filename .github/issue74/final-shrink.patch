@@ -1,0 +1,145 @@
+--- a/nanoc0/expression_immediate.asm
++++ b/nanoc0/expression_immediate.asm
+@@ -129,40 +129,29 @@
+ 	ldx #<exprImmediateCompareLow
+ 	ldy #>exprImmediateCompareLow
+ 	jsr emit_string
+-	bcs .low
+-	rts
+-.low:
++	bcc .failed
+ 	lda expressionLiteralValue
+ 	jsr emit_hex_byte
+-	bcs .lowDone
+-	rts
+-.lowDone:
++	bcc .failed
+ 	jsr emit_newline
+-	bcs .highPrefix
+-	rts
+-.highPrefix:
++	bcc .failed
+ 	ldx #<exprImmediateCompareHigh
+ 	ldy #>exprImmediateCompareHigh
+ 	jsr emit_string
+-	bcs .high
+-	rts
+-.high:
++	bcc .failed
+ 	lda expressionLiteralValue+1
+ 	jsr emit_hex_byte
+-	bcs .highDone
+-	rts
+-.highDone:
++	bcc .failed
+ 	jsr emit_newline
+-	bcs .finish
+-	rts
+-.finish:
++	bcc .failed
+ 	ldx #<exprImmediateCompareFinish
+ 	ldy #>exprImmediateCompareFinish
+ 	jsr emit_string
+-	bcs .call
+-	rts
+-.call:
++	bcc .failed
+ 	jmp emit_compare_helper_call
++.failed:
++	clc
++	rts
+ 
+ ;;; A char is already known to be 0..255. A literal with zero high byte occupies
+ ;;; that same domain after normal integer promotion, so a byte CMP is exact.
+--- a/nanoc0/statements.asm
++++ b/nanoc0/statements.asm
+@@ -587,12 +587,21 @@
+ 	lda #PARSE_BAD_ASSIGNMENT
+ 	jmp parser_fail
+ .targetOk:
+-	;;; This marker lives only for the following scalar RHS. expression.asm may
+-	;;; narrow it to the exact `x = x +/- 1` case; ordinary stores clear it.
+-	lda #STATEMENT_SCALAR_ASSIGNMENT
++	;;; Only an integer scalar whose RHS starts with an identifier can possibly be
++	;;; the exact `x = x +/- 1` form. Mark that one first primary for expression.asm.
++	lda #$00
+ 	sta statementTargetKind
+ 	jsr parser_next
+ 	bcc .failed
++	lda statementTargetType
++	cmp #TYPE_CHAR_PTR
++	beq .parseRhs
++	lda currentTokenKind
++	cmp #TOKEN_IDENTIFIER
++	bne .parseRhs
++	lda #STATEMENT_SCALAR_ASSIGNMENT
++	sta statementTargetKind
++.parseRhs:
+ 	jsr parse_expression
+ 	bcs .rhsParsed
+ 	jmp statement_expression_failed
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -584,11 +584,8 @@
+ 	lda statementTargetKind
+ 	cmp #STATEMENT_SCALAR_ASSIGNMENT
+ 	bne .ordinary
+-	lda operatorCount
+-	bne .ordinary
+-	lda statementTargetType
+-	cmp #TYPE_CHAR_PTR
+-	beq .ordinary
++	lda #$00
++	sta statementTargetKind	; only the first RHS primary is a candidate
+ 	lda primarySymbolArea
+ 	cmp statementTargetArea
+ 	bne .ordinary
+@@ -778,6 +775,18 @@
+ 	sec
+ 	rts
+ 
++;;; A deferred self-update that proves not to be exact rejoins the ordinary
++;;; expression machine by materialising the target load once.
++restore_deferred_self_update:
++	jsr emit_load_primary_scalar_now
++	bcs .loaded
++	lda #EXPR_EMIT_ERROR
++	jmp expression_fail
++.loaded:
++	lda #$00
++	sta statementTargetKind
++	rts
++
+ ;;; try_immediate_binary
+ ;;; currentToken is the first RHS token and A/X still describes the left value.
+ ;;; The existing literal fast path and a plain scalar use the same one-token
+@@ -799,13 +808,7 @@
+ 	lda currentTokenValue+1
+ 	beq .ordinaryStart
+ .selfFallback:
+-	jsr emit_load_primary_scalar_now
+-	bcs .selfLoaded
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
+-.selfLoaded:
+-	lda #$00
+-	sta statementTargetKind
++	jsr restore_deferred_self_update
+ .ordinaryStart:
+ 	lda #IMMEDIATE_BINARY_NONE
+ 	sta immediateBinaryState
+@@ -893,13 +896,7 @@
+ 	sec
+ 	rts
+ .selfLonger:
+-	jsr emit_load_primary_scalar_now
+-	bcs .selfLongerLoaded
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
+-.selfLongerLoaded:
+-	lda #$00
+-	sta statementTargetKind
++	jsr restore_deferred_self_update
+ .ordinaryAdvanced:
+ 	;;; Keep postfix handling on the ordinary path. It may use NC_PTR itself and
+ 	;;; therefore must never overlap the transient-left convention.
