@@ -1,0 +1,98 @@
+diff --git a/nanoc0/expression_immediate.asm b/nanoc0/expression_immediate.asm
+--- a/nanoc0/expression_immediate.asm
++++ b/nanoc0/expression_immediate.asm
+@@ -11,29 +11,25 @@ emit_immediate_binary_reduction:
+ 	lda #$00
+ 	sta expressionTruthInZ
++
++	;;; try_immediate_binary has already admitted only +, -, exact >> 8,
++	;;; comparisons, &, and |. Classify those forms without checking them twice.
+ 	lda reduceOperator
+-	cmp #OP_ADD
+-	bcc .unsupported
+-	cmp #OP_SHL
+-	bcc .arithmetic		; + or -
+ 	cmp #OP_SHR
+ 	beq .shift8
+ 	cmp #OP_LT
+-	bcc .unsupported	; <<
++	bcc .arithmetic		; + or -
+ 	cmp #OP_AND
+ 	bcc .compare		; < <= > >= == !=
+-	cmp #OP_CALL
+-	bcc .arithmetic		; & or |
+-.unsupported:
+-	clc
+-	rts
+ .arithmetic:
+ 	jmp emit_arithmetic_immediate
+ .shift8:
+ 	ldx #<exprImmediateShift8
+ 	ldy #>exprImmediateShift8
+ 	jsr emit_string
+-	bcc .unsupported
++	bcs .shiftEmitted
++	rts
++.shiftEmitted:
+ 	jmp emit_zero_high
+ .compare:
+ 	jmp emit_compare_immediate
+@@ -55,55 +51,52 @@ emit_arithmetic_immediate:
+ .ordinary:
+ 	jsr select_arithmetic_low
+-	bcc .failed
+ 	jsr emit_string
+ 	bcc .failed
+ 	lda expressionLiteralValue
+ 	jsr emit_hex_byte
+ 	bcc .failed
+ 	jsr emit_newline
+ 	bcc .failed
+ 	jsr select_arithmetic_high
+-	bcc .failed
+ 	jsr emit_string
+ 	bcc .failed
+ 	lda expressionLiteralValue+1
+ 	jsr emit_hex_byte
+ 	bcc .failed
+ 	jsr emit_newline
+ 	bcc .failed
+ 	jmp emit_immediate_finish
+ .failed:
+ 	clc
+ 	rts
+ 
++;;; These selectors are called only for the four admitted arithmetic operators,
++;;; so they cannot fail.
+ select_arithmetic_low:
+ 	jsr arithmetic_immediate_index
+ 	ldy arithmeticLowHigh,x
+ 	lda arithmeticLowLow,x
+ 	tax
+-	sec
+ 	rts
+ 
+ select_arithmetic_high:
+ 	jsr arithmetic_immediate_index
+ 	ldy arithmeticHighHigh,x
+ 	lda arithmeticHighLow,x
+ 	tax
+-	sec
+ 	rts
+ 
+ ;;; The four immediate arithmetic operators are two adjacent pairs in the
+ ;;; operator numbering: +/-, then &/|. Return their compact table index in X.
+ arithmetic_immediate_index:
+ 	lda reduceOperator
+ 	cmp #OP_AND
+ 	bcc .addSub
+-	sec
+-	sbc #(OP_AND-2)
++	sbc #(OP_AND-2)		; CMP left carry set.
+ 	tax
+ 	rts
+ .addSub:
+ 	sec
+ 	sbc #OP_ADD
+ 	tax
+ 	rts
