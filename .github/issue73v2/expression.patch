@@ -1,5 +1,5 @@
 diff --git a/nanoc0/expression.asm b/nanoc0/expression.asm
-index 74f20de..120cb75 100644
+index 74f20de..c6b0176 100644
 --- a/nanoc0/expression.asm
 +++ b/nanoc0/expression.asm
 @@ -58,6 +58,15 @@ IMMEDIATE_BINARY_CAPTURED_LITERAL = 1
@@ -27,7 +27,7 @@ index 74f20de..120cb75 100644
  	sta expressionIndexable
  	lda #TYPE_CHAR
  	sta expressionElementType
-@@ -515,14 +524,22 @@ parse_expression_primary:
+@@ -515,14 +524,23 @@ parse_expression_primary:
  	sta expressionElementType
  	lda #TYPE_CHAR_PTR
  	sta expressionValueType
@@ -43,7 +43,8 @@ index 74f20de..120cb75 100644
 +	bne .arrayAddress
 +	;;; A fixed char array needs no runtime base value. The following index marker
 +	;;; keeps this symbol index instead of allocating a two-byte spill.
-+	inc expressionIndexable
++	lda #INDEXABLE_FIXED_ARRAY
++	sta expressionIndexable
 +	jmp .primaryDone
 +.arrayMustIndex:
  	lda #$01
@@ -53,7 +54,7 @@ index 74f20de..120cb75 100644
  	jsr emit_load_primary_address
  	bcs .primaryDone
  	lda #EXPR_EMIT_ERROR
-@@ -587,8 +604,10 @@ capture_primary_identifier:
+@@ -587,8 +605,10 @@ capture_primary_identifier:
  ;;; after the ordinary expression code makes this primary a forward reference
  ;;; rather than placing the pending-call tables in the middle of the parser.
  
@@ -66,7 +67,7 @@ index 74f20de..120cb75 100644
  handle_postfix_index:
  	lda currentTokenKind
  	cmp #'['
-@@ -612,10 +631,6 @@ handle_postfix_index:
+@@ -612,10 +632,6 @@ handle_postfix_index:
  	lda #TYPE_CHAR
  	sta expressionElementType
  .allowed:
@@ -77,7 +78,7 @@ index 74f20de..120cb75 100644
  	ldx operatorCount
  	cpx #EXPR_STACK_CAPACITY
  	bcc .space
-@@ -624,23 +639,35 @@ handle_postfix_index:
+@@ -624,23 +640,35 @@ handle_postfix_index:
  .space:
  	lda #OP_INDEX
  	sta operatorKind,x
@@ -118,7 +119,7 @@ index 74f20de..120cb75 100644
  	rts
  
  ;;; push_simple_operator
-@@ -1144,7 +1171,11 @@ pop_index_marker:
+@@ -1144,7 +1172,11 @@ pop_index_marker:
  	lda operatorType,x
  	sta reduceLeftType
  	dec operatorCount
