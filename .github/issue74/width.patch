@@ -1,5 +1,5 @@
 diff --git a/nanoc0/expression.asm b/nanoc0/expression.asm
-index c6b0176..7de8c2b 100644
+index 74f20de..5058dfa 100644
 --- a/nanoc0/expression.asm
 +++ b/nanoc0/expression.asm
 @@ -724,27 +724,17 @@ try_immediate_binary:
@@ -72,12 +72,10 @@ index c6b0176..7de8c2b 100644
  	sta reduceOperator
  	lda expressionValueType
 diff --git a/nanoc0/expression_immediate.asm b/nanoc0/expression_immediate.asm
-index e47a47e..26e2cb5 100644
+index e47a47e..8bd28b4 100644
 --- a/nanoc0/expression_immediate.asm
 +++ b/nanoc0/expression_immediate.asm
-@@ -11,35 +11,50 @@
- emit_immediate_binary_reduction:
- 	lda #$00
+@@ -13,34 +13,49 @@ emit_immediate_binary_reduction:
  	sta expressionTruthInZ
  	lda reduceOperator
  	cmp #OP_ADD
@@ -145,7 +143,7 @@ index e47a47e..26e2cb5 100644
  	jsr select_arithmetic_low
  	bcc .failed
  	jsr emit_string
-@@ -57,68 +72,43 @@ emit_arithmetic_immediate:
+@@ -65,69 +80,35 @@ emit_arithmetic_immediate:
  	rts
  
  select_arithmetic_low:
@@ -163,8 +161,12 @@ index e47a47e..26e2cb5 100644
 -.add:
 -	ldx #<exprImmediateAddLow
 -	ldy #>exprImmediateAddLow
--	sec
--	rts
++	jsr arithmetic_immediate_index
++	ldy arithmeticLowHigh,x
++	lda arithmeticLowLow,x
++	tax
+ 	sec
+ 	rts
 -.sub:
 -	ldx #<exprImmediateSubLow
 -	ldy #>exprImmediateSubLow
@@ -178,23 +180,16 @@ index e47a47e..26e2cb5 100644
 -.or:
 -	ldx #<exprImmediateOrLow
 -	ldy #>exprImmediateOrLow
--	sec
--	rts
-+	jsr arithmetic_immediate_index
-+	ldy arithmeticLowHigh,x
-+	lda arithmeticLowLow,x
-+	tax
-+	sec
-+	rts
- 
- select_arithmetic_high:
++
++select_arithmetic_high:
 +	jsr arithmetic_immediate_index
 +	ldy arithmeticHighHigh,x
 +	lda arithmeticHighLow,x
 +	tax
-+	sec
-+	rts
-+
+ 	sec
+ 	rts
+ 
+-select_arithmetic_high:
 +;;; The four immediate arithmetic operators are two adjacent pairs in the
 +;;; operator numbering: +/-, then &/|. Return their compact table index in X.
 +arithmetic_immediate_index:
@@ -231,15 +226,14 @@ index e47a47e..26e2cb5 100644
 -.or:
 -	ldx #<exprImmediateOrHigh
 -	ldy #>exprImmediateOrHigh
--	sec
 +.addSub:
-+	sec
+ 	sec
 +	sbc #OP_ADD
 +	tax
  	rts
  
  emit_compare_immediate:
-@@ -350,3 +340,22 @@ exprImmediateCompareFinish:
+@@ -350,3 +331,16 @@ exprImmediateCompareFinish:
  exprImmediateFinish:
  	byte $09,'t','a','x',$0a
  	byte $09,'t','y','a',$0a,0
@@ -257,11 +251,11 @@ index e47a47e..26e2cb5 100644
 +arithmeticHighHigh:
 +	byte >exprImmediateAddHigh,>exprImmediateSubHigh,>exprImmediateAndHigh,>exprImmediateOrHigh
 diff --git a/tests/nanoc0-stmt/statements.c b/tests/nanoc0-stmt/statements.c
-index 4331d7a..b89eb02 100644
+index 1bcce6a..66168e2 100644
 --- a/tests/nanoc0-stmt/statements.c
 +++ b/tests/nanoc0-stmt/statements.c
-@@ -332,6 +332,76 @@ int main()
-         return 115;
+@@ -284,6 +284,76 @@ int main()
+         return 8;
      }
  
 +    /* #74: exact self-updates lower to the machine operation at the target. */
