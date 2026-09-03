@@ -62,18 +62,35 @@ emit_call_bss_assignment:
 emit_push_call_argument:
 	lda callEmitParamType
 	cmp #TYPE_CHAR
-	beq .byte
-	ldx #<callPushWord
-	ldy #>callPushWord
-	jmp emit_string
-.byte:
+	bne .word
+	jsr materialize_expression_byte
+	bcc .failed
 	ldx #<callPha
 	ldy #>callPha
 	jmp emit_string
+.word:
+	jsr materialize_expression_word
+	bcc .failed
+	ldx #<callPushWord
+	ldy #>callPushWord
+	jmp emit_string
+.failed:
+	clc
+	rts
 
 ;;; The final argument needs no caller-owned staging. Store A/X directly into the
 ;;; fixed callee parameter slot; char keeps the Phase 1 one-byte truncation rule.
 emit_store_callee_argument:
+	lda callEmitParamType
+	cmp #TYPE_CHAR
+	bne .prepareWord
+	jsr materialize_expression_byte
+	bcc .failed
+	jmp .prepared
+.prepareWord:
+	jsr materialize_expression_word
+	bcc .failed
+.prepared:
 	ldx #<callStaSpace
 	ldy #>callStaSpace
 	jsr emit_string
@@ -129,8 +146,6 @@ emit_pop_call_argument:
 ;;; A call may freely change target flags. It therefore ends the lifetime of a
 ;;; comparison's useful Z flag even when that comparison appeared in an argument.
 emit_call_instruction:
-	lda #$00
-	sta expressionTruthInZ
 	ldx #<callJsrSpace
 	ldy #>callJsrSpace
 	jsr emit_string
@@ -138,7 +153,9 @@ emit_call_instruction:
 	ldx callEmitCallee
 	jsr emit_persistent_name
 	bcc .failed
-	jmp emit_newline
+	jsr emit_newline
+	bcc .failed
+	jmp mark_expression_ax
 .failed:
 	clc
 	rts

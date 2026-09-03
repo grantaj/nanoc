@@ -5,7 +5,7 @@
 ;;; Calls are delimiters inside the existing non-recursive expression machine.
 ;;; OP_CALL sits on the ordinary operator stack while one small parallel frame
 ;;; remembers the callee, the next argument number, and the operator-stack index
-;;; of that marker. The frame index itself is the call/staging depth.
+;;; of that marker. The frame index itself is the pending-call depth.
 ;;;
 ;;; Arguments that must survive later argument expressions use the bounded 6502
 ;;; hardware stack. The final argument has no later source to survive, so it goes
@@ -92,6 +92,10 @@ parse_call_expression_statement:
 ;;; A zero-argument call is completed immediately and returns a finished primary.
 expression_call_primary:
 	stx callBeginCallee
+	jsr preserve_pending_values_for_call
+	bcs .pendingPreserved
+	jmp expression_emit_fail
+.pendingPreserved:
 	lda callDepth
 	cmp #CALL_STACK_CAPACITY
 	bcc .depthOk
@@ -122,6 +126,8 @@ expression_call_primary:
 	ldy operatorCount
 	lda #OP_CALL
 	sta operatorKind,y
+	lda #VALUE_NONE
+	sta operatorValueKind,y
 	inc operatorCount
 	inc callDepth
 
@@ -171,7 +177,7 @@ call_delimiter_belongs_to_call:
 	rts
 
 ;;; finish_call_separator
-;;; currentToken is ','. Finish and stage the current argument, then advance to
+;;; currentToken is ','. Finish and preserve the current argument, then advance to
 ;;; the first token of the next one.
 finish_call_separator:
 	jsr finish_current_call_argument
@@ -268,7 +274,7 @@ verify_current_call_marker:
 ;;; prepare_current_call_argument
 ;;; Resolve the active callee/argument and check the source value against the
 ;;; known parameter type. The small callEmit* fields are then ready for either
-;;; caller staging or the final direct parameter store.
+;;; hardware-stack preservation or the final direct parameter store.
 prepare_current_call_argument:
 	lda callDepth
 	sec

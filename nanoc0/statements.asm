@@ -120,7 +120,6 @@ parse_function_statements:
 reset_statement_function_state:
 	lda #$00
 	sta controlDepth
-	sta statementAddressAllocated
 	rts
 
 ;;; ---------------------------------------------------------------------------
@@ -677,9 +676,8 @@ parse_indexed_assignment:
 	lda statementElementType
 	cmp #TYPE_CHAR
 	bne .fullAddress
-	lda expressionValueType
-	cmp #TYPE_CHAR
-	bne .fullAddress
+	jsr expression_index_is_byte_domain
+	bcc .fullAddress
 	lda statementTargetKind
 	cmp #SYMBOL_ARRAY
 	beq .directArray
@@ -692,8 +690,6 @@ parse_indexed_assignment:
 	lda #STATEMENT_INDEX_ARRAY
 .saveIndex:
 	sta statementTargetKind
-	jsr ensure_statement_address_slot
-	bcc .failed
 	jsr emit_save_statement_index
 	bcc .emitFail
 	jmp .addressDone
@@ -705,8 +701,6 @@ parse_indexed_assignment:
 .fullAddress:
 	jsr emit_statement_index_address
 	bcc .emitFail
-	jsr ensure_statement_address_slot
-	bcc .failed
 	jsr emit_save_statement_address
 	bcc .emitFail
 .addressDone:
@@ -780,33 +774,6 @@ validate_indexed_target:
 	clc
 	rts
 
-;;; One two-byte saved effective address is enough for every indexed assignment
-;;; in a function: it is live only while that statement's RHS is evaluated.
-ensure_statement_address_slot:
-	lda statementAddressAllocated
-	beq .allocate
-	sec
-	rts
-.allocate:
-	lda #$02
-	sta allocSize
-	lda #$00
-	sta allocSize+1
-	jsr allocate_bss
-	bcs .allocated
-	lda #PARSE_BSS_OVERFLOW
-	jmp parser_fail
-.allocated:
-	jsr emit_statement_address_definition
-	bcs .emitted
-	lda #PARSE_EMIT_ERROR
-	jmp parser_fail
-.emitted:
-	lda #$01
-	sta statementAddressAllocated
-	sec
-	rts
-
 ;;; Expression failures retain their precise expressionError. Scanner failure is
 ;;; already layered through parserError/scannerError and must not be relabelled.
 statement_expression_failed:
@@ -832,6 +799,5 @@ statementTargetArea:	byte SYMBOL_AREA_NONE
 statementTargetKind:	byte 0
 statementTargetType:	byte TYPE_INT
 statementElementType:	byte TYPE_CHAR
-statementAddressAllocated:	byte 0
 
 	include "statement_codegen.asm"

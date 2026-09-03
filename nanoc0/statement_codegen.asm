@@ -23,19 +23,25 @@ emit_statement_index_address:
 
 load_statement_target_base:
 	lda statementTargetIndex
-	sta primarySymbolIndex
-	lda statementTargetArea
-	sta primarySymbolArea
-	lda statementTargetKind
-	sta primarySymbolKind
+	sta expressionValueLow
 	lda statementTargetType
-	sta primarySymbolType
+	sta expressionValueType
 	lda statementTargetKind
 	cmp #SYMBOL_ARRAY
 	beq .array
-	jmp emit_load_primary_scalar_now
+	lda statementTargetArea
+	cmp #SYMBOL_AREA_CURRENT
+	bne .persistent
+	lda #VALUE_CURRENT
+	jmp .materialize
+.persistent:
+	lda #VALUE_PERSISTENT
+	jmp .materialize
 .array:
-	jmp emit_load_primary_address
+	lda #VALUE_ARRAY
+.materialize:
+	sta expressionValueKind
+	jmp materialize_expression_word
 
 ;;; Exact byte `x = x +/- 1` updates the named object in place. Word values
 ;;; stay on the ordinary immediate arithmetic path, which already carries or
@@ -46,22 +52,54 @@ emit_direct_scalar_update:
 	beq .subtract
 	ldx #<statementIncSpace
 	ldy #>statementIncSpace
-	jmp emit_primary_scalar_line
+	jmp emit_statement_target_line
 .subtract:
 	ldx #<statementDecSpace
 	ldy #>statementDecSpace
-	jmp emit_primary_scalar_line
+emit_statement_target_line:
+	jsr emit_string
+	bcc .failed
+	ldx statementTargetIndex
+	lda statementTargetArea
+	cmp #SYMBOL_AREA_CURRENT
+	beq .current
+	jsr emit_persistent_name
+	jmp .newline
+.current:
+	jsr emit_current_name
+.newline:
+	bcc .failed
+	jmp emit_newline
+.failed:
+	clc
+	rts
 
 emit_return_value:
+	;;; Phase 1 C-defined functions return int. Delay promotion until this exact
+	;;; observable boundary; a named char or byte comparison need not carry X
+	;;; through the expression that produced it.
+	jsr materialize_expression_word
+	bcc .failed
 	ldx #<statementRts
 	ldy #>statementRts
 	jmp emit_string
+.failed:
+	clc
+	rts
 
 emit_store_persistent_value:
-	lda #exprStaSpaceEnd-exprStaSpace
+	lda statementTargetType
+	cmp #TYPE_CHAR
+	bne .word
+	jsr materialize_expression_byte
+	jmp .prepared
+.word:
+	jsr materialize_expression_word
+.prepared:
+	bcc .failed
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	ldx statementTargetIndex
 	jsr emit_persistent_name
@@ -71,10 +109,9 @@ emit_store_persistent_value:
 	lda statementTargetType
 	cmp #TYPE_CHAR
 	beq .done
-	lda #exprStxSpaceEnd-exprStxSpace
 	ldx #<exprStxSpace
 	ldy #>exprStxSpace
-	jsr emit_text
+	jsr emit_string
 	bcc .failed
 	ldx statementTargetIndex
 	jsr emit_persistent_name
@@ -88,89 +125,26 @@ emit_store_persistent_value:
 	clc
 	rts
 
-emit_statement_address_name:
-	ldx #<emitCPrefix
-	ldy #>emitCPrefix
-	jsr emit_string
+;;; The lvalue index/address must survive exactly one RHS expression. That is a
+;;; short LIFO lifetime, so use the 6502 stack rather than generated static RAM.
+emit_save_statement_index:
+	jsr materialize_expression_byte
 	bcc .failed
-	ldx currentFunctionIndex
-	jsr emit_persistent_source_name
-	bcc .failed
-	ldx #<statementAddressSuffix
-	ldy #>statementAddressSuffix
+	ldx #<exprPha
+	ldy #>exprPha
 	jmp emit_string
 .failed:
 	clc
 	rts
 
-emit_statement_address_definition:
-	jsr emit_statement_address_name
-	bcc .failed
-	lda #exprBssAssignEnd-exprBssAssign
-	ldx #<exprBssAssign
-	ldy #>exprBssAssign
-	jsr emit_text
-	bcc .failed
-	lda allocOffset
-	sta emitWord
-	lda allocOffset+1
-	sta emitWord+1
-	jsr emit_hex_word
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-;;; X/Y names an instruction prefix such as "sta " or "ldx ". Spell that
-;;; instruction with the current function's one reusable indexed-lvalue slot.
-emit_statement_address_low:
-	jsr emit_string
-	bcc .failed
-	jsr emit_statement_address_name
-	bcc .failed
-	jmp emit_newline
-.failed:
-	clc
-	rts
-
-emit_statement_address_high:
-	jsr emit_string
-	bcc .failed
-	jsr emit_statement_address_name
-	bcc .failed
-	jmp emit_plus_one_newline
-.failed:
-	clc
-	rts
-
-;;; A direct byte-index lvalue needs only the low index byte across its RHS.
-emit_save_statement_index:
-	ldx #<exprStaSpace
-	ldy #>exprStaSpace
-	jmp emit_statement_address_low
-
 emit_save_statement_address:
-	lda #EMIT_TRANSIENT_SPILL
-	sta reduceSpill
-	jsr emit_lda_reduce_spill
-	bcc .failed
-	ldx #<exprStaSpace
-	ldy #>exprStaSpace
-	jsr emit_statement_address_low
-	bcc .failed
-	jsr emit_lda_reduce_spill_high
-	bcc .failed
-	ldx #<exprStaSpace
-	ldy #>exprStaSpace
-	jmp emit_statement_address_high
-.failed:
-	clc
-	rts
+	ldx #<statementPushPtr
+	ldy #>statementPushPtr
+	jmp emit_string
 
 ;;; Direct char[] stores keep only the byte index and use absolute,Y. A current
-;;; char * reloads its named pointer into NC_PTR and uses the saved byte as Y.
-;;; Every other case retains the saved full-address fallback below.
+;;; char * reloads its named pointer after the RHS. Every other case restores the
+;;; full effective address that was saved on the hardware stack.
 emit_indexed_store:
 	lda statementTargetKind
 	cmp #STATEMENT_INDEX_ARRAY
@@ -178,19 +152,24 @@ emit_indexed_store:
 	cmp #STATEMENT_INDEX_CURRENT_PTR
 	beq emit_indexed_current_pointer_store
 
+	;;; Preserve the completed RHS in NC_TMP while the saved address is popped.
+	lda statementElementType
+	cmp #TYPE_CHAR
+	bne .wordValue
+	jsr materialize_expression_byte
+	bcc .failed
+	jsr emit_save_right_byte_tmp
+	jmp .restore
+.wordValue:
+	jsr materialize_expression_word
+	bcc .failed
 	jsr emit_save_right_tmp
 	bcc .failed
-	ldx #<exprLdaSpace
-	ldy #>exprLdaSpace
-	jsr emit_statement_address_low
+.restore:
+	ldx #<statementPopPtr
+	ldy #>statementPopPtr
+	jsr emit_string
 	bcc .failed
-	ldx #<exprLdxSpace
-	ldy #>exprLdxSpace
-	jsr emit_statement_address_high
-	bcc .failed
-	jsr emit_store_transient
-	bcc .failed
-
 	lda statementElementType
 	cmp #TYPE_CHAR
 	beq .char
@@ -206,9 +185,15 @@ emit_indexed_store:
 	rts
 
 emit_indexed_array_store:
-	ldx #<statementLdySpace
-	ldy #>statementLdySpace
-	jsr emit_statement_address_low
+	;;; PLA destroys the RHS A, so keep that one byte in NC_TMP for two
+	;;; instructions while recovering Y.
+	jsr materialize_expression_byte
+	bcc .failed
+	jsr emit_save_right_byte_tmp
+	bcc .failed
+	ldx #<statementPopIndexLoadTmp
+	ldy #>statementPopIndexLoadTmp
+	jsr emit_string
 	bcc .failed
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
@@ -225,15 +210,17 @@ emit_indexed_array_store:
 	rts
 
 emit_indexed_current_pointer_store:
+	jsr materialize_expression_byte
+	bcc .failed
 	jsr emit_save_right_byte_tmp
 	bcc .failed
 	jsr load_statement_target_base
 	bcc .failed
 	jsr emit_store_transient
 	bcc .failed
-	ldx #<statementLdySpace
-	ldy #>statementLdySpace
-	jsr emit_statement_address_low
+	ldx #<statementPopIndexLoadTmp
+	ldy #>statementPopIndexLoadTmp
+	jsr emit_string
 	bcc .failed
 	ldx #<statementStoreCharY
 	ldy #>statementStoreCharY
@@ -242,37 +229,98 @@ emit_indexed_current_pointer_store:
 	clc
 	rts
 
-;;; expressionConditionBranch is a physical target fact, not a Boolean-value
-;;; property. Today comparison producers still materialise 0/1 and therefore
-;;; expose BNE=true. NONE means no useful flags survive, so form truth from the
-;;; current materialised byte/word. #88 can add direct CMP branch kinds without
-;;; changing the statement parser or inventing a condition IR.
+;;; A direct byte comparison is already in processor flags. Branch from those
+;;; flags without manufacturing a Boolean. Other expressions are materialised only
+;;; enough to answer C truth at this control-flow boundary.
 emit_statement_false_jump:
+	lda expressionValueKind
+	cmp #VALUE_COND_EQ
+	beq .eq
+	cmp #VALUE_COND_NE
+	beq .ne
+	cmp #VALUE_COND_LT
+	beq .lt
+	cmp #VALUE_COND_GE
+	beq .ge
+	cmp #VALUE_COND_GT
+	bne .notGt
+	;;; GT requires both non-equality and carry-set. Each long test jumps to the
+	;;; same false destination when its required flag is absent.
+	ldx #<exprBne
+	ldy #>exprBne
+	jsr emit_long_conditional_jump
+	bcc .failed
+	ldx #<exprBcs
+	ldy #>exprBcs
+	jmp emit_long_conditional_jump
+.notGt:
+	cmp #VALUE_COND_LE
+	bne .notLe
+	jmp emit_statement_le_false_jump
+.notLe:
+
 	lda expressionConditionBranch
 	cmp #EXPR_CONDITION_BNE
-	beq .branch
-	cmp #EXPR_CONDITION_NONE
-	bne .failed
+	beq .bne
 
-	lda expressionValueType
-	cmp #TYPE_CHAR
-	bne .word
+	jsr expression_index_is_byte_domain
+	bcc .word
+	jsr materialize_expression_byte
+	bcc .failed
+	lda expressionConditionBranch
+	cmp #EXPR_CONDITION_BNE
+	beq .bne
 	ldx #<statementByteTruthTest
 	ldy #>statementByteTruthTest
 	jsr emit_string
 	bcc .failed
-	jmp .branch
+	jmp .bne
 .word:
+	jsr materialize_expression_word
+	bcc .failed
 	ldx #<statementTruthTest
 	ldy #>statementTruthTest
 	jsr emit_string
 	bcc .failed
-.branch:
-	lda #exprBneEnd-exprBne
+.bne:
 	ldx #<exprBne
 	ldy #>exprBne
 	jmp emit_long_conditional_jump
+.eq:
+	ldx #<exprBeq
+	ldy #>exprBeq
+	jmp emit_long_conditional_jump
+.ne:
+	ldx #<exprBne
+	ldy #>exprBne
+	jmp emit_long_conditional_jump
+.lt:
+	ldx #<exprBcc
+	ldy #>exprBcc
+	jmp emit_long_conditional_jump
+.ge:
+	ldx #<exprBcs
+	ldy #>exprBcs
+	jmp emit_long_conditional_jump
 .failed:
+	clc
+	rts
+
+;;; left <= right is true when carry is clear OR zero is set. Reuse the same
+;;; nearby skip label as the ordinary branch-over-JMP emitter.
+emit_statement_le_false_jump:
+	jsr begin_conditional_jump
+	ldx #<exprBcc
+	ldy #>exprBcc
+	jsr emit_branch_to_conditional_skip
+	bcc .failed
+	ldx #<exprBeq
+	ldy #>exprBeq
+	jsr emit_branch_to_conditional_skip
+	bcc .failed
+	jmp finish_conditional_jump
+.failed:
+	jsr restore_conditional_target
 	clc
 	rts
 
@@ -281,8 +329,6 @@ emit_statement_false_jump:
 ;;; ---------------------------------------------------------------------------
 
 statementRts:		byte $09,'r','t','s',$0a,0
-statementAddressSuffix:	byte '_','_','a',0
-statementLdySpace:	byte $09,'l','d','y',' ',0
 statementIncSpace:	byte $09,'i','n','c',' ',0
 statementDecSpace:	byte $09,'d','e','c',' ',0
 statementByteTruthTest:
@@ -290,6 +336,20 @@ statementByteTruthTest:
 statementTruthTest:
 	byte $09,'s','t','x',' ','N','C','_','T','M','P',$0a
 	byte $09,'o','r','a',' ','N','C','_','T','M','P',$0a,0
+statementPushPtr:
+	byte $09,'l','d','a',' ','N','C','_','P','T','R',$0a
+	byte $09,'p','h','a',$0a
+	byte $09,'l','d','a',' ','N','C','_','P','T','R','+','1',$0a
+	byte $09,'p','h','a',$0a,0
+statementPopPtr:
+	byte $09,'p','l','a',$0a
+	byte $09,'s','t','a',' ','N','C','_','P','T','R','+','1',$0a
+	byte $09,'p','l','a',$0a
+	byte $09,'s','t','a',' ','N','C','_','P','T','R',$0a,0
+statementPopIndexLoadTmp:
+	byte $09,'p','l','a',$0a
+	byte $09,'t','a','y',$0a
+	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a,0
 statementStoreChar:
 	byte $09,'l','d','y',' ','#','$','0','0',$0a
 statementStoreCharY:
