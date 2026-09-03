@@ -405,6 +405,16 @@ emit_mul_reduction:
 	bcs .right
 	rts
 .right:
+	;;; materialize_saved_word selected the left descriptor. The RHS identity is
+	;;; still in reduceRight*, so restore it at the exact point the helper consumes it.
+	lda reduceRightKind
+	sta expressionValueKind
+	lda reduceRightLow
+	sta expressionValueLow
+	lda reduceRightHigh
+	sta expressionValueHigh
+	lda reduceRightType
+	sta expressionValueType
 	jsr materialize_expression_word
 	bcs .call
 	rts
