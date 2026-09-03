@@ -1,0 +1,223 @@
+--- a/nanoc0/expression.asm
++++ b/nanoc0/expression.asm
+@@ -297,8 +297,7 @@
+ 	jsr emit_load_literal
+ .capturedLoadDone:
+ 	bcs .capturedLoaded
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
++	jmp expression_emit_fail
+ .capturedLoaded:
+ 	lda reduceRightType
+ 	sta expressionValueType
+@@ -393,6 +392,8 @@
+ 	clc
+ 	rts
+ 
++expression_emit_fail:
++	lda #EXPR_EMIT_ERROR
+ expression_fail:
+ 	sta expressionError
+ 	clc
+@@ -442,8 +443,7 @@
+ 	sta expressionValueType
+ 	jsr emit_load_literal
+ 	bcs .integerEmitted
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
++	jmp expression_emit_fail
+ .integerEmitted:
+ 	jsr parser_next
+ 	bcc .integerFailed
+@@ -460,8 +460,7 @@
+ 	sta expressionValueType
+ 	jsr emit_load_literal
+ 	bcs .characterEmitted
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
++	jmp expression_emit_fail
+ .characterEmitted:
+ 	jsr parser_next
+ 	bcc .characterFailed
+@@ -476,8 +475,7 @@
+ .stringCaptured:
+ 	jsr emit_load_literal_address
+ 	bcs .stringEmitted
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
++	jmp expression_emit_fail
+ .stringEmitted:
+ 	lda #TYPE_CHAR_PTR
+ 	sta expressionValueType
+@@ -521,11 +519,9 @@
+ 	lda #TYPE_CHAR
+ 	sta expressionElementType
+ .loadScalar:
+-	jsr mark_scalar_self_update
+-	jsr emit_load_primary_scalar
++	jsr emit_or_defer_scalar_self_update
+ 	bcs .primaryDone
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
++	jmp expression_emit_fail
+ 
+ .array:
+ 	lda primarySymbolType
+@@ -551,8 +547,7 @@
+ .arrayAddress:
+ 	jsr emit_load_primary_address
+ 	bcs .primaryDone
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
++	jmp expression_emit_fail
+ 
+ .function:
+ 	lda currentTokenKind
+@@ -582,34 +577,36 @@
+ ;;; Resolve one identifier while its scanner text is still current and retain
+ ;;; exactly the same small symbol facts used by ordinary primary emission. The
+ ;;; simple-RHS lookahead reuses this rather than carrying a second lookup path.
+-;;; A scalar assignment marks its first matching `x +` / `x -` primary as a
+-;;; possible direct self-update. The ordinary load is still emitted; only the
+-;;; final arithmetic/store is replaced when literal one and `;` prove the form.
+-mark_scalar_self_update:
++;;; A scalar assignment may defer the load of its own first byte primary. The
++;;; literal/semicolon lookahead below confirms only exact `x = x +/- 1`; every
++;;; near miss restores the ordinary load before rejoining the expression machine.
++emit_or_defer_scalar_self_update:
+ 	lda statementTargetKind
+ 	cmp #STATEMENT_SCALAR_ASSIGNMENT
+-	bne .done
++	bne .emit
+ 	lda operatorCount
+-	bne .done
++	bne .emit
+ 	lda primarySymbolType
+ 	cmp #TYPE_CHAR
+-	bne .done
++	bne .emit
+ 	lda primarySymbolArea
+ 	cmp statementTargetArea
+-	bne .done
++	bne .emit
+ 	lda primarySymbolIndex
+ 	cmp statementTargetIndex
+-	bne .done
++	bne .emit
+ 	lda currentTokenKind
+ 	cmp #'+'
+-	beq .mark
++	beq .defer
+ 	cmp #'-'
+-	bne .done
+-.mark:
++	bne .emit
++.defer:
+ 	lda #STATEMENT_SELF_UPDATE
+ 	sta statementTargetKind
+-.done:
++	sec
+ 	rts
++.emit:
++	jmp emit_load_primary_scalar
+ 
+ capture_primary_identifier:
+ 	jsr lookup_symbol
+@@ -746,16 +743,14 @@
+ 	lda expressionSpillDepth
+ 	jsr emit_spill_definition
+ 	bcs .definitionDone
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
++	jmp expression_emit_fail
+ .definitionDone:
+ 	inc spillAllocatedCount
+ .allocated:
+ 	lda expressionSpillDepth
+ 	jsr emit_store_spill
+ 	bcs .stored
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
++	jmp expression_emit_fail
+ .stored:
+ 	inc expressionSpillDepth
+ 	sec
+@@ -780,6 +775,14 @@
+ 	sec
+ 	rts
+ 
++;;; A rejected byte self-update candidate must recreate the load that was
++;;; deliberately deferred above. Tail-calling the ordinary emitter preserves its
++;;; carry result for the local error check.
++restore_scalar_self_update:
++	lda #$00
++	sta statementTargetKind
++	jmp emit_load_primary_scalar_now
++
+ ;;; try_immediate_binary
+ ;;; currentToken is the first RHS token and A/X still describes the left value.
+ ;;; The existing literal fast path and a plain scalar use the same one-token
+@@ -800,8 +803,9 @@
+ 	ora currentTokenValue+1
+ 	beq .ordinaryStart
+ .selfFallback:
+-	lda #$00
+-	sta statementTargetKind
++	jsr restore_scalar_self_update
++	bcs .ordinaryStart
++	jmp expression_emit_fail
+ .ordinaryStart:
+ 	lda #IMMEDIATE_BINARY_NONE
+ 	sta immediateBinaryState
+@@ -890,8 +894,9 @@
+ 	sec
+ 	rts
+ .selfLonger:
+-	lda #$00
+-	sta statementTargetKind
++	jsr restore_scalar_self_update
++	bcs .ordinaryAdvanced
++	jmp expression_emit_fail
+ .ordinaryAdvanced:
+ 	;;; Keep postfix handling on the ordinary path. It may use NC_PTR itself and
+ 	;;; therefore must never overlap the transient-left convention.
+@@ -936,8 +941,7 @@
+ 	jsr emit_binary_reduction
+ 	bcs .emitted
+ .emitFailed:
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
++	jmp expression_emit_fail
+ .emitted:
+ 	lda #IMMEDIATE_BINARY_REDUCED
+ 	sta immediateBinaryState
+@@ -975,8 +979,7 @@
+ .integer:
+ 	jsr emit_unary_minus
+ 	bcs .emitted
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
++	jmp expression_emit_fail
+ .emitted:
+ 	lda expressionValueType
+ 	cmp #TYPE_UNSIGNED
+@@ -1243,8 +1246,7 @@
+ .baseReleased:
+ 	jsr emit_index_load
+ 	bcs .emitted
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
++	jmp expression_emit_fail
+ .emitted:
+ 	lda reduceLeftType
+ 	sta expressionValueType
+@@ -1312,8 +1314,7 @@
+ .typesOk:
+ 	jsr emit_binary_reduction
+ 	bcs .emitted
+-	lda #EXPR_EMIT_ERROR
+-	jmp expression_fail
++	jmp expression_emit_fail
+ .emitted:
+ 	dec operatorCount
+ 	dec expressionSpillDepth
