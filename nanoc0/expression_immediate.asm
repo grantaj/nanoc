@@ -308,8 +308,16 @@ materialize_saved_byte:
 	jmp materialize_expression_byte
 
 materialize_saved_word:
+	jsr select_saved_operand
+	jmp materialize_expression_word
+
+;;; An index marker stores the element type in operatorType because that becomes
+;;; the expression result. Its saved operand is nevertheless an address: a named
+;;; scalar base is a char *, while VALUE_ARRAY/STACK_WORD do not consult this type.
 materialize_saved_address:
 	jsr select_saved_operand
+	lda #TYPE_CHAR_PTR
+	sta expressionValueType
 	jmp materialize_expression_word
 
 ;;; ---------------------------------------------------------------------------
