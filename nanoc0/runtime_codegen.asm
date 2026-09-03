@@ -14,6 +14,104 @@
 
 RUNTIME_HANDLE_CAPACITY = 6
 
+;;; Fixed emitted text is deliberately defined before the routines that name it.
+;;; Native ass is one-pass: a forward address needs a fixup record, and those
+;;; records share its 16 KiB staging window with the bytes being assembled.
+;;; Static text has no reason to consume that transient workspace.
+runtimeModeName:	byte '_','_','n','c','_','i','o','_','m','o','d','e',0
+runtimeEofName:		byte '_','_','n','c','_','i','o','_','e','o','f',0
+runtimeHandleName:	byte '_','_','n','c','_','i','o','_','h','a','n','d','l','e',0
+runtimeNameBufferName:	byte '_','_','n','c','_','i','o','_','n','a','m','e',0
+runtimeBssAssign:	byte ' ','=',' ','N','C','_','B','S','S','+','$',0
+runtimeLdaImmediate:	byte $09,'l','d','a',' ','#','$',0
+runtimeStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',0
+runtimeStaTmpHigh:	byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',0
+runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"','.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/',0
+runtimeIncludeSuffix:	byte '.','a','s','m','"',$0a,0
+runtimeMulPath:		byte 'm','u','l','1','6',0
+runtimeComparePath:	byte 'c','o','m','p','a','r','e','1','6',0
+runtimeIndexPath:	byte 'i','n','d','e','x','1','6',0
+runtimeCommonPath:	byte 'i','o','-','c','o','m','m','o','n',0
+runtimeOpenPath:	byte 'i','o','-','o','p','e','n',0
+runtimeReadPath:	byte 'i','o','-','r','e','a','d',0
+runtimeCreatePath:	byte 'i','o','-','c','r','e','a','t','e',0
+runtimeWritePath:	byte 'i','o','-','w','r','i','t','e',0
+runtimeClosePath:	byte 'i','o','-','c','l','o','s','e',0
+
+runtimeInitPrefix:
+	string "__nc_init:"
+	byte $09
+	string "cld"
+	byte $09
+	string "lda #<NC_BSS"
+	byte $09
+	string "sta NC_PTR"
+	byte $09
+	string "lda #>NC_BSS"
+	byte $09
+	string "sta NC_PTR+1"
+	byte 0
+
+runtimeInitClearText:
+	byte $09
+	string "ldy #$00"
+	string ".clear_globals:"
+	byte $09
+	string "lda NC_TMP"
+	byte $09
+	string "ora NC_TMP+1"
+	byte $09
+	string "beq .globals_done"
+	byte $09
+	string "lda #$00"
+	byte $09
+	string "sta (NC_PTR),y"
+	byte $09
+	string "inc NC_PTR"
+	byte $09
+	string "bne .pointer_done"
+	byte $09
+	string "inc NC_PTR+1"
+	string ".pointer_done:"
+	byte $09
+	string "lda NC_TMP"
+	byte $09
+	string "bne .decrement_low"
+	byte $09
+	string "dec NC_TMP+1"
+	string ".decrement_low:"
+	byte $09
+	string "dec NC_TMP"
+	byte $09
+	string "jmp .clear_globals"
+	string ".globals_done:"
+	byte 0
+
+runtimeInitIoText:
+	byte $09
+	string "lda #$00"
+	byte $09
+	string "ldx #$05        ; six runtime handles"
+	string ".clear_io:"
+	byte $09
+	string "sta __nc_io_mode,x"
+	byte $09
+	string "sta __nc_io_eof,x"
+	byte $09
+	string "dex"
+	byte $09
+	string "bpl .clear_io"
+	byte 0
+
+runtimeInitReturnText:
+	byte $09
+	string "cld"
+	byte $09
+	string "rts"
+	byte 0
+
+runtimeIncludePath:	word 0
+
 emit_runtime_support:
 	jsr prepare_runtime_storage
 	bcs .storageReady
@@ -298,97 +396,3 @@ emit_runtime_lines:
 .failed:
 	clc
 	rts
-
-runtimeModeName:	byte '_','_','n','c','_','i','o','_','m','o','d','e',0
-runtimeEofName:		byte '_','_','n','c','_','i','o','_','e','o','f',0
-runtimeHandleName:	byte '_','_','n','c','_','i','o','_','h','a','n','d','l','e',0
-runtimeNameBufferName:	byte '_','_','n','c','_','i','o','_','n','a','m','e',0
-runtimeBssAssign:	byte ' ','=',' ','N','C','_','B','S','S','+','$',0
-runtimeLdaImmediate:	byte $09,'l','d','a',' ','#','$',0
-runtimeStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',0
-runtimeStaTmpHigh:	byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',0
-runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"','.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/',0
-runtimeIncludeSuffix:	byte '.','a','s','m','"',$0a,0
-runtimeMulPath:		byte 'm','u','l','1','6',0
-runtimeComparePath:	byte 'c','o','m','p','a','r','e','1','6',0
-runtimeIndexPath:	byte 'i','n','d','e','x','1','6',0
-runtimeCommonPath:	byte 'i','o','-','c','o','m','m','o','n',0
-runtimeOpenPath:	byte 'i','o','-','o','p','e','n',0
-runtimeReadPath:	byte 'i','o','-','r','e','a','d',0
-runtimeCreatePath:	byte 'i','o','-','c','r','e','a','t','e',0
-runtimeWritePath:	byte 'i','o','-','w','r','i','t','e',0
-runtimeClosePath:	byte 'i','o','-','c','l','o','s','e',0
-
-runtimeInitPrefix:
-	string "__nc_init:"
-	byte $09
-	string "cld"
-	byte $09
-	string "lda #<NC_BSS"
-	byte $09
-	string "sta NC_PTR"
-	byte $09
-	string "lda #>NC_BSS"
-	byte $09
-	string "sta NC_PTR+1"
-	byte 0
-
-runtimeInitClearText:
-	byte $09
-	string "ldy #$00"
-	string ".clear_globals:"
-	byte $09
-	string "lda NC_TMP"
-	byte $09
-	string "ora NC_TMP+1"
-	byte $09
-	string "beq .globals_done"
-	byte $09
-	string "lda #$00"
-	byte $09
-	string "sta (NC_PTR),y"
-	byte $09
-	string "inc NC_PTR"
-	byte $09
-	string "bne .pointer_done"
-	byte $09
-	string "inc NC_PTR+1"
-	string ".pointer_done:"
-	byte $09
-	string "lda NC_TMP"
-	byte $09
-	string "bne .decrement_low"
-	byte $09
-	string "dec NC_TMP+1"
-	string ".decrement_low:"
-	byte $09
-	string "dec NC_TMP"
-	byte $09
-	string "jmp .clear_globals"
-	string ".globals_done:"
-	byte 0
-
-runtimeInitIoText:
-	byte $09
-	string "lda #$00"
-	byte $09
-	string "ldx #$05        ; six runtime handles"
-	string ".clear_io:"
-	byte $09
-	string "sta __nc_io_mode,x"
-	byte $09
-	string "sta __nc_io_eof,x"
-	byte $09
-	string "dex"
-	byte $09
-	string "bpl .clear_io"
-	byte 0
-
-runtimeInitReturnText:
-	byte $09
-	string "cld"
-	byte $09
-	string "rts"
-	byte 0
-
-runtimeIncludePath:	word 0

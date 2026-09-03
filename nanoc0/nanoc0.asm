@@ -55,6 +55,39 @@ compilerMemoryConfig:
 	include "program_output.asm"
 	include "runtime_codegen.asm"
 
+;;; Fixed generated-program text and the driver's tiny private state are kept
+;;; before the routines that name them. Native ass is one-pass, so fixed data has
+;;; no reason to consume forward-fixup workspace while the compiler is assembled.
+;;; emit_runtime_lines writes these bytes verbatim; tabs inside instruction
+;;; strings are therefore real output tabs.
+programHeader:
+	string "* = $0800"
+	string "NC_TMP = $fc"
+	string "NC_PTR = $fe"
+	string "NC_BSS = $4800"
+	string "__nc_start:"
+	string "	jmp __nc_entry"
+	byte 0
+
+programMainEntry:
+	string "__nc_entry:"
+	string "	jsr __nc_init"
+	string "	jsr __c_main"
+	string "	rts"
+	byte 0
+
+programPlainEntry:
+	string "__nc_entry:"
+	string "	jsr __nc_init"
+	string "	lda #$00"
+	string "	tax"
+	string "	rts"
+	byte 0
+
+compilerOutputOpen:	byte 0
+compilerOutputStatus:	byte 0
+generatedBssEnd:	word 0
+
 compilerMain:
 	lda #$00
 	sta NANOC_COMMAND_STATUS
@@ -305,7 +338,11 @@ source_has_zero_arg_main:
 	lda #'n'
 	sta currentTokenText+3
 	jsr lookup_persistent_token
-	bcc .no
+	bcs .found
+.no:
+	clc
+	rts
+.found:
 	lda persistentKind,x
 	cmp #SYMBOL_FUNCTION
 	bne .no
@@ -313,37 +350,3 @@ source_has_zero_arg_main:
 	bne .no
 	sec
 	rts
-.no:
-	clc
-	rts
-
-;;; emit_runtime_lines writes these bytes verbatim. The indentation inside the
-;;; instruction strings is therefore a real tab, just like the runtime slabs in
-;;; runtime_codegen.asm; a backslash followed by 't' would reach ass literally.
-programHeader:
-	string "* = $0800"
-	string "NC_TMP = $fc"
-	string "NC_PTR = $fe"
-	string "NC_BSS = $4800"
-	string "__nc_start:"
-	string "	jmp __nc_entry"
-	byte 0
-
-programMainEntry:
-	string "__nc_entry:"
-	string "	jsr __nc_init"
-	string "	jsr __c_main"
-	string "	rts"
-	byte 0
-
-programPlainEntry:
-	string "__nc_entry:"
-	string "	jsr __nc_init"
-	string "	lda #$00"
-	string "	tax"
-	string "	rts"
-	byte 0
-
-compilerOutputOpen:	byte 0
-compilerOutputStatus:	byte 0
-generatedBssEnd:	word 0
