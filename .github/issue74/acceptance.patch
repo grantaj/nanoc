@@ -1,0 +1,42 @@
+--- a/Makefile
++++ b/Makefile
+@@ -186,6 +186,14 @@ test-nanoc0-statements: $(BUILD_DIR)/test_nanoc0_statement_compile.prg $(BUILD_D
+ 	rm -f tests/nanoc0-stmt/RET8OUT.ASM tests/nanoc0-stmt/ret8out.asm tests/nanoc0-stmt/STMTOUT.ASM tests/nanoc0-stmt/stmtout.asm
+ 	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR)/tests/nanoc0-stmt VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_statement_compile.prg nanoc0-statement-compile
++	@out=tests/nanoc0-stmt/STMTOUT.ASM; [ -f "$$out" ] || out=tests/nanoc0-stmt/stmtout.asm; \
++		grep -Eq '^[[:space:]]*inc __c_direct_inc_probe$$' "$$out"; \
++		grep -Eq '^[[:space:]]*dec __c_direct_dec_probe$$' "$$out"; \
++		! grep -Eq '^[[:space:]]*lda __c_direct_inc_probe$$' "$$out"; \
++		! grep -Eq '^[[:space:]]*lda __c_direct_dec_probe$$' "$$out"; \
++		grep -Eq '^[[:space:]]*lda __c_direct_near_probe$$' "$$out"; \
++		! grep -Eq '^[[:space:]]*(inc|dec) __c_direct_near_probe$$' "$$out"
+ 	TEST_DEBUG_WORKSPACE=1 VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR) VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_statement_run.prg nanoc0-statements
+ 
+ test-nanoc0-calls: $(BUILD_DIR)/test_nanoc0_calls.prg $(NANOC0_CALL_FIXTURES)
+--- a/tests/nanoc0-stmt/statements.c
++++ b/tests/nanoc0-stmt/statements.c
+@@ -6,6 +6,9 @@
+ unsigned global_unsigned;
+ char *global_pointer;
+ int call_order;
++char direct_inc_probe;
++char direct_dec_probe;
++char direct_near_probe;
+ 
+ int add_pair(int a, int b)
+ {
+@@ -333,6 +336,14 @@
+     }
+ 
+     /* #74: exact self-updates lower to the machine operation at the target. */
++    /* Stable globals make the emitted instruction shape testable by name. */
++    direct_inc_probe = 1;
++    direct_inc_probe = direct_inc_probe + 1;
++    direct_dec_probe = 1;
++    direct_dec_probe = direct_dec_probe - 1;
++    direct_near_probe = 1;
++    direct_near_probe = direct_near_probe + 2;
++
+     c = 255;
+     c = c + 1;
+     if (c != 0) {
