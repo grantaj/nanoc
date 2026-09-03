@@ -41,6 +41,8 @@ jobs:
           git apply .github/issue74/runtime-order.patch
           git apply --check .github/issue74/driver-order.patch
           git apply .github/issue74/driver-order.patch
+          git apply --check .github/issue74/final-driver-branch.patch
+          git apply .github/issue74/final-driver-branch.patch
           git diff --check
           git diff --stat
       - name: Set up development environment
