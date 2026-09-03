@@ -88,7 +88,9 @@ ensure_expression_word:
 	cmp #EXPR_VALUE_WORD
 	beq .ready
 	cmp #EXPR_VALUE_BYTE
-	beq emit_zero_high
+	bne .notByte
+	jmp emit_zero_high
+.notByte:
 	cmp #EXPR_VALUE_CONDITION
 	bne .bad
 	jsr materialize_expression_condition
@@ -797,7 +799,9 @@ emit_shr_reduction:
 ;;; materialised before TAY consumes A.
 emit_shift_reduction:
 	jsr ensure_expression_byte_value
-	bcc .failed
+	bcs .countReady
+	rts
+.countReady:
 	lda #EMIT_LABEL_GENERIC
 	sta emitLabelKind
 	jsr reserve_generated_label
