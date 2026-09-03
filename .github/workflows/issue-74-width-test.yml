@@ -53,6 +53,16 @@ jobs:
         run: make
       - name: Run focused production statement tests
         run: make test-nanoc0-statements
+      - name: Verify direct lowering shapes
+        run: |
+          out=tests/nanoc0-stmt/stmtout.asm
+          test "$(grep -Ec '^[[:space:]]*inc __c_main__v00$' "$out")" -eq 1
+          test "$(grep -Ec '^[[:space:]]*dec __c_main__v00$' "$out")" -eq 1
+          grep -B1 -E '^[[:space:]]*inc __c_main__v00$' "$out" | grep -Eq '^[[:space:]]*sta __c_main__v00$'
+          grep -B1 -E '^[[:space:]]*dec __c_main__v00$' "$out" | grep -Eq '^[[:space:]]*sta __c_main__v00$'
+          test "$(grep -Ec '^[[:space:]]*and #\$FF$' "$out")" -eq 0
+          grep -Eq '^[[:space:]]*and #\$FE$' "$out"
+          test "$(grep -Ec '^[[:space:]]*lsr NC_TMP\+1$' "$out")" -eq 1
       - name: Run production nanoc0 integration
         run: sh scripts/test-nanoc0-integration.sh
       - name: Record measurements
