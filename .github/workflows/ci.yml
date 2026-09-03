@@ -44,6 +44,10 @@ jobs:
             build/nanoc0-integration/ncout.asm
           if-no-files-found: ignore
 
+      - name: Preserve development assembler
+        if: always()
+        run: cp /usr/local/bin/vasm6502_oldstyle build/vasm6502_oldstyle
+
       - name: Capture issue workspace
         if: always()
         uses: actions/upload-artifact@v4
@@ -53,6 +57,7 @@ jobs:
             .github
             ass
             bootstrap
+            build/vasm6502_oldstyle
             dis
             docs
             examples
