@@ -36,7 +36,8 @@ CONTROL_IF_ELSE = 3
 CONTROL_WHILE   = 4
 
 ;;; Temporary statementTargetKind values after a byte-index lvalue has been
-;;; recognized. The next identifier statement overwrites them normally.
+;;; recognized. The next identifier statement overwrites them normally. Scalar
+;;; assignment states are defined in expression.asm, before their first use.
 STATEMENT_INDEX_ARRAY       = $80
 STATEMENT_INDEX_CURRENT_PTR = $81
 
@@ -585,6 +586,9 @@ parse_scalar_assignment:
 	lda #PARSE_BAD_ASSIGNMENT
 	jmp parser_fail
 .targetOk:
+	;;; expression.asm may narrow this marker to the exact `x = x +/- 1` form.
+	lda #STATEMENT_SCALAR_ASSIGNMENT
+	sta statementTargetKind
 	jsr parser_next
 	bcc .failed
 	jsr parse_expression
@@ -600,6 +604,15 @@ parse_scalar_assignment:
 	lda #PARSE_BAD_ASSIGNMENT
 	jmp parser_fail
 .store:
+	ldx statementTargetKind
+	lda #$00
+	sta statementTargetKind
+	cpx #STATEMENT_SELF_UPDATE
+	bne .ordinaryStore
+	jsr emit_direct_scalar_update
+	bcc .emitFail
+	jmp parser_next
+.ordinaryStore:
 	lda statementTargetArea
 	cmp #SYMBOL_AREA_CURRENT
 	bne .persistent

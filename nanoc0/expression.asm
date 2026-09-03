@@ -58,6 +58,13 @@ IMMEDIATE_BINARY_CAPTURED_LITERAL = 1
 IMMEDIATE_BINARY_REDUCED          = 2
 IMMEDIATE_BINARY_CAPTURED_SCALAR  = 3
 
+;;; Scalar assignment and expression parsing share these two temporary target
+;;; states. Define them here, before expression code can reference them: native
+;;; ass is deliberately one-pass and does not turn a forward label into a later
+;;; constant definition.
+STATEMENT_SCALAR_ASSIGNMENT = $82
+STATEMENT_SELF_UPDATE       = $83
+
 ;;; Index markers need only one byte of base identity. Ordinary expression
 ;;; spills are 0..15; a fixed char array uses the unused range above them. The
 ;;; pointer path keeps its old saved runtime value, which is required when an
@@ -290,8 +297,7 @@ parse_expression:
 	jsr emit_load_literal
 .capturedLoadDone:
 	bcs .capturedLoaded
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
+	jmp expression_emit_fail
 .capturedLoaded:
 	lda reduceRightType
 	sta expressionValueType
@@ -386,6 +392,8 @@ parse_expression:
 	clc
 	rts
 
+expression_emit_fail:
+	lda #EXPR_EMIT_ERROR
 expression_fail:
 	sta expressionError
 	clc
@@ -435,8 +443,7 @@ parse_expression_primary:
 	sta expressionValueType
 	jsr emit_load_literal
 	bcs .integerEmitted
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
+	jmp expression_emit_fail
 .integerEmitted:
 	jsr parser_next
 	bcc .integerFailed
@@ -453,8 +460,7 @@ parse_expression_primary:
 	sta expressionValueType
 	jsr emit_load_literal
 	bcs .characterEmitted
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
+	jmp expression_emit_fail
 .characterEmitted:
 	jsr parser_next
 	bcc .characterFailed
@@ -469,8 +475,7 @@ parse_expression_primary:
 .stringCaptured:
 	jsr emit_load_literal_address
 	bcs .stringEmitted
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
+	jmp expression_emit_fail
 .stringEmitted:
 	lda #TYPE_CHAR_PTR
 	sta expressionValueType
@@ -514,10 +519,9 @@ parse_expression_primary:
 	lda #TYPE_CHAR
 	sta expressionElementType
 .loadScalar:
-	jsr emit_load_primary_scalar
+	jsr emit_or_defer_scalar_self_update
 	bcs .primaryDone
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
+	jmp expression_emit_fail
 
 .array:
 	lda primarySymbolType
@@ -543,8 +547,7 @@ parse_expression_primary:
 .arrayAddress:
 	jsr emit_load_primary_address
 	bcs .primaryDone
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
+	jmp expression_emit_fail
 
 .function:
 	lda currentTokenKind
@@ -574,6 +577,37 @@ parse_expression_primary:
 ;;; Resolve one identifier while its scanner text is still current and retain
 ;;; exactly the same small symbol facts used by ordinary primary emission. The
 ;;; simple-RHS lookahead reuses this rather than carrying a second lookup path.
+;;; A scalar assignment may defer the load of its own first byte primary. The
+;;; literal/semicolon lookahead below confirms only exact `x = x +/- 1`; every
+;;; near miss restores the ordinary load before rejoining the expression machine.
+emit_or_defer_scalar_self_update:
+	lda statementTargetKind
+	cmp #STATEMENT_SCALAR_ASSIGNMENT
+	bne .emit
+	lda operatorCount
+	bne .emit
+	lda primarySymbolType
+	cmp #TYPE_CHAR
+	bne .emit
+	lda primarySymbolArea
+	cmp statementTargetArea
+	bne .emit
+	lda primarySymbolIndex
+	cmp statementTargetIndex
+	bne .emit
+	lda currentTokenKind
+	cmp #'+'
+	beq .defer
+	cmp #'-'
+	bne .emit
+.defer:
+	lda #STATEMENT_SELF_UPDATE
+	sta statementTargetKind
+	sec
+	rts
+.emit:
+	jmp emit_load_primary_scalar
+
 capture_primary_identifier:
 	jsr lookup_symbol
 	bcs .found
@@ -709,16 +743,14 @@ spill_current_value:
 	lda expressionSpillDepth
 	jsr emit_spill_definition
 	bcs .definitionDone
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
+	jmp expression_emit_fail
 .definitionDone:
 	inc spillAllocatedCount
 .allocated:
 	lda expressionSpillDepth
 	jsr emit_store_spill
 	bcs .stored
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
+	jmp expression_emit_fail
 .stored:
 	inc expressionSpillDepth
 	sec
@@ -743,39 +775,62 @@ push_pending_binary:
 	sec
 	rts
 
+;;; A rejected byte self-update candidate must recreate the load that was
+;;; deliberately deferred above. Tail-calling the ordinary emitter preserves its
+;;; carry result for the local error check.
+restore_scalar_self_update:
+	lda #$00
+	sta statementTargetKind
+	jmp emit_load_primary_scalar_now
+
 ;;; try_immediate_binary
 ;;; currentToken is the first RHS token and A/X still describes the left value.
 ;;; The existing literal fast path and a plain scalar use the same one-token
 ;;; precedence lookahead. A simple scalar keeps the left value in NC_PTR; a
 ;;; nested/tighter RHS falls back to the ordinary static spill machine.
 try_immediate_binary:
+	;;; A matching scalar target followed by + or - is a possible self-update.
+	;;; Literal one reuses the existing one-token lookahead; any near miss simply
+	;;; clears the statement marker and follows the ordinary expression path.
+	lda statementTargetKind
+	cmp #STATEMENT_SELF_UPDATE
+	bne .ordinaryStart
+	lda currentTokenKind
+	cmp #TOKEN_INTEGER
+	bne .selfFallback
+	lda currentTokenValue
+	eor #$01
+	ora currentTokenValue+1
+	beq .ordinaryStart
+.selfFallback:
+	jsr restore_scalar_self_update
+	bcs .ordinaryStart
+	jmp expression_emit_fail
+.ordinaryStart:
 	lda #IMMEDIATE_BINARY_NONE
 	sta immediateBinaryState
 
+	;;; Multiply and left shift keep their ordinary lowering. Right shift has
+	;;; one source-recognised direct count: exactly integer 8.
 	lda pendingOperator
-	cmp #OP_ADD
-	beq .supported
-	cmp #OP_SUB
-	beq .supported
-	cmp #OP_AND
-	beq .supported
-	cmp #OP_OR
-	beq .supported
-	cmp #OP_LT
-	beq .supported
-	cmp #OP_LE
-	beq .supported
-	cmp #OP_GT
-	beq .supported
-	cmp #OP_GE
-	beq .supported
-	cmp #OP_EQ
-	beq .supported
-	cmp #OP_NE
-	beq .supported
+	cmp #OP_MUL
+	beq .notImmediate
+	cmp #OP_SHL
+	bne .checkShift
+.notImmediate:
 	sec
 	rts
-
+.checkShift:
+	cmp #OP_SHR
+	bne .supported
+	lda currentTokenKind
+	cmp #TOKEN_INTEGER
+	bne .notImmediate
+	lda currentTokenValue
+	cmp #$08
+	bne .notImmediate
+	lda currentTokenValue+1
+	bne .notImmediate
 .supported:
 	lda currentTokenKind
 	cmp #TOKEN_INTEGER
@@ -788,35 +843,32 @@ try_immediate_binary:
 	rts
 
 .integer:
-	lda currentTokenValue
-	sta expressionLiteralValue
 	lda currentTokenValue+1
 	sta expressionLiteralValue+1
 	lda currentTokenType
 	cmp #TOKEN_TYPE_UNSIGNED
-	bne .signed
+	bne .setInt
 	lda #TYPE_UNSIGNED
 	jmp .typeDone
-.signed:
+
+.character:
+	lda #$00
+	sta expressionLiteralValue+1
+.setInt:
 	lda #TYPE_INT
 .typeDone:
 	sta reduceRightType
-	jmp .literalCaptured
-
-.character:
 	lda currentTokenValue
 	sta expressionLiteralValue
-	lda #$00
-	sta expressionLiteralValue+1
-	lda #TYPE_INT
-	sta reduceRightType
 .literalCaptured:
 	lda #IMMEDIATE_BINARY_CAPTURED_LITERAL
 	jmp .captured
 
 .scalar:
 	jsr capture_primary_identifier
-	bcc .failed
+	bcs .scalarCaptured
+	rts
+.scalarCaptured:
 	lda primarySymbolKind
 	cmp #SYMBOL_GLOBAL
 	bne .done
@@ -829,6 +881,23 @@ try_immediate_binary:
 	bcs .advanced
 	rts
 .advanced:
+	;;; Only literal one followed immediately by the assignment semicolon confirms
+	;;; the direct update. A longer expression keeps the normal loaded value.
+	lda statementTargetKind
+	cmp #STATEMENT_SELF_UPDATE
+	bne .ordinaryAdvanced
+	lda currentTokenKind
+	cmp #';'
+	bne .selfLonger
+	lda #IMMEDIATE_BINARY_REDUCED
+	sta immediateBinaryState
+	sec
+	rts
+.selfLonger:
+	jsr restore_scalar_self_update
+	bcs .ordinaryAdvanced
+	jmp expression_emit_fail
+.ordinaryAdvanced:
 	;;; Keep postfix handling on the ordinary path. It may use NC_PTR itself and
 	;;; therefore must never overlap the transient-left convention.
 	lda currentTokenKind
@@ -872,8 +941,7 @@ try_immediate_binary:
 	jsr emit_binary_reduction
 	bcs .emitted
 .emitFailed:
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
+	jmp expression_emit_fail
 .emitted:
 	lda #IMMEDIATE_BINARY_REDUCED
 	sta immediateBinaryState
@@ -911,8 +979,7 @@ reduce_unary_minus:
 .integer:
 	jsr emit_unary_minus
 	bcs .emitted
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
+	jmp expression_emit_fail
 .emitted:
 	lda expressionValueType
 	cmp #TYPE_UNSIGNED
@@ -1179,8 +1246,7 @@ pop_index_marker:
 .baseReleased:
 	jsr emit_index_load
 	bcs .emitted
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
+	jmp expression_emit_fail
 .emitted:
 	lda reduceLeftType
 	sta expressionValueType
@@ -1248,8 +1314,7 @@ reduce_top_binary:
 .typesOk:
 	jsr emit_binary_reduction
 	bcs .emitted
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
+	jmp expression_emit_fail
 .emitted:
 	dec operatorCount
 	dec expressionSpillDepth

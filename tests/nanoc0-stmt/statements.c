@@ -6,6 +6,9 @@ int global_value;
 unsigned global_unsigned;
 char *global_pointer;
 int call_order;
+char direct_inc_probe;
+char direct_dec_probe;
+char direct_near_probe;
 
 int add_pair(int a, int b)
 {
@@ -330,6 +333,84 @@ int main()
     bytes[4] = 98;
     if (bytes[bytes[1]] != 98) {
         return 115;
+    }
+
+    /* #74: exact self-updates lower to the machine operation at the target. */
+    /* Stable globals make the emitted instruction shape testable by name. */
+    direct_inc_probe = 1;
+    direct_inc_probe = direct_inc_probe + 1;
+    direct_dec_probe = 1;
+    direct_dec_probe = direct_dec_probe - 1;
+    direct_near_probe = 1;
+    direct_near_probe = direct_near_probe + 2;
+
+    c = 255;
+    c = c + 1;
+    if (c != 0) {
+        return 116;
+    }
+    c = 0;
+    c = c - 1;
+    if (c != 255) {
+        return 117;
+    }
+
+    x = 65535;
+    x = x + 1;
+    if (x != 0) {
+        return 118;
+    }
+    x = 0;
+    x = x - 1;
+    if (x != -1) {
+        return 119;
+    }
+
+    u = 65535;
+    u = u + 1;
+    if (u != 0) {
+        return 120;
+    }
+    u = 0;
+    u = u - 1;
+    if (u != 65535) {
+        return 121;
+    }
+
+    /* Width identities stay in A/X instead of entering general bit machinery. */
+    x = 4660;
+    x = x & 65535;
+    if (x != 4660) {
+        return 122;
+    }
+    x = x & 255;
+    if (x != 52) {
+        return 123;
+    }
+    x = 4660;
+    x = x >> 8;
+    if (x != 18) {
+        return 124;
+    }
+
+    x = -1;
+    x = x & 255;
+    if (x != 255) {
+        return 125;
+    }
+
+    /* Near misses must continue through the ordinary expression machinery. */
+    x = 5;
+    i = 2;
+    x = x + i;
+    if (x != 7) {
+        return 126;
+    }
+    x = 255;
+    x = x & 254;
+    x = x >> 4;
+    if (x != 15) {
+        return 127;
     }
 
     bytes[258] = bytes[257] + 1;

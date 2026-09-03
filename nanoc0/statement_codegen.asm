@@ -37,6 +37,21 @@ load_statement_target_base:
 .array:
 	jmp emit_load_primary_address
 
+;;; Exact byte `x = x +/- 1` updates the named object in place. Word values
+;;; stay on the ordinary immediate arithmetic path, which already carries or
+;;; borrows explicitly across A/X.
+emit_direct_scalar_update:
+	lda pendingOperator
+	cmp #OP_SUB
+	beq .subtract
+	ldx #<statementIncSpace
+	ldy #>statementIncSpace
+	jmp emit_primary_scalar_line
+.subtract:
+	ldx #<statementDecSpace
+	ldy #>statementDecSpace
+	jmp emit_primary_scalar_line
+
 emit_return_value:
 	ldx #<statementRts
 	ldy #>statementRts
@@ -264,6 +279,8 @@ emit_statement_false_jump:
 statementRts:		byte $09,'r','t','s',$0a,0
 statementAddressSuffix:	byte '_','_','a',0
 statementLdySpace:	byte $09,'l','d','y',' ',0
+statementIncSpace:	byte $09,'i','n','c',' ',0
+statementDecSpace:	byte $09,'d','e','c',' ',0
 statementByteTruthTest:
 	byte $09,'c','m','p',' ','#','$','0','0',$0a,0
 statementTruthTest:
