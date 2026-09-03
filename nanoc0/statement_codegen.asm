@@ -242,14 +242,18 @@ emit_indexed_current_pointer_store:
 	clc
 	rts
 
-;;; A/X is the condition result. Comparisons deliberately leave Z matching their
-;;; canonical 0/1 result, so consuming that flag is the natural 6502 path. A
-;;; plain char needs only one CMP. Genuine 16-bit values retain the explicit
-;;; high/low collapse. In every case BNE skips the adjacent false-target JMP when
-;;; the condition is true.
+;;; expressionConditionBranch is a physical target fact, not a Boolean-value
+;;; property. Today comparison producers still materialise 0/1 and therefore
+;;; expose BNE=true. NONE means no useful flags survive, so form truth from the
+;;; current materialised byte/word. #88 can add direct CMP branch kinds without
+;;; changing the statement parser or inventing a condition IR.
 emit_statement_false_jump:
-	lda expressionTruthInZ
-	bne .branch
+	lda expressionConditionBranch
+	cmp #EXPR_CONDITION_BNE
+	beq .branch
+	cmp #EXPR_CONDITION_NONE
+	bne .failed
+
 	lda expressionValueType
 	cmp #TYPE_CHAR
 	bne .word

@@ -26,6 +26,9 @@ jobs:
       - name: Run C64-native tests
         run: make test
 
+      - name: Pin 6502 physical-condition seam
+        run: sh scripts/test-nanoc0-physical-contract.sh
+
       - name: Run production nanoc0 integration baseline
         run: sh scripts/test-nanoc0-integration.sh
 
