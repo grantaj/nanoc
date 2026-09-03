@@ -429,7 +429,8 @@ emit_store_spill:
 .store:
 emit_store_spill_now:
 	jsr ensure_expression_word
-	bcc .failed
+	bcs emit_store_spill_pair
+	rts
 emit_store_spill_pair:
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
@@ -458,9 +459,6 @@ emit_store_spill_pair:
 	rts
 .done:
 	jmp emit_plus_one_newline
-.failed:
-	clc
-	rts
 
 ;;; X=current-function symbol index. The destination, not the source C type,
 ;;; decides how much physical value is observable.
