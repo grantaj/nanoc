@@ -392,7 +392,17 @@ preserve_pending_values_for_call:
 	lda operatorValueKind,x
 	cmp #VALUE_PERSISTENT
 	bne .next
+	;;; OP_INDEX stores the element/result type in operatorType. A persistent
+	;;; scalar under that marker is nevertheless the pointer base and must survive
+	;;; a call as a full address, not as the eventual char element.
+	lda operatorKind,x
+	cmp #OP_INDEX
+	bne .ordinaryType
+	lda #TYPE_CHAR_PTR
+	bne .haveType
+.ordinaryType:
 	lda operatorType,x
+.haveType:
 	sta reduceLeftType
 	lda operatorValueLow,x
 	sta reduceLeftLow
