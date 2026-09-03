@@ -2,16 +2,10 @@
 ;;;
 ;;; Literal target-code spelling for calls.asm.
 ;;;
-;;; Earlier arguments that must survive later source use caller staging:
-;;;
-;;;   evaluate argument -> A/X
-;;;   STA/STX caller staging
-;;;   ...
-;;;   LDA staging / STA callee parameter
-;;;
-;;; The final argument has nothing later to survive and goes straight from A/X
-;;; to its callee parameter slot. The call itself is always one direct JSR.
-;;; There is no parameter-copy loop in the generated program and no ABI object.
+;;; Earlier arguments that must survive later source use caller staging. Width is
+;;; now decided by the known callee parameter: a char stages only A, while a real
+;;; int/unsigned/pointer consumer asks the expression seam for a complete A/X.
+;;; The call itself remains one direct JSR; #89 owns any calling-convention change.
 
 ;;; The #56 statement regression still names its original call-primary seam. Its
 ;;; fixture now reaches the real #57 wrong-argument-count diagnostic.
@@ -95,8 +89,18 @@ emit_call_bss_assignment:
 	clc
 	rts
 
-;;; Target A/X currently holds an argument that must survive later arguments.
+;;; The parameter type says how much of the argument must survive later source.
 emit_store_call_stage:
+	lda callEmitParamType
+	cmp #TYPE_CHAR
+	bne .word
+	jsr ensure_expression_byte_value
+	bcc .failed
+	jmp .low
+.word:
+	jsr ensure_expression_word
+	bcc .failed
+.low:
 	ldx #<callStaSpace
 	ldy #>callStaSpace
 	jsr emit_string
@@ -105,6 +109,9 @@ emit_store_call_stage:
 	bcc .failed
 	jsr emit_newline
 	bcc .failed
+	lda callEmitParamType
+	cmp #TYPE_CHAR
+	beq .done
 	ldx #<callStxSpace
 	ldy #>callStxSpace
 	jsr emit_string
@@ -112,14 +119,27 @@ emit_store_call_stage:
 	jsr emit_call_stage_name
 	bcc .failed
 	jsr emit_plus_one_call_newline
+	bcc .failed
+.done:
+	sec
 	rts
 .failed:
 	clc
 	rts
 
-;;; The final argument needs no caller-owned staging. Store A/X directly into the
-;;; fixed callee parameter slot; char keeps the Phase 1 one-byte truncation rule.
+;;; The final argument needs no caller-owned staging. Store only the width the
+;;; fixed callee parameter can observe.
 emit_store_callee_argument:
+	lda callEmitParamType
+	cmp #TYPE_CHAR
+	bne .word
+	jsr ensure_expression_byte_value
+	bcc .failed
+	jmp .low
+.word:
+	jsr ensure_expression_word
+	bcc .failed
+.low:
 	ldx #<callStaSpace
 	ldy #>callStaSpace
 	jsr emit_string
@@ -184,7 +204,7 @@ emit_copy_call_argument:
 	jsr emit_callee_parameter_name
 	bcc .failed
 	jsr emit_plus_one_call_newline
-	rts
+	bcc .failed
 .done:
 	sec
 	rts
@@ -192,11 +212,10 @@ emit_copy_call_argument:
 	clc
 	rts
 
-;;; A call may freely change target flags. It therefore ends the lifetime of a
-;;; comparison's useful Z flag even when that comparison appeared in an argument.
+;;; A call may freely change target registers and flags. Phase 1 functions still
+;;; return int for #88, so the new result is a complete A/X word with no live
+;;; condition. #89 owns any narrower/native return convention.
 emit_call_instruction:
-	lda #$00
-	sta expressionTruthInZ
 	ldx #<callJsrSpace
 	ldy #>callJsrSpace
 	jsr emit_string
@@ -204,7 +223,9 @@ emit_call_instruction:
 	ldx callEmitCallee
 	jsr emit_persistent_name
 	bcc .failed
-	jmp emit_newline
+	jsr emit_newline
+	bcc .failed
+	jmp mark_expression_word
 .failed:
 	clc
 	rts

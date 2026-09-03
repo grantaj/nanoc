@@ -52,12 +52,29 @@ emit_direct_scalar_update:
 	ldy #>statementDecSpace
 	jmp emit_primary_scalar_line
 
+;;; Phase 1 C functions return int. A byte or lazy comparison therefore becomes
+;;; a complete A/X value only here, at the observable call boundary.
 emit_return_value:
+	jsr ensure_expression_word
+	bcc .failed
 	ldx #<statementRts
 	ldy #>statementRts
 	jmp emit_string
+.failed:
+	clc
+	rts
 
 emit_store_persistent_value:
+	lda statementTargetType
+	cmp #TYPE_CHAR
+	bne .word
+	jsr ensure_expression_byte_value
+	bcc .failed
+	jmp .low
+.word:
+	jsr ensure_expression_word
+	bcc .failed
+.low:
 	lda #exprStaSpaceEnd-exprStaSpace
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
@@ -178,7 +195,16 @@ emit_indexed_store:
 	cmp #STATEMENT_INDEX_CURRENT_PTR
 	beq emit_indexed_current_pointer_store
 
+	;;; The RHS value and the saved lvalue address have independent widths. A char
+	;;; store needs only A across the address restore; a word store keeps A/X.
+	lda statementElementType
+	cmp #TYPE_CHAR
+	bne .saveWord
+	jsr emit_save_right_byte_tmp
+	jmp .saved
+.saveWord:
 	jsr emit_save_right_tmp
+.saved:
 	bcc .failed
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
@@ -206,6 +232,8 @@ emit_indexed_store:
 	rts
 
 emit_indexed_array_store:
+	jsr ensure_expression_byte_value
+	bcc .failed
 	ldx #<statementLdySpace
 	ldy #>statementLdySpace
 	jsr emit_statement_address_low
@@ -242,35 +270,58 @@ emit_indexed_current_pointer_store:
 	clc
 	rts
 
-;;; expressionConditionBranch is a physical target fact, not a Boolean-value
-;;; property. Today comparison producers still materialise 0/1 and therefore
-;;; expose BNE=true. NONE means no useful flags survive, so form truth from the
-;;; current materialised byte/word. #88 can add direct CMP branch kinds without
-;;; changing the statement parser or inventing a condition IR.
+;;; Use a live comparison/value flag when one is available. Otherwise form truth
+;;; from the physical value width: a byte needs one CMP, while a genuine word
+;;; collapses high/low. The selected branch always means target "true" and skips
+;;; the adjacent arbitrary-distance false JMP.
 emit_statement_false_jump:
 	lda expressionConditionBranch
+	beq .formTruth
 	cmp #EXPR_CONDITION_BNE
-	beq .branch
-	cmp #EXPR_CONDITION_NONE
-	bne .failed
+	beq .bne
+	cmp #EXPR_CONDITION_BEQ
+	beq .beq
+	cmp #EXPR_CONDITION_BCC
+	beq .bcc
+	cmp #EXPR_CONDITION_BCS
+	beq .bcs
+	clc
+	rts
 
-	lda expressionValueType
-	cmp #TYPE_CHAR
-	bne .word
+.formTruth:
+	lda expressionPhysicalKind
+	cmp #EXPR_VALUE_BYTE
+	beq .byte
+	cmp #EXPR_VALUE_WORD
+	beq .word
+	clc
+	rts
+.byte:
 	ldx #<statementByteTruthTest
 	ldy #>statementByteTruthTest
 	jsr emit_string
 	bcc .failed
-	jmp .branch
+	jmp .bne
 .word:
 	ldx #<statementTruthTest
 	ldy #>statementTruthTest
 	jsr emit_string
 	bcc .failed
-.branch:
-	lda #exprBneEnd-exprBne
+.bne:
 	ldx #<exprBne
 	ldy #>exprBne
+	jmp emit_long_conditional_jump
+.beq:
+	ldx #<exprBeq
+	ldy #>exprBeq
+	jmp emit_long_conditional_jump
+.bcc:
+	ldx #<exprBcc
+	ldy #>exprBcc
+	jmp emit_long_conditional_jump
+.bcs:
+	ldx #<exprBcs
+	ldy #>exprBcs
 	jmp emit_long_conditional_jump
 .failed:
 	clc

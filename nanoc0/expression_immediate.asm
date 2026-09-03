@@ -2,16 +2,13 @@
 ;;;
 ;;; Direct target emission for simple right-hand operands.
 ;;;
-;;; The ordinary expression machine leaves the left operand in A/X when it sees
-;;; a binary operator. A literal can be applied directly. A plain scalar may also
-;;; avoid a static spill; byte comparisons are cheap enough to address the scalar
-;;; itself, while wider/arithmetic cases use the existing bounded NC_PTR transient
-;;; convention. There is no retained expression representation or optimizer.
+;;; A simple literal or scalar can often be consumed before the ordinary spill
+;;; machine is needed. The physical-value helpers in expression_codegen.asm make
+;;; that decision independent of the source C type: a byte stays in A until a
+;;; real word consumer asks for X, and a comparison stays in flags until a value
+;;; consumer asks for 0/1.
 
 emit_immediate_binary_reduction:
-	lda #$00
-	sta expressionTruthInZ
-
 	;;; try_immediate_binary has already admitted only +, -, exact >> 8,
 	;;; comparisons, &, and |. Classify those forms without checking them twice.
 	lda reduceOperator
@@ -24,36 +21,66 @@ emit_immediate_binary_reduction:
 .arithmetic:
 	jmp emit_arithmetic_immediate
 .shift8:
+	jsr ensure_expression_word
+	bcc .failed
 	ldx #<exprImmediateShift8
 	ldy #>exprImmediateShift8
 	jsr emit_string
-	bcs .shiftEmitted
-	rts
-.shiftEmitted:
-	jmp emit_zero_high
+	bcc .failed
+	jmp mark_expression_byte_z
 .compare:
 	jmp emit_compare_immediate
+.failed:
+	clc
+	rts
 
-;;; The four arithmetic/bitwise literal forms share one operator prefix. Add
-;;; and subtract only add their carry setup before the low byte; the high byte
-;;; always begins with the same A/X shuffle.
+;;; The four arithmetic/bitwise literal forms share one operator prefix. When the
+;;; whole scalar assignment stores a char, only the low result is observable and
+;;; +, -, &, | can stay byte-native. Every other consumer keeps the full promoted
+;;; integer result.
 emit_arithmetic_immediate:
-	;;; AND $ffff is already the value in A/X. AND $00ff only clears X.
+	;;; AND $ffff is an identity. It may still have to materialise a preceding
+	;;; comparison, but it never needs to manufacture a high byte just for tidiness.
 	lda reduceOperator
 	cmp #OP_AND
-	bne .ordinary
+	bne .widthChoice
 	lda expressionLiteralValue
 	cmp #$ff
-	bne .ordinary
+	bne .widthChoice
 	lda expressionLiteralValue+1
 	beq .lowMask
 	cmp #$ff
-	bne .ordinary
-	sec
-	rts
+	bne .widthChoice
+	jmp materialize_expression_value
+
 .lowMask:
-	jmp emit_zero_high
-.ordinary:
+	;;; The low byte is already the correct result. If the input was a word, its
+	;;; final LDX did not leave Z describing A, so narrowing deliberately forgets
+	;;; any live truth flag.
+	jsr ensure_expression_byte_value
+	bcc .failed
+	jmp narrow_expression_to_byte
+
+.widthChoice:
+	jsr byte_result_is_final_scalar_assignment
+	bcc .word
+	jsr ensure_expression_byte_value
+	bcc .failed
+	jsr emit_arithmetic_carry
+	bcc .failed
+	jsr select_arithmetic_operator
+	jsr emit_string
+	bcc .failed
+	lda expressionLiteralValue
+	jsr emit_hex_byte
+	bcc .failed
+	jsr emit_newline
+	bcc .failed
+	jmp mark_expression_byte_z
+
+.word:
+	jsr ensure_expression_word
+	bcc .failed
 	jsr emit_arithmetic_carry
 	bcc .failed
 	jsr select_arithmetic_operator
@@ -126,6 +153,8 @@ emit_compare_immediate:
 	bne .word
 	jmp emit_byte_compare_immediate
 .word:
+	jsr ensure_expression_word
+	bcc .failed
 	ldx #<exprImmediateCompareLow
 	ldy #>exprImmediateCompareLow
 	jsr emit_string
@@ -154,7 +183,9 @@ emit_compare_immediate:
 	rts
 
 ;;; A char is already known to be 0..255. A literal with zero high byte occupies
-;;; that same domain after normal integer promotion, so a byte CMP is exact.
+;;; that same domain after normal integer promotion, so one CMP is exact. Keep the
+;;; result in the processor flags; a later value consumer materialises 0/1 only if
+;;; it really needs it.
 emit_byte_compare_immediate:
 	lda reduceOperator
 	cmp #OP_EQ
@@ -174,7 +205,8 @@ emit_byte_compare_immediate:
 	inc expressionLiteralValue
 	jsr emit_cmp_literal_byte
 	bcc .failed
-	jmp emit_byte_carry_result
+	lda #EXPR_CONDITION_BCS
+	jmp mark_expression_condition
 .lessEqual:
 	lda expressionLiteralValue
 	cmp #$ff
@@ -182,14 +214,20 @@ emit_byte_compare_immediate:
 	inc expressionLiteralValue
 	jsr emit_cmp_literal_byte
 	bcc .failed
-	jmp emit_byte_not_carry_result
+	lda #EXPR_CONDITION_BCC
+	jmp mark_expression_condition
 
 .equality:
-	jsr begin_byte_equality
-	bcc .failed
 	jsr emit_cmp_literal_byte
 	bcc .failed
-	jmp finish_byte_equality
+	lda reduceOperator
+	cmp #OP_EQ
+	bne .notEqual
+	lda #EXPR_CONDITION_BEQ
+	jmp mark_expression_condition
+.notEqual:
+	lda #EXPR_CONDITION_BNE
+	jmp mark_expression_condition
 .false:
 	jmp emit_byte_false_result
 .true:
@@ -203,19 +241,32 @@ finish_byte_order_compare:
 	lda reduceOperator
 	cmp #OP_GE
 	beq .carry
-	jmp emit_byte_not_carry_result
+	lda #EXPR_CONDITION_BCC
+	jmp mark_expression_condition
 .carry:
-	jmp emit_byte_carry_result
+	lda #EXPR_CONDITION_BCS
+	jmp mark_expression_condition
 
 ;;; ---------------------------------------------------------------------------
-;;; Direct scalar byte comparisons
+;;; Direct scalar forms
 ;;; ---------------------------------------------------------------------------
 
-;;; Only the dominant char comparison case bypasses the NC_PTR transient. EQ/NE
-;;; and LT/GE map directly to CMP flags. GT/LE need carry plus equality and stay
-;;; on the existing reversed transient path; wider comparisons keep their shared
-;;; 16-bit helper path. This keeps the compiler smaller than the code it saves.
+;;; A simple scalar RHS can be addressed by the target instruction itself. Keep
+;;; char comparisons direct as before, and add the low-byte arithmetic case when
+;;; the complete enclosing scalar assignment stores a char.
 scalar_operator_is_direct:
+	jsr byte_result_is_final_scalar_assignment
+	bcc .compare
+	lda reduceOperator
+	cmp #OP_ADD
+	beq .yes
+	cmp #OP_SUB
+	beq .yes
+	cmp #OP_AND
+	beq .yes
+	cmp #OP_OR
+	beq .yes
+.compare:
 	lda reduceLeftType
 	cmp #TYPE_CHAR
 	bne .no
@@ -236,22 +287,72 @@ scalar_operator_is_direct:
 	sec
 	rts
 
+emit_scalar_binary_reduction:
+	jsr byte_result_is_final_scalar_assignment
+	bcc .compare
+	lda reduceOperator
+	cmp #OP_ADD
+	beq emit_byte_scalar_arithmetic
+	cmp #OP_SUB
+	beq emit_byte_scalar_arithmetic
+	cmp #OP_AND
+	beq emit_byte_scalar_arithmetic
+	cmp #OP_OR
+	beq emit_byte_scalar_arithmetic
+.compare:
+	jmp emit_byte_compare_scalar
+
+emit_byte_scalar_arithmetic:
+	jsr ensure_expression_byte_value
+	bcc .failed
+	jsr emit_arithmetic_carry
+	bcc .failed
+	lda reduceOperator
+	cmp #OP_ADD
+	beq .add
+	cmp #OP_SUB
+	beq .sub
+	cmp #OP_AND
+	beq .and
+	ldx #<exprOraSpace
+	ldy #>exprOraSpace
+	jmp .emit
+.add:
+	ldx #<exprAdcSpace
+	ldy #>exprAdcSpace
+	jmp .emit
+.sub:
+	ldx #<exprSbcSpace
+	ldy #>exprSbcSpace
+	jmp .emit
+.and:
+	ldx #<exprAndSpace
+	ldy #>exprAndSpace
+.emit:
+	jsr emit_primary_scalar_line
+	bcc .failed
+	jmp mark_expression_byte_z
+.failed:
+	clc
+	rts
+
 ;;; Both labels name the same byte-comparison emitter. The generic codegen seam
 ;;; calls the first name; the second states what the routine actually emits.
-emit_scalar_binary_reduction:
 emit_byte_compare_scalar:
+	jsr emit_cmp_primary_scalar
+	bcc .failed
 	lda reduceOperator
 	cmp #OP_EQ
-	bcs .equality
-	jsr emit_cmp_primary_scalar
-	bcc .failed
+	beq .equal
+	cmp #OP_NE
+	beq .notEqual
 	jmp finish_byte_order_compare
-.equality:
-	jsr begin_byte_equality
-	bcc .failed
-	jsr emit_cmp_primary_scalar
-	bcc .failed
-	jmp finish_byte_equality
+.equal:
+	lda #EXPR_CONDITION_BEQ
+	jmp mark_expression_condition
+.notEqual:
+	lda #EXPR_CONDITION_BNE
+	jmp mark_expression_condition
 .failed:
 	clc
 	rts
@@ -279,10 +380,34 @@ emit_primary_scalar_name:
 .current:
 	jmp emit_current_name
 
+;;; At this exact reduction point currentToken is already the token after the
+;;; simple RHS. A semicolon plus the still-live scalar-assignment marker proves
+;;; that this operator's low byte is the final observable result.
+byte_result_is_final_scalar_assignment:
+	lda statementTargetKind
+	cmp #STATEMENT_SCALAR_ASSIGNMENT
+	bne .no
+	lda statementTargetType
+	cmp #TYPE_CHAR
+	bne .no
+	lda currentTokenKind
+	cmp #';'
+	bne .no
+	sec
+	rts
+.no:
+	clc
+	rts
+
 emit_immediate_finish:
 	ldx #<exprImmediateFinish
 	ldy #>exprImmediateFinish
-	jmp emit_string
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_word
+.failed:
+	clc
+	rts
 
 exprImmediateClc:
 	byte $09,'c','l','c',$0a,0
@@ -314,6 +439,11 @@ exprImmediateFinish:
 
 exprImmediateShift8:
 	byte $09,'t','x','a',$0a,0
+
+exprAdcSpace:	byte $09,'a','d','c',' ',0
+exprSbcSpace:	byte $09,'s','b','c',' ',0
+exprAndSpace:	byte $09,'a','n','d',' ',0
+exprOraSpace:	byte $09,'o','r','a',' ',0
 
 ;;; One pointer pair selects the four shared operator prefixes.
 arithmeticOperatorLow:

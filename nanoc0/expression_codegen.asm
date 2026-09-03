@@ -4,12 +4,210 @@
 ;;;
 ;;; There is deliberately no representation between the expression machine and
 ;;; these routines. A reduction calls the obvious emitter and ordinary `ass`
-;;; source is streamed immediately. Fixed fragments below are the actual 6502
-;;; sequences a reader would write by hand.
+;;; source is streamed immediately. The only retained target facts are the small
+;;; physical-value contract below: byte in A, word in A/X, or live comparison
+;;; flags. Source meaning remains in expressionValueType.
+
+EXPR_VALUE_BYTE      = 1
+EXPR_VALUE_WORD      = 2
+EXPR_VALUE_CONDITION = 3
+
+EXPR_CONDITION_NONE = 0
+EXPR_CONDITION_BNE  = 1
+EXPR_CONDITION_BEQ  = 2
+EXPR_CONDITION_BCC  = 3
+EXPR_CONDITION_BCS  = 4
+
+;;; ---------------------------------------------------------------------------
+;;; Physical-value seam
+;;; ---------------------------------------------------------------------------
+
+mark_expression_byte_z:
+	lda #EXPR_VALUE_BYTE
+	sta expressionPhysicalKind
+	lda #EXPR_CONDITION_BNE
+	sta expressionConditionBranch
+	sec
+	rts
+
+narrow_expression_to_byte:
+	lda #EXPR_VALUE_BYTE
+	sta expressionPhysicalKind
+	lda #EXPR_CONDITION_NONE
+	sta expressionConditionBranch
+	sec
+	rts
+
+mark_expression_word:
+	lda #EXPR_VALUE_WORD
+	sta expressionPhysicalKind
+	lda #EXPR_CONDITION_NONE
+	sta expressionConditionBranch
+	sec
+	rts
+
+mark_expression_word_truth:
+	lda #EXPR_VALUE_WORD
+	sta expressionPhysicalKind
+	lda #EXPR_CONDITION_BNE
+	sta expressionConditionBranch
+	sec
+	rts
+
+;;; A is one EXPR_CONDITION_* branch that observes target true.
+mark_expression_condition:
+	sta expressionConditionBranch
+	lda #EXPR_VALUE_CONDITION
+	sta expressionPhysicalKind
+	sec
+	rts
+
+;;; A byte can always be consumed from A. A complete word can be narrowed without
+;;; emitted work; a lazy condition is materialised only because this consumer
+;;; really asks for an integer value.
+ensure_expression_byte_value:
+	lda expressionPhysicalKind
+	cmp #EXPR_VALUE_BYTE
+	beq .ready
+	cmp #EXPR_VALUE_WORD
+	beq .narrow
+	cmp #EXPR_VALUE_CONDITION
+	beq materialize_expression_condition
+	clc
+	rts
+.narrow:
+	jmp narrow_expression_to_byte
+.ready:
+	sec
+	rts
+
+;;; Only a genuine word consumer asks for X. This is the one ordinary place where
+;;; a physical byte is zero-extended.
+ensure_expression_word:
+	lda expressionPhysicalKind
+	cmp #EXPR_VALUE_WORD
+	beq .ready
+	cmp #EXPR_VALUE_BYTE
+	beq emit_zero_high
+	cmp #EXPR_VALUE_CONDITION
+	bne .bad
+	jsr materialize_expression_condition
+	bcc .bad
+	jmp emit_zero_high
+.ready:
+	sec
+	rts
+.bad:
+	clc
+	rts
+
+materialize_expression_value:
+	lda expressionPhysicalKind
+	cmp #EXPR_VALUE_CONDITION
+	beq materialize_expression_condition
+	cmp #EXPR_VALUE_BYTE
+	beq .ready
+	cmp #EXPR_VALUE_WORD
+	beq .ready
+	clc
+	rts
+.ready:
+	sec
+	rts
+
+;;; A comparison-as-value is rare enough that the obvious local control sequence
+;;; is preferable to a second Boolean representation. The live flags are consumed
+;;; by the first branch; only then do we manufacture canonical 0/1 in A.
+materialize_expression_condition:
+	lda #EMIT_LABEL_CMP_DONE
+	sta emitLabelKind
+	jsr reserve_generated_label
+	lda emitLabelValue
+	sta conditionTrueLabel
+	lda emitLabelValue+1
+	sta conditionTrueLabel+1
+	jsr reserve_generated_label
+	lda emitLabelValue
+	sta compareDoneLabel
+	lda emitLabelValue+1
+	sta compareDoneLabel+1
+
+	lda expressionConditionBranch
+	cmp #EXPR_CONDITION_BNE
+	beq .bne
+	cmp #EXPR_CONDITION_BEQ
+	beq .beq
+	cmp #EXPR_CONDITION_BCC
+	beq .bcc
+	cmp #EXPR_CONDITION_BCS
+	beq .bcs
+	clc
+	rts
+.bne:
+	ldx #<exprBne
+	ldy #>exprBne
+	jmp .branch
+.beq:
+	ldx #<exprBeq
+	ldy #>exprBeq
+	jmp .branch
+.bcc:
+	ldx #<exprBcc
+	ldy #>exprBcc
+	jmp .branch
+.bcs:
+	ldx #<exprBcs
+	ldy #>exprBcs
+.branch:
+	jsr emit_string
+	bcc .failed
+	lda conditionTrueLabel
+	sta emitLabelValue
+	lda conditionTrueLabel+1
+	sta emitLabelValue+1
+	jsr emit_generated_label_name
+	bcc .failed
+	jsr emit_newline
+	bcc .failed
+
+	ldx #<exprByteFalse
+	ldy #>exprByteFalse
+	jsr emit_string
+	bcc .failed
+	lda compareDoneLabel
+	sta emitLabelValue
+	lda compareDoneLabel+1
+	sta emitLabelValue+1
+	jsr emit_jump_label
+	bcc .failed
+
+	lda conditionTrueLabel
+	sta emitLabelValue
+	lda conditionTrueLabel+1
+	sta emitLabelValue+1
+	jsr emit_label_definition
+	bcc .failed
+	ldx #<exprByteTrue
+	ldy #>exprByteTrue
+	jsr emit_string
+	bcc .failed
+
+	lda compareDoneLabel
+	sta emitLabelValue
+	lda compareDoneLabel+1
+	sta emitLabelValue+1
+	jsr emit_label_definition
+	bcc .failed
+	jmp mark_expression_byte_z
+.failed:
+	clc
+	rts
+
+;;; ---------------------------------------------------------------------------
+;;; Primary values and storage
+;;; ---------------------------------------------------------------------------
 
 emit_load_literal:
-	lda #$00
-	sta expressionTruthInZ
 	ldx #<exprLdaImm
 	ldy #>exprLdaImm
 	jsr emit_string
@@ -36,7 +234,12 @@ emit_load_literal:
 	bcs .done
 	rts
 .done:
-	jmp emit_newline
+	jsr emit_newline
+	bcc .failed
+	jmp mark_expression_word
+.failed:
+	clc
+	rts
 
 emit_load_literal_address:
 	ldx #<exprLdaLowImm
@@ -65,12 +268,16 @@ emit_load_literal_address:
 	bcs .done
 	rts
 .done:
-	jmp emit_newline
+	jsr emit_newline
+	bcc .failed
+	jmp mark_expression_word
+.failed:
+	clc
+	rts
 
 ;;; Load the scalar captured by expression.asm. During a direct scalar reduction
-;;; A/X still holds the left operand, so deliberately emit no target load; the
-;;; direct reducer will address this symbol in place. Tighter RHS expressions
-;;; have already taken a real static spill and therefore arrive through .emit.
+;;; A still holds the left operand, so deliberately emit no target load; the
+;;; direct reducer addresses this symbol in place.
 emit_load_primary_scalar:
 	lda immediateBinaryState
 	cmp #IMMEDIATE_BINARY_CAPTURED_SCALAR
@@ -85,8 +292,6 @@ emit_load_primary_scalar:
 
 .emit:
 emit_load_primary_scalar_now:
-	lda #$00
-	sta expressionTruthInZ
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
 	jsr emit_string
@@ -103,7 +308,9 @@ emit_load_primary_scalar_now:
 .width:
 	lda primarySymbolType
 	cmp #TYPE_CHAR
-	beq emit_zero_high
+	bne .word
+	jmp mark_expression_byte_z
+.word:
 	ldx #<exprLdxSpace
 	ldy #>exprLdxSpace
 	jsr emit_string
@@ -114,12 +321,22 @@ emit_load_primary_scalar_now:
 	bcs .highDone
 	rts
 .highDone:
-	jmp emit_plus_one_newline
+	jsr emit_plus_one_newline
+	bcc .failed
+	jmp mark_expression_word
+.failed:
+	clc
+	rts
 
 emit_zero_high:
 	ldx #<exprLdxZero
 	ldy #>exprLdxZero
-	jmp emit_string
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_word
+.failed:
+	clc
+	rts
 
 emit_load_primary_address:
 	ldx #<exprLdaLowImm
@@ -148,7 +365,12 @@ emit_load_primary_address:
 	bcs .done
 	rts
 .done:
-	jmp emit_newline
+	jsr emit_newline
+	bcc .failed
+	jmp mark_expression_word
+.failed:
+	clc
+	rts
 
 emit_plus_one_newline:
 	ldx #<exprPlusOne
@@ -159,8 +381,9 @@ emit_plus_one_newline:
 .done:
 	jmp emit_newline
 
-;;; Spill storage is allocated by expression.asm. This routine merely gives the
-;;; new word its deterministic assembler-visible name.
+;;; Spill storage remains a conservative word lifetime in #88. The important
+;;; change is that ordinary byte values do not become words merely because they
+;;; were loaded; widening happens here only when a later expression must survive.
 emit_spill_definition:
 	sta emitSpillIndex
 	jsr emit_spill_name
@@ -183,16 +406,16 @@ emit_spill_definition:
 .done:
 	jmp emit_newline
 
-;;; Store target A/X in the fixed NC_PTR scratch pair without applying the
-;;; simple-scalar suppression used by emit_store_spill.
+;;; Internal address code already knows A/X is a pair. Do not consult expression
+;;; state here: the current expression may be saved elsewhere while an lvalue
+;;; address is being restored.
 emit_store_transient:
 	lda #EMIT_TRANSIENT_SPILL
 	sta emitSpillIndex
-	jmp emit_store_spill_now
+	jmp emit_store_spill_pair
 
-;;; The transient sentinel means a simple scalar RHS. Operators which can address
-;;; that scalar directly need no spill at all; GT/LE retain the old NC_PTR
-;;; transient sequence because its reversed compare already expresses equality.
+;;; A simple scalar RHS which the target instruction can address directly needs
+;;; no transient spill at all.
 emit_store_spill:
 	sta emitSpillIndex
 	cmp #EMIT_TRANSIENT_SPILL
@@ -203,6 +426,9 @@ emit_store_spill:
 	rts
 .store:
 emit_store_spill_now:
+	jsr ensure_expression_word
+	bcc .failed
+emit_store_spill_pair:
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
 	jsr emit_string
@@ -230,27 +456,38 @@ emit_store_spill_now:
 	rts
 .done:
 	jmp emit_plus_one_newline
+.failed:
+	clc
+	rts
 
-;;; X=current-function symbol index; target value already lives in A/X.
+;;; X=current-function symbol index. The destination, not the source C type,
+;;; decides how much physical value is observable.
 emit_store_current_value:
 	stx emitSavedIndex
+	ldx emitSavedIndex
+	lda currentType,x
+	cmp #TYPE_CHAR
+	bne .word
+	jsr ensure_expression_byte_value
+	jmp .prepared
+.word:
+	jsr ensure_expression_word
+.prepared:
+	bcc .failedRestore
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
 	jsr emit_string
 	bcs .lowName
-	ldx emitSavedIndex
-	rts
+	jmp .failedRestore
 .lowName:
 	ldx emitSavedIndex
 	jsr emit_current_name
 	bcs .lowDone
-	ldx emitSavedIndex
-	rts
+	jmp .failedRestore
 .lowDone:
 	jsr emit_newline
 	bcs .width
-	ldx emitSavedIndex
-	rts
+	jmp .failedRestore
 .width:
 	ldx emitSavedIndex
 	lda currentType,x
@@ -260,35 +497,40 @@ emit_store_current_value:
 	ldy #>exprStxSpace
 	jsr emit_string
 	bcs .highName
-	ldx emitSavedIndex
-	rts
+	jmp .failedRestore
 .highName:
 	ldx emitSavedIndex
 	jsr emit_current_name
 	bcs .highDone
-	ldx emitSavedIndex
-	rts
+	jmp .failedRestore
 .highDone:
 	jsr emit_plus_one_newline
-	bcs .done
-	ldx emitSavedIndex
-	rts
+	bcc .failedRestore
 .done:
 	ldx emitSavedIndex
 	sec
 	rts
+.failedRestore:
+	ldx emitSavedIndex
+	clc
+	rts
 
 emit_unary_minus:
-	lda #$00
-	sta expressionTruthInZ
+	jsr ensure_expression_word
+	bcc .failed
 	ldx #<exprNegate
 	ldy #>exprNegate
-	jmp emit_string
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_word
+.failed:
+	clc
+	rts
 
-;;; Keep relative branches in this selector local. Every Phase 1 operator class
-;;; is named explicitly; an unknown operator is an internal failure, not an
-;;; accidental comparison. A transient scalar sentinel selects the direct
-;;; memory-operand path; GT/LE deliberately keep the ordinary NC_PTR fallback.
+;;; ---------------------------------------------------------------------------
+;;; Binary reductions
+;;; ---------------------------------------------------------------------------
+
 emit_binary_reduction:
 	lda reduceSpill
 	cmp #EMIT_TRANSIENT_SPILL
@@ -298,8 +540,6 @@ emit_binary_reduction:
 	jmp emit_scalar_binary_reduction
 
 .ordinary:
-	lda #$00
-	sta expressionTruthInZ
 	lda reduceOperator
 	cmp #OP_ADD
 	beq .add
@@ -346,17 +586,26 @@ emit_binary_reduction:
 .compare:
 	jmp emit_compare_reduction
 
-;;; A/X is the right operand. Preserve it in the machine-contract scratch pair
-;;; while the left spill is loaded.
+;;; A/X is the right operand. Preserve exactly the width the reduction needs.
 emit_save_right_tmp:
+	jsr ensure_expression_word
+	bcc .failed
 	ldx #<exprSaveRight
 	ldy #>exprSaveRight
 	jmp emit_string
+.failed:
+	clc
+	rts
 
 emit_save_right_byte_tmp:
+	jsr ensure_expression_byte_value
+	bcc .failed
 	ldx #<exprStaTmp
 	ldy #>exprStaTmp
 	jmp emit_string
+.failed:
+	clc
+	rts
 
 emit_lda_reduce_spill:
 	ldx #<exprLdaSpace
@@ -407,7 +656,12 @@ emit_add_reduction:
 .addHigh:
 	ldx #<exprAddHigh
 	ldy #>exprAddHigh
-	jmp emit_string
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_word
+.failed:
+	clc
+	rts
 
 emit_sub_reduction:
 	jsr emit_save_right_tmp
@@ -430,7 +684,12 @@ emit_sub_reduction:
 .subHigh:
 	ldx #<exprSubHigh
 	ldy #>exprSubHigh
-	jmp emit_string
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_word
+.failed:
+	clc
+	rts
 
 emit_and_reduction:
 	jsr emit_save_right_tmp
@@ -453,7 +712,12 @@ emit_and_reduction:
 .andHigh:
 	ldx #<exprAndHigh
 	ldy #>exprAndHigh
-	jmp emit_string
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_word
+.failed:
+	clc
+	rts
 
 emit_or_reduction:
 	jsr emit_save_right_tmp
@@ -476,12 +740,18 @@ emit_or_reduction:
 .orHigh:
 	ldx #<exprOrHigh
 	ldy #>exprOrHigh
-	jmp emit_string
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_word
+.failed:
+	clc
+	rts
 
 ;;; __nc_mul16 uses the frozen helper convention: left operand in NC_TMP,
-;;; right operand in A/X, result in A/X. Record the helper at the exact point
-;;; where a real multiplication reduction is emitted.
+;;; right operand in A/X, result in A/X.
 emit_mul_reduction:
+	jsr ensure_expression_word
+	bcc .failed
 	lda #$01
 	sta multiplyUsed
 	ldx #<exprMulSaveLow
@@ -506,7 +776,12 @@ emit_mul_reduction:
 .tail:
 	ldx #<exprMulTail
 	ldy #>exprMulTail
-	jmp emit_string
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_word
+.failed:
+	clc
+	rts
 
 emit_shl_reduction:
 	lda #$01
@@ -517,10 +792,12 @@ emit_shr_reduction:
 	lda #$00
 	sta shiftLeftFlag
 
-;;; Variable shifts are deliberately a tiny generated loop. Both destinations
-;;; are created within this routine, so their relative branches are local by
-;;; construction; no distance analysis is required.
+;;; Variable shifts retain their existing small generated loop. The count uses
+;;; the same low-byte convention as before; if it is a lazy comparison it must be
+;;; materialised before TAY consumes A.
 emit_shift_reduction:
+	jsr ensure_expression_byte_value
+	bcc .failed
 	lda #EMIT_LABEL_GENERIC
 	sta emitLabelKind
 	jsr reserve_generated_label
@@ -634,7 +911,12 @@ emit_shift_reduction:
 .result:
 	ldx #<exprLoadTmpResult
 	ldy #>exprLoadTmpResult
-	jmp emit_string
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_word
+.failed:
+	clc
+	rts
 
 ;;; ---------------------------------------------------------------------------
 ;;; Comparisons
@@ -706,10 +988,9 @@ emit_long_conditional_jump:
 	clc
 	rts
 
-;;; Both char operands already occupy the exact 0..255 domain after promotion,
-;;; so their high bytes cannot affect a comparison. Use the ordinary 6502 byte
-;;; forms and leave X at zero. Wider operands retain the explicit 16-bit helper
-;;; path below.
+;;; Byte comparisons leave the useful target flags live. Wider comparisons keep
+;;; the existing helper convention, which already returns canonical 0/1 in A/X
+;;; and leaves Z matching A.
 emit_compare_reduction:
 	lda reduceLeftType
 	cmp #TYPE_CHAR
@@ -733,11 +1014,6 @@ emit_compare_reduction:
 .call:
 	jmp emit_compare_helper_call
 
-;;; Equality uses CMP and one nearby result label. Relational comparisons use the
-;;; carry produced by CMP directly: LDA #0 / ROL turns carry into the C value
-;;; 0/1; EOR #1 supplies the complementary < or > case. For > and <= the right
-;;; operand is already in A, so comparing it against the saved left operand gives
-;;; the useful reversed carry without another temporary.
 emit_byte_compare_reduction:
 	lda reduceOperator
 	cmp #OP_EQ
@@ -759,25 +1035,40 @@ emit_byte_compare_reduction:
 	bcc .failed
 	lda reduceOperator
 	cmp #OP_GE
-	beq .carry
-	jmp emit_byte_not_carry_result
+	beq .ge
+	lda #EXPR_CONDITION_BCC
+	jmp mark_expression_condition
+.ge:
+	lda #EXPR_CONDITION_BCS
+	jmp mark_expression_condition
 
 .rightAgainstLeft:
+	jsr ensure_expression_byte_value
+	bcc .failed
 	jsr emit_cmp_reduce_spill
 	bcc .failed
 	lda reduceOperator
 	cmp #OP_LE
-	beq .carry
-	jmp emit_byte_not_carry_result
-.carry:
-	jmp emit_byte_carry_result
+	beq .le
+	lda #EXPR_CONDITION_BCC
+	jmp mark_expression_condition
+.le:
+	lda #EXPR_CONDITION_BCS
+	jmp mark_expression_condition
 
 .equality:
-	jsr begin_byte_equality
+	jsr ensure_expression_byte_value
 	bcc .failed
 	jsr emit_cmp_reduce_spill
 	bcc .failed
-	jmp finish_byte_equality
+	lda reduceOperator
+	cmp #OP_EQ
+	bne .ne
+	lda #EXPR_CONDITION_BEQ
+	jmp mark_expression_condition
+.ne:
+	lda #EXPR_CONDITION_BNE
+	jmp mark_expression_condition
 .failed:
 	clc
 	rts
@@ -810,101 +1101,12 @@ emit_cmp_literal_byte:
 .done:
 	jmp emit_newline
 
-;;; Reserve one local done label before CMP so the only relative branch emitted
-;;; by equality is visibly bounded by the following INY/DEY.
-begin_byte_equality:
-	lda #EMIT_LABEL_CMP_DONE
-	sta emitLabelKind
-	jsr reserve_generated_label
-	lda emitLabelValue
-	sta compareDoneLabel
-	lda emitLabelValue+1
-	sta compareDoneLabel+1
-	lda reduceOperator
-	cmp #OP_EQ
-	bne .notEqual
-	ldx #<exprLdyZero
-	ldy #>exprLdyZero
-	jmp emit_string
-.notEqual:
-	ldx #<exprLdyOne
-	ldy #>exprLdyOne
-	jmp emit_string
-
-finish_byte_equality:
-	ldx #<exprBne
-	ldy #>exprBne
-	jsr emit_string
-	bcc .failed
-	lda #EMIT_LABEL_CMP_DONE
-	sta emitLabelKind
-	lda compareDoneLabel
-	sta emitLabelValue
-	lda compareDoneLabel+1
-	sta emitLabelValue+1
-	jsr emit_generated_label_name
-	bcc .failed
-	jsr emit_newline
-	bcc .failed
-	lda reduceOperator
-	cmp #OP_EQ
-	bne .notEqual
-	ldx #<exprIny
-	ldy #>exprIny
-	jmp .adjust
-.notEqual:
-	ldx #<exprDey
-	ldy #>exprDey
-.adjust:
-	jsr emit_string
-	bcc .failed
-	lda #EMIT_LABEL_CMP_DONE
-	sta emitLabelKind
-	lda compareDoneLabel
-	sta emitLabelValue
-	lda compareDoneLabel+1
-	sta emitLabelValue+1
-	jsr emit_label_definition
-	bcc .failed
-	ldx #<exprTya
-	ldy #>exprTya
-	jsr emit_string
-	bcc .failed
-	jmp mark_expression_truth
-.failed:
-	clc
-	rts
-
-emit_byte_carry_result:
-	ldx #<exprByteCarryResult
-	ldy #>exprByteCarryResult
-	jsr emit_string
-	bcc .failed
-	jmp mark_expression_truth
-.failed:
-	clc
-	rts
-
-emit_byte_not_carry_result:
-	ldx #<exprByteCarryResult
-	ldy #>exprByteCarryResult
-	jsr emit_string
-	bcc .failed
-	ldx #<exprByteInvertResult
-	ldy #>exprByteInvertResult
-	jsr emit_string
-	bcc .failed
-	jmp mark_expression_truth
-.failed:
-	clc
-	rts
-
 emit_byte_false_result:
 	ldx #<exprByteFalse
 	ldy #>exprByteFalse
 	jsr emit_string
 	bcc .failed
-	jmp mark_expression_truth
+	jmp mark_expression_byte_z
 .failed:
 	clc
 	rts
@@ -914,20 +1116,12 @@ emit_byte_true_result:
 	ldy #>exprByteTrue
 	jsr emit_string
 	bcc .failed
-	jmp mark_expression_truth
+	jmp mark_expression_byte_z
 .failed:
 	clc
 	rts
 
-mark_expression_truth:
-	lda #$01
-	sta expressionTruthInZ
-	sec
-	rts
-
-;;; A/X is already the left operand and NC_TMP is the right operand. Select the
-;;; one shared 16-bit comparison helper from the source operator and the normal
-;;; Phase 1 integer-conversion rule. Both spill and literal-RHS paths arrive here.
+;;; A/X is already the left operand and NC_TMP is the right operand.
 emit_compare_helper_call:
 	lda #$01
 	sta compareUsed
@@ -1003,7 +1197,7 @@ emit_compare_call:
 .newline:
 	jsr emit_newline
 	bcc .failed
-	jmp mark_expression_truth
+	jmp mark_expression_word_truth
 .failed:
 	clc
 	rts
@@ -1047,9 +1241,10 @@ emit_label_definition:
 .done:
 	jmp emit_newline
 
-;;; Save the target index in NC_TMP and apply element scaling. Both expression
-;;; reads and statement lvalues use this exact preparation before choosing where
-;;; their base address comes from.
+;;; ---------------------------------------------------------------------------
+;;; Indexing
+;;; ---------------------------------------------------------------------------
+
 emit_index_offset:
 	lda #$01
 	sta indexUsed
@@ -1068,9 +1263,6 @@ emit_index_offset:
 	clc
 	rts
 
-;;; Ordinary bases are saved in reduceSpill; a fixed char array is encoded as
-;;; INDEX_ARRAY_BIAS + persistent symbol index. The uncommon 16-bit add lives in
-;;; one generated support routine rather than a large inline template.
 emit_index_address:
 	jsr emit_index_offset
 	bcc .failed
@@ -1098,8 +1290,6 @@ emit_index_address_call:
 	jmp emit_string
 
 emit_index_load:
-	lda #$00
-	sta expressionTruthInZ
 	lda reduceLeftType
 	cmp #TYPE_CHAR
 	bne .general
@@ -1108,8 +1298,9 @@ emit_index_load:
 	bne .general
 
 	;;; Byte indexes belong in Y. Fixed arrays use absolute,Y directly. Pointer
-	;;; values were already saved before the index expression, so restore that
-	;;; exact value to NC_PTR and use (NC_PTR),Y without 16-bit addition.
+	;;; values were already saved before the index expression.
+	jsr ensure_expression_byte_value
+	bcc .failed
 	ldx #<exprTay
 	ldy #>exprTay
 	jsr emit_string
@@ -1125,7 +1316,9 @@ emit_index_load:
 	bcc .failed
 	ldx #<exprCharIndirectY
 	ldy #>exprCharIndirectY
-	jmp emit_string
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_byte_z
 
 .fixedArray:
 	ldx #<exprLdaSpace
@@ -1142,7 +1335,7 @@ emit_index_load:
 	ldy #>exprIndexYSuffix
 	jsr emit_string
 	bcc .failed
-	jmp emit_zero_high
+	jmp mark_expression_byte_z
 
 .general:
 	jsr emit_index_address
@@ -1152,11 +1345,15 @@ emit_index_load:
 	beq .char
 	ldx #<exprWordIndirect
 	ldy #>exprWordIndirect
-	jmp emit_string
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_word
 .char:
 	ldx #<exprCharIndirect
 	ldy #>exprCharIndirect
-	jmp emit_string
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_byte_z
 .failed:
 	clc
 	rts
@@ -1164,11 +1361,6 @@ emit_index_load:
 ;;; ---------------------------------------------------------------------------
 ;;; Fixed target-source fragments
 ;;; ---------------------------------------------------------------------------
-;;;
-;;; The End labels are retained temporarily because a few focused test/formatter
-;;; callers still use the old explicit-length seam. Each End points before the
-;;; NUL, so those callers see exactly the same bytes while production uses
-;;; emit_string.
 
 exprLdaImm:		byte $09,'l','d','a',' ','#','$'
 exprLdaImmEnd:		byte 0
@@ -1286,22 +1478,17 @@ exprLoadTmpResultEnd:	byte 0
 exprCmpSpace:		byte $09,'c','m','p',' ',0
 exprCmpImmediate:	byte $09,'c','m','p',' ','#','$',0
 exprCmpTmp:		byte $09,'c','m','p',' ','N','C','_','T','M','P',$0a,0
-exprByteCarryResult:
-	byte $09,'l','d','a',' ','#','$','0','0',$0a
-	byte $09,'r','o','l',$0a,0
-exprByteInvertResult:	byte $09,'e','o','r',' ','#','$','0','1',$0a,0
 exprByteFalse:		byte $09,'l','d','a',' ','#','$','0','0',$0a,0
 exprByteTrue:		byte $09,'l','d','a',' ','#','$','0','1',$0a,0
-exprLdyZero:		byte $09,'l','d','y',' ','#','$','0','0',$0a,0
-exprLdyOne:		byte $09,'l','d','y',' ','#','$','0','1',$0a,0
-exprIny:		byte $09,'i','n','y',$0a,0
-exprDey:		byte $09,'d','e','y',$0a,0
-exprTya:		byte $09,'t','y','a',$0a,0
 
 exprBne:		byte $09,'b','n','e',' '
 exprBneEnd:		byte 0
 exprBeq:		byte $09,'b','e','q',' '
 exprBeqEnd:		byte 0
+exprBcc:		byte $09,'b','c','c',' '
+exprBccEnd:		byte 0
+exprBcs:		byte $09,'b','c','s',' '
+exprBcsEnd:		byte 0
 exprJmp:		byte $09,'j','m','p',' '
 exprJmpEnd:		byte 0
 exprCallEq16:		byte $09
@@ -1334,8 +1521,7 @@ exprScaleIndexEnd:	byte 0
 exprCharIndirect:
 	byte $09,'l','d','y',' ','#','$','0','0',$0a
 exprCharIndirectY:
-	byte $09,'l','d','a',' ','(','N','C','_','P','T','R',')',',','y',$0a
-	byte $09,'l','d','x',' ','#','$','0','0',$0a
+	byte $09,'l','d','a',' ','(','N','C','_','P','T','R',')',',','y',$0a,0
 exprCharIndirectEnd:	byte 0
 exprIndexYSuffix:	byte ',', 'y', $0a, 0
 exprWordIndirect:
