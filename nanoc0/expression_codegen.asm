@@ -94,7 +94,11 @@ emit_save_right_byte_tmp:
 ;;; X=current-function destination. Materialise only the width that destination
 ;;; can observe, then spell the direct store.
 emit_store_current_value:
-	stx emitSavedIndex
+	;;; Name emitters use emitSavedIndex themselves, so keep the destination on
+	;;; the compiler's hardware stack across operand materialisation instead of
+	;;; inventing another persistent scratch byte for this short lifetime.
+	txa
+	pha
 	lda currentType,x
 	cmp #TYPE_CHAR
 	bne .word
@@ -112,7 +116,9 @@ emit_store_current_value:
 	bcs .lowName
 	jmp .failed
 .lowName:
-	ldx emitSavedIndex
+	pla
+	tax
+	pha
 	jsr emit_current_name
 	bcs .lowDone
 	jmp .failed
@@ -121,7 +127,9 @@ emit_store_current_value:
 	bcs .width
 	jmp .failed
 .width:
-	ldx emitSavedIndex
+	pla
+	tax
+	pha
 	lda currentType,x
 	cmp #TYPE_CHAR
 	beq .done
@@ -131,7 +139,9 @@ emit_store_current_value:
 	bcs .highName
 	jmp .failed
 .highName:
-	ldx emitSavedIndex
+	pla
+	tax
+	pha
 	jsr emit_current_name
 	bcs .highDone
 	jmp .failed
@@ -139,11 +149,13 @@ emit_store_current_value:
 	jsr emit_plus_one_newline
 	bcc .failed
 .done:
-	ldx emitSavedIndex
+	pla
+	tax
 	sec
 	rts
 .failed:
-	ldx emitSavedIndex
+	pla
+	tax
 	clc
 	rts
 
