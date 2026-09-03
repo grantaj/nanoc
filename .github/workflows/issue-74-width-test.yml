@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -45,6 +48,8 @@ jobs:
           git apply .github/issue74/final-driver-branch.patch
           git apply --check .github/issue74/direct-byte-no-load.patch
           git apply .github/issue74/direct-byte-no-load.patch
+          git apply --check .github/issue74/acceptance.patch
+          git apply .github/issue74/acceptance.patch
           git diff --check
           git diff --stat
       - name: Set up development environment
@@ -55,11 +60,14 @@ jobs:
         run: make test-nanoc0-statements
       - name: Verify direct lowering shapes
         run: |
-          out=tests/nanoc0-stmt/stmtout.asm
-          test "$(grep -Ec '^[[:space:]]*inc __c_main__v00$' "$out")" -eq 1
-          test "$(grep -Ec '^[[:space:]]*dec __c_main__v00$' "$out")" -eq 1
-          grep -B1 -E '^[[:space:]]*inc __c_main__v00$' "$out" | grep -Eq '^[[:space:]]*sta __c_main__v00$'
-          grep -B1 -E '^[[:space:]]*dec __c_main__v00$' "$out" | grep -Eq '^[[:space:]]*sta __c_main__v00$'
+          out=tests/nanoc0-stmt/STMTOUT.ASM
+          test -f "$out" || out=tests/nanoc0-stmt/stmtout.asm
+          grep -Eq '^[[:space:]]*inc __c_direct_inc_probe$' "$out"
+          grep -Eq '^[[:space:]]*dec __c_direct_dec_probe$' "$out"
+          ! grep -Eq '^[[:space:]]*lda __c_direct_inc_probe$' "$out"
+          ! grep -Eq '^[[:space:]]*lda __c_direct_dec_probe$' "$out"
+          grep -Eq '^[[:space:]]*lda __c_direct_near_probe$' "$out"
+          ! grep -Eq '^[[:space:]]*(inc|dec) __c_direct_near_probe$' "$out"
           test "$(grep -Ec '^[[:space:]]*and #\$FF$' "$out")" -eq 0
           grep -Eq '^[[:space:]]*and #\$FE$' "$out"
           test "$(grep -Ec '^[[:space:]]*lsr NC_TMP\+1$' "$out")" -eq 1
@@ -98,6 +106,7 @@ jobs:
           name: issue-74-compact-working-sources
           if-no-files-found: error
           path: |
+            Makefile
             nanoc0/nanoc0.asm
             nanoc0/expression.asm
             nanoc0/expression_immediate.asm
@@ -109,3 +118,27 @@ jobs:
             tests/nanoc0-stmt/stmtout.asm
             build/nanoc0-integration/ASSFROMC.ASM
             build/nanoc0-integration/assfromc.asm
+      - name: Materialize clean issue branch
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p /tmp/issue74-clean
+          cp --parents Makefile \
+            nanoc0/nanoc0.asm \
+            nanoc0/expression.asm \
+            nanoc0/expression_immediate.asm \
+            nanoc0/statements.asm \
+            nanoc0/statement_codegen.asm \
+            nanoc0/runtime_codegen.asm \
+            tests/nanoc0-stmt/statements.c \
+            /tmp/issue74-clean
+          git fetch origin main --depth=1
+          git reset --hard origin/main
+          cp -a /tmp/issue74-clean/. .
+          git add Makefile nanoc0/nanoc0.asm nanoc0/expression.asm nanoc0/expression_immediate.asm \
+            nanoc0/statements.asm nanoc0/statement_codegen.asm nanoc0/runtime_codegen.asm \
+            tests/nanoc0-stmt/statements.c
+          git diff --cached --check
+          git config user.name 'Alex Grant'
+          git config user.email 'alex.grant@improbability.engineering'
+          git commit -m 'Generate direct fixed-width 6502 operations'
+          git push --force origin HEAD:refs/heads/issue-74-direct-fixed-width
