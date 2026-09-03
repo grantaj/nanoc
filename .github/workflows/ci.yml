@@ -43,3 +43,24 @@ jobs:
             build/nanoc0-integration/NCOUT.ASM
             build/nanoc0-integration/ncout.asm
           if-no-files-found: ignore
+
+      - name: Capture issue workspace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-96-workspace
+          path: |
+            .github
+            ass
+            bootstrap
+            dis
+            docs
+            examples
+            nanoc0
+            scripts
+            tests
+            Makefile
+            README.md
+            CONTRIBUTING.md
+            test.inc
+          if-no-files-found: error
