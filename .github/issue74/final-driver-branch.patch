@@ -1,0 +1,22 @@
+--- a/nanoc0/nanoc0.asm
++++ b/nanoc0/nanoc0.asm
+@@ -331,7 +331,12 @@ source_has_zero_arg_main:
+ 	lda #'n'
+ 	sta currentTokenText+3
+ 	jsr lookup_persistent_token
+-	bcc .no
++	bcs .found
++.no:
++	clc
++	rts
++.found:
+ 	lda persistentKind,x
+ 	cmp #SYMBOL_FUNCTION
+ 	bne .no
+@@ -340,7 +345,3 @@ source_has_zero_arg_main:
+ 	bne .no
+ 	sec
+ 	rts
+-.no:
+-	clc
+-	rts
