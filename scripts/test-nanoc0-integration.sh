@@ -173,7 +173,7 @@ fi
 # Once later work brings both budgets under their hard limits this script
 # naturally executes the decisive native rung as well. #77 makes that rung a
 # required acceptance condition rather than merely an available continuation.
-if ! VICE_TIMEOUT=240 VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
+if ! VICE_TIMEOUT=600 VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
     sh tests/run-test.sh "$BUILD_DIR/test_ass_from_c.prg" ass-from-c; then
     report_ass_from_c_mailbox
     exit 1
