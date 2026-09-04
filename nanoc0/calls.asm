@@ -8,11 +8,12 @@
 ;;; of that marker. The frame index itself is the pending-call depth.
 ;;;
 ;;; Arguments that must survive later argument expressions use the bounded 6502
-;;; hardware stack. The final argument has no later source to survive, so it goes
-;;; straight from A/X to the callee parameter slot. After the closing ')' earlier
-;;; arguments are popped in reverse into their fixed callee slots, then one direct
-;;; JSR is emitted. Nested calls naturally nest these short lifetimes underneath
-;;; their own return addresses; Phase 1 has no recursion or re-entrancy.
+;;; hardware stack. For a C-defined function the final argument stays naturally in
+;;; A/X; if earlier arguments must be restored, Y holds its low byte while PLA/STA
+;;; copies those earlier values to their fixed slots. The callee stores the final
+;;; parameter once at function entry. Runtime routines keep their established
+;;; static-slot interface. Nested calls naturally nest these short lifetimes;
+;;; Phase 1 has no recursion or re-entrancy.
 ;;;
 ;;; bootstrap/ass.c currently needs at most five arguments. Eight leaves modest
 ;;; headroom. Four pending calls comfortably covers the deliberately nested
@@ -197,8 +198,8 @@ finish_call_separator:
 
 ;;; finish_call_close
 ;;; currentToken is ')' for a non-empty call. The final argument has no later
-;;; expression to survive. Store it directly, then restore earlier arguments from
-;;; the hardware stack before emitting the JSR.
+;;; expression to survive. Prepare its natural call-boundary form, then restore
+;;; earlier arguments from the hardware stack before emitting the JSR.
 finish_call_close:
 	jsr finish_current_call_value
 	bcc .failed
@@ -336,30 +337,45 @@ stage_current_call_argument:
 	rts
 
 ;;; store_final_call_argument
-;;; No later argument exists, so A/X can go directly to the fixed callee slot.
-;;; Runtime functions allocate those slots lazily; that allocator uses callEmit*
-;;; as scratch, so prepare the argument once more afterwards before spelling it.
+;;; No later argument exists. A C-defined callee receives this final value directly
+;;; in A/X and stores it once at entry. Runtime routines retain their static slots.
+;;; With earlier arguments below it on the hardware stack, Y preserves the low byte
+;;; while those PLA/STA restores run; X already carries the high byte and survives.
 store_final_call_argument:
 	jsr prepare_current_call_argument
 	bcc .failed
 	ldx callEmitCallee
 	lda persistentKind,x
 	cmp #SYMBOL_RUNTIME_FUNCTION
-	bne .ready
+	beq .runtime
+	jsr materialize_call_argument
+	bcc .failed
+	ldx callEmitDepth
+	inc callArgumentIndex,x
+	lda callArgumentIndex,x
+	cmp #$02
+	bcc .done
+	ldx #<exprTay
+	ldy #>exprTay
+	jsr emit_string
+	bcc .emitFailed
+.done:
+	sec
+	rts
+.runtime:
 	jsr ensure_runtime_parameter_slots
 	bcc .failed
 	jsr prepare_current_call_argument
 	bcc .failed
-.ready:
 	jsr emit_store_callee_argument
-	bcs .stored
-	lda #EXPR_EMIT_ERROR
-	jmp expression_fail
-.stored:
+	bcc .emitFailed
 	ldx callEmitDepth
 	inc callArgumentIndex,x
 	sec
 	rts
+.emitFailed:
+	lda #EXPR_EMIT_ERROR
+	jmp expression_fail
 .failed:
 	clc
 	rts
@@ -404,8 +420,9 @@ complete_current_call:
 	sta runtimeUsed,x
 
 .copyArguments:
-	;;; The final argument is already in its callee slot. Earlier arguments were
-	;;; pushed in source order, so restore them in reverse order.
+	;;; Earlier arguments were pushed in source order, so restore them in reverse.
+	;;; A C-defined final argument remains in A/X (or Y/X while these restores run);
+	;;; runtime calls have already stored their final argument in the fixed slot.
 	lda callEmitArgumentCount
 	beq .call
 	sec
@@ -430,8 +447,23 @@ complete_current_call:
 	jmp expression_fail
 
 .call:
+	;;; For a C-defined multi-argument call, Y has preserved the final low byte
+	;;; while the earlier static parameter slots were restored.
+	ldx callEmitCallee
+	lda persistentKind,x
+	cmp #SYMBOL_RUNTIME_FUNCTION
+	beq .emitCall
+	lda callEmitArgumentCount
+	cmp #$02
+	bcc .emitCall
+	ldx #<exprTya
+	ldy #>exprTya
+	jsr emit_string
+	bcc .callEmitFailed
+.emitCall:
 	jsr emit_call_instruction
 	bcs .called
+.callEmitFailed:
 	lda #EXPR_EMIT_ERROR
 	jmp expression_fail
 .called:
@@ -513,18 +545,17 @@ ensure_runtime_parameter_slots:
 ;;; Pending-call compiler state
 ;;; ---------------------------------------------------------------------------
 
-;;; The bounded arrays use the fixed compiler work-RAM constants declared above.
-callDepth:		byte 0
-
-;;; Transient call/codegen scratch.
-callBeginCallee:	byte 0
-callEmitDepth:		byte 0
-callEmitArgument:	byte 0
-callEmitArgumentCount:	byte 0
-callEmitCallee:		byte 0
-callEmitParamType:	byte TYPE_INT
-callCopyIndex:		byte 0
-callRuntimeArgument:	byte 0
-callStatementMode:	byte 0
-callStatementSawOuter:	byte 0
-callStatementTerminator:	byte 0
+;;; Scalar call state is reset or assigned before use. It follows the expression
+;;; formatter scratch in the same compiler work-RAM region.
+callDepth                    = $b3f2
+callBeginCallee              = $b3f3
+callEmitDepth                = $b3f4
+callEmitArgument             = $b3f5
+callEmitArgumentCount        = $b3f6
+callEmitCallee               = $b3f7
+callEmitParamType            = $b3f8
+callCopyIndex                = $b3f9
+callRuntimeArgument          = $b3fa
+callStatementMode            = $b3fb
+callStatementSawOuter        = $b3fc
+callStatementTerminator      = $b3fd

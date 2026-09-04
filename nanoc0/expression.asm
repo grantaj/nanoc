@@ -398,47 +398,47 @@ expression_fail:
 ;;; Expression compiler state
 ;;; ---------------------------------------------------------------------------
 
-;;; One bounded operator stack. Group/index/call markers use the same arrays as
-;;; binary operators so nesting needs no recursive parser state. Their mutable
-;;; arrays use the fixed work-RAM constants declared above.
-operatorCount:		byte 0
-expressionNeedValue:	byte 0
-expressionValueType:	byte TYPE_INT
-expressionValueKind:	byte VALUE_AX
-expressionValueLow:	byte 0
-expressionValueHigh:	byte 0
-expressionIndexable:	byte 0
-expressionMustIndex:	byte 0
-expressionElementType:	byte TYPE_CHAR
-expressionError:	byte EXPR_OK
-pendingOperator:	byte 0
-pendingPrecedence:	byte 0
-rightStartState:	byte RIGHT_START_NORMAL
-wantedMarker:		byte 0
-reduceOperator:		byte 0
-reduceLeftKind:		byte VALUE_AX
-reduceLeftLow:		byte 0
-reduceLeftHigh:		byte 0
-reduceRightKind:	byte VALUE_AX
-reduceRightLow:		byte 0
-reduceRightHigh:	byte 0
-reduceLeftType:		byte TYPE_INT
-reduceRightType:	byte TYPE_INT
-preserveOperatorIndex:	byte 0
-reduceResultType:	byte TYPE_INT
-primarySymbolIndex:	byte 0
-primarySymbolArea:	byte SYMBOL_AREA_NONE
-primarySymbolKind:	byte 0
-primarySymbolType:	byte TYPE_INT
+;;; These bytes are compiler working state, just like the operator arrays above:
+;;; every field is established by the parser/reset path before it is observed.
+;;; Keep them in the otherwise-unused RAM under BASIC rather than carrying forty
+;;; zero/initial-value bytes in the native compiler image.
+operatorCount                = $b3c0
+expressionNeedValue          = $b3c1
+expressionValueType          = $b3c2
+expressionValueKind          = $b3c3
+expressionValueLow           = $b3c4
+expressionValueHigh          = $b3c5
+expressionIndexable          = $b3c6
+expressionMustIndex          = $b3c7
+expressionElementType        = $b3c8
+expressionError              = $b3c9
+pendingOperator              = $b3ca
+pendingPrecedence            = $b3cb
+rightStartState              = $b3cc
+wantedMarker                 = $b3cd
+reduceOperator               = $b3ce
+reduceLeftKind               = $b3cf
+reduceLeftLow                = $b3d0
+reduceLeftHigh               = $b3d1
+reduceRightKind              = $b3d2
+reduceRightLow               = $b3d3
+reduceRightHigh              = $b3d4
+reduceLeftType               = $b3d5
+reduceRightType              = $b3d6
+preserveOperatorIndex        = $b3d7
+reduceResultType             = $b3d8
+primarySymbolIndex           = $b3d9
+primarySymbolArea            = $b3da
+primarySymbolKind            = $b3db
+primarySymbolType            = $b3dc
 
-;;; Narrow deferred literal pool. Offsets/lengths are 16-bit so this storage is
-;;; independent of the scanner's reusable token width. Its mutable tables and
-;;; bytes use the fixed work-RAM constants above; only counters/scratch are loaded.
-literalCount:		byte 0
-literalBytesUsed:	word 0
-currentLiteralIndex:	byte 0
-literalNewEnd:		word 0
-literalEmitIndex:	byte 0
-literalEmitOffset:	word 0
-literalEmitRemaining:	byte 0
-literalEmitColumn:	byte 0
+;;; Narrow deferred-literal counters/scratch follow the expression state. The
+;;; literal byte/table storage itself remains at its earlier fixed addresses.
+literalCount                 = $b3dd
+literalBytesUsed             = $b3de
+currentLiteralIndex          = $b3e0
+literalNewEnd                = $b3e1
+literalEmitIndex             = $b3e3
+literalEmitOffset            = $b3e4
+literalEmitRemaining         = $b3e6
+literalEmitColumn            = $b3e7

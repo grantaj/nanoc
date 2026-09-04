@@ -3,10 +3,10 @@
 ;;; Literal target-code spelling for calls.asm.
 ;;;
 ;;; Earlier arguments whose lifetime crosses later argument evaluation use PHA.
-;;; The final argument goes straight from A/X to its callee parameter slot, then
-;;; earlier values are PLA'd in reverse into their slots. This is exactly the
-;;; short LIFO lifetime the hardware stack already represents; there is no caller
-;;; staging BSS or parameter-copy loop in the generated program.
+;;; A C-defined function receives its final argument directly in A/X; Y preserves
+;;; the low byte only while earlier values are PLA'd into their slots. Runtime
+;;; functions retain their fixed-slot ABI. This is exactly the short lifetime the
+;;; 6502 registers/stack already represent; there is no caller staging BSS.
 
 ;;; The #56 statement regression still names its original call-primary seam. Its
 ;;; fixture now reaches the real #57 wrong-argument-count diagnostic.
@@ -78,19 +78,30 @@ emit_push_call_argument:
 	clc
 	rts
 
-;;; The final argument needs no caller-owned staging. Store A/X directly into the
-;;; fixed callee parameter slot; char keeps the Phase 1 one-byte truncation rule.
-emit_store_callee_argument:
+
+;;; Put the prepared argument into its call-boundary register width without storing it.
+materialize_call_argument:
 	lda callEmitParamType
 	cmp #TYPE_CHAR
-	bne .prepareWord
-	jsr materialize_expression_byte
-	bcc .failed
-	jmp .prepared
-.prepareWord:
-	jsr materialize_expression_word
-	bcc .failed
+	beq .byte
+	jmp materialize_expression_word
+.byte:
+	jmp materialize_expression_byte
+
+;;; Runtime calls keep the established fixed callee parameter slot.
+emit_store_callee_argument:
+	jsr materialize_call_argument
+	bcs .prepared
+	clc
+	rts
 .prepared:
+	jmp emit_store_call_registers_to_callee
+
+;;; Store the already-prepared A/X call registers into callEmitCallee/Argument.
+;;; C-defined function entries use this once for their final parameter; runtime
+;;; callers use the same spelling at each call because those routines have no C
+;;; entry prologue.
+emit_store_call_registers_to_callee:
 	ldx #<callStaSpace
 	ldy #>callStaSpace
 	jsr emit_string

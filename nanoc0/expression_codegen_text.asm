@@ -49,7 +49,7 @@ exprTayTxa:
 	byte $09,'t','x','a',$0a,0
 exprTaxTya:
 	byte $09,'t','a','x',$0a
-	byte $09,'t','y','a',$0a,0
+exprTya:	byte $09,'t','y','a',$0a,0
 exprWordAddTmp:
 	byte $09,'c','l','c',$0a
 	byte $09,'a','d','c',' ','N','C','_','T','M','P',$0a
@@ -181,6 +181,6 @@ exprWordIndirect:
 exprWordIndirectEnd:	byte 0
 
 ;;; Scratch used only while formatting a branch-over-JMP statement transfer.
-conditionalTargetLabel:	word 0
-conditionalSkipLabel:		word 0
-conditionalTargetKind:	byte EMIT_LABEL_GENERIC
+conditionalTargetLabel        = $b400
+conditionalSkipLabel          = $b402
+conditionalTargetKind         = $b404
