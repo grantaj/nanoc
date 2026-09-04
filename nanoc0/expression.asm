@@ -100,6 +100,76 @@ literalBytes      = $b130
 operatorValueKind = $b3a0
 operatorValueHigh = $b3b0
 
+;;; The rest of the expression/call machine is scalar working state in the same
+;;; RAM-under-BASIC workspace. Keep the complete map here, before any parser or
+;;; emitter code references it: native ass is deliberately one-pass. Every byte
+;;; below is reset or assigned before it is observed; none is program data.
+operatorCount                = $b3c0
+expressionNeedValue          = $b3c1
+expressionValueType          = $b3c2
+expressionValueKind          = $b3c3
+expressionValueLow           = $b3c4
+expressionValueHigh          = $b3c5
+expressionIndexable          = $b3c6
+expressionMustIndex          = $b3c7
+expressionElementType        = $b3c8
+expressionError              = $b3c9
+pendingOperator              = $b3ca
+pendingPrecedence            = $b3cb
+rightStartState              = $b3cc
+wantedMarker                 = $b3cd
+reduceOperator               = $b3ce
+reduceLeftKind               = $b3cf
+reduceLeftLow                = $b3d0
+reduceLeftHigh               = $b3d1
+reduceRightKind              = $b3d2
+reduceRightLow               = $b3d3
+reduceRightHigh              = $b3d4
+reduceLeftType               = $b3d5
+reduceRightType              = $b3d6
+preserveOperatorIndex        = $b3d7
+reduceResultType             = $b3d8
+primarySymbolIndex           = $b3d9
+primarySymbolArea            = $b3da
+primarySymbolKind            = $b3db
+primarySymbolType            = $b3dc
+literalCount                 = $b3dd
+literalBytesUsed             = $b3de
+currentLiteralIndex          = $b3e0
+literalNewEnd                = $b3e1
+literalEmitIndex             = $b3e3
+literalEmitOffset            = $b3e4
+literalEmitRemaining         = $b3e6
+literalEmitColumn            = $b3e7
+
+;;; Short-lived target-code formatting facts follow the parser state.
+shiftLoopLabel               = $b3e8
+shiftDoneLabel               = $b3ea
+operandPrefix                = $b3ec
+expressionConditionBranch    = $b3ee
+compareUsed                  = $b3ef
+multiplyUsed                 = $b3f0
+indexUsed                    = $b3f1
+
+;;; Pending-call scalar state follows the formatter scratch.
+callDepth                    = $b3f2
+callBeginCallee              = $b3f3
+callEmitDepth                = $b3f4
+callEmitArgument             = $b3f5
+callEmitArgumentCount        = $b3f6
+callEmitCallee               = $b3f7
+callEmitParamType            = $b3f8
+callCopyIndex                = $b3f9
+callRuntimeArgument          = $b3fa
+callStatementMode            = $b3fb
+callStatementSawOuter        = $b3fc
+callStatementTerminator      = $b3fd
+
+;;; Branch-over-JMP formatting needs two 16-bit labels and their target kind.
+conditionalTargetLabel       = $b400
+conditionalSkipLabel         = $b402
+conditionalTargetKind        = $b404
+
 OP_GROUP = 1
 OP_INDEX = 2
 OP_NEG   = 3
@@ -394,51 +464,3 @@ expression_fail:
 	include "expression_codegen_state.asm"
 	include "calls.asm"
 
-;;; ---------------------------------------------------------------------------
-;;; Expression compiler state
-;;; ---------------------------------------------------------------------------
-
-;;; These bytes are compiler working state, just like the operator arrays above:
-;;; every field is established by the parser/reset path before it is observed.
-;;; Keep them in the otherwise-unused RAM under BASIC rather than carrying forty
-;;; zero/initial-value bytes in the native compiler image.
-operatorCount                = $b3c0
-expressionNeedValue          = $b3c1
-expressionValueType          = $b3c2
-expressionValueKind          = $b3c3
-expressionValueLow           = $b3c4
-expressionValueHigh          = $b3c5
-expressionIndexable          = $b3c6
-expressionMustIndex          = $b3c7
-expressionElementType        = $b3c8
-expressionError              = $b3c9
-pendingOperator              = $b3ca
-pendingPrecedence            = $b3cb
-rightStartState              = $b3cc
-wantedMarker                 = $b3cd
-reduceOperator               = $b3ce
-reduceLeftKind               = $b3cf
-reduceLeftLow                = $b3d0
-reduceLeftHigh               = $b3d1
-reduceRightKind              = $b3d2
-reduceRightLow               = $b3d3
-reduceRightHigh              = $b3d4
-reduceLeftType               = $b3d5
-reduceRightType              = $b3d6
-preserveOperatorIndex        = $b3d7
-reduceResultType             = $b3d8
-primarySymbolIndex           = $b3d9
-primarySymbolArea            = $b3da
-primarySymbolKind            = $b3db
-primarySymbolType            = $b3dc
-
-;;; Narrow deferred-literal counters/scratch follow the expression state. The
-;;; literal byte/table storage itself remains at its earlier fixed addresses.
-literalCount                 = $b3dd
-literalBytesUsed             = $b3de
-currentLiteralIndex          = $b3e0
-literalNewEnd                = $b3e1
-literalEmitIndex             = $b3e3
-literalEmitOffset            = $b3e4
-literalEmitRemaining         = $b3e6
-literalEmitColumn            = $b3e7

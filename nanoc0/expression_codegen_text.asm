@@ -180,7 +180,3 @@ exprWordIndirect:
 	byte $09,'l','d','a',' ','N','C','_','T','M','P',$0a
 exprWordIndirectEnd:	byte 0
 
-;;; Scratch used only while formatting a branch-over-JMP statement transfer.
-conditionalTargetLabel        = $b400
-conditionalSkipLabel          = $b402
-conditionalTargetKind         = $b404

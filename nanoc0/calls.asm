@@ -541,21 +541,3 @@ ensure_runtime_parameter_slots:
 
 	include "call_codegen.asm"
 
-;;; ---------------------------------------------------------------------------
-;;; Pending-call compiler state
-;;; ---------------------------------------------------------------------------
-
-;;; Scalar call state is reset or assigned before use. It follows the expression
-;;; formatter scratch in the same compiler work-RAM region.
-callDepth                    = $b3f2
-callBeginCallee              = $b3f3
-callEmitDepth                = $b3f4
-callEmitArgument             = $b3f5
-callEmitArgumentCount        = $b3f6
-callEmitCallee               = $b3f7
-callEmitParamType            = $b3f8
-callCopyIndex                = $b3f9
-callRuntimeArgument          = $b3fa
-callStatementMode            = $b3fb
-callStatementSawOuter        = $b3fc
-callStatementTerminator      = $b3fd

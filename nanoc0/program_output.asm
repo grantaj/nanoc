@@ -6,6 +6,10 @@
 ;;; spells those facts directly as readable assembler source; it is not an
 ;;; intermediate representation and retains no copy of the generated program.
 
+;;; One-byte formatter scratch. Keep its fixed work-RAM address before first use
+;;; for the native one-pass assembler; emit_static_byte assigns it before use.
+programStaticByte = $b3fe
+
 emit_persistent_symbol:
 	stx callEmitCallee
 	cmp #EMIT_STORAGE_BSS
@@ -122,6 +126,3 @@ emit_program_bss_assignment:
 
 programBytePrefix:	byte $09,'b','y','t','e',' ','$',0
 programBssEndPrefix:	byte '_','_','n','c','_','b','s','s','_','e','n','d',' ','=',' ','N','C','_','B','S','S','+','$',0
-
-;;; One-byte formatter scratch; emit_static_byte assigns it before use.
-programStaticByte = $b3fe
