@@ -70,6 +70,11 @@ VALUE_COND_GE      = 13
 VALUE_COND_GT      = 14
 VALUE_COND_LE      = 15
 
+;;; Physical truth flags are expression-machine facts. Keep these constants here,
+;;; before any parser/codegen reference, because native ass is deliberately one-pass.
+EXPR_CONDITION_NONE = 0
+EXPR_CONDITION_BNE  = 1
+
 ;;; Scalar assignment and expression parsing share these two temporary target
 ;;; states. Define them here, before expression code can reference them: native
 ;;; ass is deliberately one-pass and does not turn a forward label into a later

@@ -3,9 +3,6 @@
 ;;; Scratch used only while spelling target assembly. Source meaning remains in
 ;;; expression.asm; these bytes are short-lived formatter facts, not an IR.
 
-EXPR_CONDITION_NONE = 0
-EXPR_CONDITION_BNE  = 1
-
 shiftLoopLabel:		word 0
 shiftDoneLabel:		word 0
 operandPrefix:		word 0
