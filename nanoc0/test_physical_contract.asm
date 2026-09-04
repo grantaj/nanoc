@@ -15,10 +15,12 @@ main:
 	sta emitOutputEnabled
 	jsr reset_generated_labels
 
-	;;; No live condition: an ordinary byte value must still be accepted and the
-	;;; production emitter forms its truth test before the branch.
+	;;; No live condition: an ordinary byte value in A must still be accepted and
+	;;; the production emitter forms its truth test before the branch.
 	lda #EXPR_CONDITION_NONE
 	sta expressionConditionBranch
+	lda #VALUE_A
+	sta expressionValueKind
 	lda #TYPE_CHAR
 	sta expressionValueType
 	jsr pc_prepare_target
