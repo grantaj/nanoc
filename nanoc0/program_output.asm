@@ -7,16 +7,12 @@
 ;;; intermediate representation and retains no copy of the generated program.
 
 emit_persistent_symbol:
-	sta programStorageKind
-	stx programSavedSymbol
 	cmp #EMIT_STORAGE_BSS
 	beq .bss
-	cmp #EMIT_STORAGE_DATA
-	beq .label
 
-	;;; A function is ordinary executable text with a global label.
+	;;; Data and functions are ordinary loaded text with a global label. CMP/branches
+	;;; leave X holding the symbol index supplied by the declaration parser.
 .label:
-	ldx programSavedSymbol
 	jsr emit_persistent_name
 	bcc .failed
 	lda #':'
@@ -25,7 +21,6 @@ emit_persistent_symbol:
 	jmp emit_newline
 
 .bss:
-	ldx programSavedSymbol
 	jsr emit_persistent_name
 	bcc .failed
 	jmp emit_program_bss_assignment
@@ -34,7 +29,6 @@ emit_persistent_symbol:
 	rts
 
 emit_current_symbol:
-	stx programSavedSymbol
 	jsr emit_current_name
 	bcc .failed
 	jmp emit_program_bss_assignment
@@ -77,8 +71,8 @@ emit_bss_boundaries:
 	rts
 
 emit_program_bss_assignment:
-	ldx #<programBssAssign
-	ldy #>programBssAssign
+	ldx #<runtimeBssAssign
+	ldy #>runtimeBssAssign
 	jsr emit_string
 	bcc .failed
 	lda allocOffset
@@ -93,9 +87,6 @@ emit_program_bss_assignment:
 	rts
 
 programBytePrefix:	byte $09,'b','y','t','e',' ','$',0
-programBssAssign:	byte ' ','=',' ','N','C','_','B','S','S','+','$',0
 programBssEndPrefix:	byte '_','_','n','c','_','b','s','s','_','e','n','d',' ','=',' ','N','C','_','B','S','S','+','$',0
 
-programStorageKind:	byte 0
-programSavedSymbol:	byte 0
 programStaticByte:	byte 0
