@@ -262,6 +262,8 @@ emit_statement_false_jump:
 	lda expressionConditionBranch
 	cmp #EXPR_CONDITION_BNE
 	beq .bne
+	cmp #EXPR_CONDITION_NONE
+	bne .failed
 
 	jsr expression_index_is_byte_domain
 	bcc .word
