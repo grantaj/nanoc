@@ -381,6 +381,14 @@ expression_fail:
 	include "expression_reduce.asm"
 	include "expression_literals.asm"
 
+;;; The expression machine owns these peer output slabs directly. Keeping them
+;;; here avoids making literals an accidental include parent, and keeps the
+;;; production source within native ass's deliberately small include stack.
+	include "expression_codegen.asm"
+	include "expression_immediate.asm"
+	include "expression_codegen_state.asm"
+	include "calls.asm"
+
 ;;; ---------------------------------------------------------------------------
 ;;; Expression compiler state
 ;;; ---------------------------------------------------------------------------

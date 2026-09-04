@@ -179,10 +179,4 @@ emit_one_literal:
 	sec
 	rts
 
-;;; The output side is kept in separate readable slabs. Calls remain direct;
-;;; there is no intermediate representation or template-dispatch layer.
-	include "expression_codegen.asm"
-	include "expression_immediate.asm"
-	include "expression_codegen_state.asm"
-	include "calls.asm"
 
