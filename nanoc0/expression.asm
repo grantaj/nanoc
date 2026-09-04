@@ -154,6 +154,8 @@ reset_expression_function_state:
 parse_expression:
 	lda #EXPR_OK
 	sta expressionError
+	lda #EXPR_CONDITION_NONE
+	sta expressionConditionBranch
 	lda #$00
 	sta operatorCount
 	lda #$01
