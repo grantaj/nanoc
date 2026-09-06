@@ -14,15 +14,15 @@ EXPR_CALL_UNAVAILABLE = EXPR_CALL_ARGUMENT_COUNT
 
 ;;; callEmitCallee/callEmitArgument -> __c_<callee>__vAA
 emit_callee_parameter_name:
-	ldx #<callCPrefix
-	ldy #>callCPrefix
+	ldx #<emitCPrefix
+	ldy #>emitCPrefix
 	jsr emit_string
 	bcc .failed
 	ldx callEmitCallee
 	jsr emit_persistent_source_name
 	bcc .failed
-	ldx #<callValueSuffix
-	ldy #>callValueSuffix
+	ldx #<emitValueSuffix
+	ldy #>emitValueSuffix
 	jsr emit_string
 	bcc .failed
 	lda callEmitArgument
@@ -65,14 +65,14 @@ emit_push_call_argument:
 	bne .word
 	jsr materialize_expression_byte
 	bcc .failed
-	ldx #<callPha
-	ldy #>callPha
+	ldx #<exprPha
+	ldy #>exprPha
 	jmp emit_string
 .word:
 	jsr materialize_expression_word
 	bcc .failed
-	ldx #<callPushWord
-	ldy #>callPushWord
+	ldx #<exprPushWord
+	ldy #>exprPushWord
 	jmp emit_string
 .failed:
 	clc
@@ -102,8 +102,8 @@ emit_store_callee_argument:
 ;;; callers use the same spelling at each call because those routines have no C
 ;;; entry prologue.
 emit_store_call_registers_to_callee:
-	ldx #<callStaSpace
-	ldy #>callStaSpace
+	ldx #<exprStaSpace
+	ldy #>exprStaSpace
 	jsr emit_string
 	bcc .failed
 	jsr emit_callee_parameter_name
@@ -113,8 +113,8 @@ emit_store_call_registers_to_callee:
 	lda callEmitParamType
 	cmp #TYPE_CHAR
 	beq .done
-	ldx #<callStxSpace
-	ldy #>callStxSpace
+	ldx #<exprStxSpace
+	ldy #>exprStxSpace
 	jsr emit_string
 	bcc .failed
 	jsr emit_callee_parameter_name
@@ -172,8 +172,8 @@ emit_call_instruction:
 	rts
 
 emit_plus_one_call_newline:
-	ldx #<callPlusOne
-	ldy #>callPlusOne
+	ldx #<exprPlusOne
+	ldy #>exprPlusOne
 	jsr emit_string
 	bcc .failed
 	jmp emit_newline
@@ -181,13 +181,6 @@ emit_plus_one_call_newline:
 	clc
 	rts
 
-callCPrefix:		byte '_','_','c','_',0
-callValueSuffix:	byte '_','_','v',0
 callBssAssign:		byte ' ','=',' ','N','C','_','B','S','S','+','$',0
-callStaSpace:		byte $09,'s','t','a',' ',0
-callStxSpace:		byte $09,'s','t','x',' ',0
-callPha:		byte $09,'p','h','a',$0a,0
-callPushWord:		byte $09,'p','h','a',$0a,$09,'t','x','a',$0a,$09,'p','h','a',$0a,0
 callPlaSta:		byte $09,'p','l','a',$0a,$09,'s','t','a',' ',0
 callJsrSpace:		byte $09,'j','s','r',' ',0
-callPlusOne:		byte '+','1',0

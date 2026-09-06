@@ -6,10 +6,6 @@ on:
       - main
   pull_request:
 
-permissions:
-  contents: read
-  actions: read
-
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -21,103 +17,29 @@ jobs:
       - name: Set up development environment
         run: make setup
 
-      - name: Reuse generated assembler artifact
-        uses: actions/download-artifact@v4
+      - name: Build all targets
+        run: make
+
+      - name: Validate candidate Phase 1 C assembler
+        run: sh scripts/test-ass-c.sh
+
+      - name: Run C64-native tests
+        run: make test
+
+      - name: Pin 6502 physical-condition seam
+        run: sh scripts/test-nanoc0-physical-contract.sh
+
+      - name: Run production nanoc0 integration baseline
+        run: sh scripts/test-nanoc0-integration.sh
+
+      - name: Capture generated bootstrap assembly
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: nanoc0-bootstrap-generated
-          path: build/nanoc0-integration
-          github-token: ${{ github.token }}
-          run-id: 34005979429
-
-      - name: Run generated assembler directly
-        shell: bash
-        run: |
-          mkdir -p build/direct-src
-          cat > build/direct-src/small.asm <<'EOF'
-          * = $1234
-          lda #$42
-          rts
-          EOF
-
-          cat > build/direct-driver.asm <<'EOF'
-          	* = $0200
-          main:
-          	jsr $413f                 ; __nc_init
-          	lda #<$0400
-          	sta $c83a                 ; __c_ass_assemble__v00
-          	lda #>$0400
-          	sta $c83b
-          	lda #9
-          	sta $c83c                 ; __v01
-          	lda #<$0409
-          	sta $c83d                 ; __v02
-          	lda #>$0409
-          	sta $c83e
-          	lda #$00
-          	sta $c83f                 ; __v03
-          	lda #$00
-          	ldx #$00                  ; final default_origin argument
-          	jsr $3f99                 ; __c_ass_assemble
-          	sta $03
-          	stx $04
-          	ora $04
-          	bne .failed
-          	lda $7402                 ; __c_ass_origin
-          	cmp #$34
-          	bne .failed
-          	lda $7403
-          	cmp #$12
-          	bne .failed
-          	lda $7400                 ; __c_ass_image_length
-          	cmp #$03
-          	bne .failed
-          	lda $7401
-          	bne .failed
-          	lda $4800                 ; __c_ass_image
-          	cmp #$a9
-          	bne .failed
-          	lda $4801
-          	cmp #$42
-          	bne .failed
-          	lda $4802
-          	cmp #$60
-          	bne .failed
-          	lda #$ff
-          	sta $02
-          .halt:
-          	jmp .halt
-          .failed:
-          	lda #$01
-          	sta $02
-          	jmp .halt
-          EOF
-
-          vasm6502_oldstyle -Iass -Fbin -cbm-prg \
-            -o build/generated-ass.prg build/nanoc0-integration/assfromc.asm
-          vasm6502_oldstyle -Fbin -cbm-prg \
-            -o build/direct-driver.prg build/direct-driver.asm
-
-          cat > build/direct-run.mon <<'EOF'
-          load "build/generated-ass.prg" 0
-          load "build/direct-driver.prg" 0
-          > 0001 36
-          > 0400 53 4d 41 4c 4c 2e 41 53 4d
-          watch store 0002
-          g 0200
-          bsave "build/direct.result" 0 0002 0005
-          bsave "build/direct.meta" 0 7400 7403
-          bsave "build/direct.image" 0 4800 4805
-          quit
-          EOF
-
-          timeout 8s x64sc -console -warp +sound \
-            -iecdevice8 -device8 1 -fs8 "$PWD/build/direct-src" \
-            -iecdevice9 -device9 1 -fs9 "$PWD/build/direct-src" \
-            -initbreak ready -moncommands build/direct-run.mon \
-            >build/direct-run.log 2>&1
-          cat build/direct-run.log
-          echo -n 'result: '; od -An -tx1 build/direct.result
-          echo -n 'meta:   '; od -An -tx1 build/direct.meta
-          echo -n 'image:  '; od -An -tx1 build/direct.image
-          test "$(od -An -tu1 -N1 build/direct.result | tr -d '[:space:]')" = 255
-          echo "PASS direct generated assembler"
+          path: |
+            build/nanoc0-integration/ASSFROMC.ASM
+            build/nanoc0-integration/assfromc.asm
+            build/nanoc0-integration/NCOUT.ASM
+            build/nanoc0-integration/ncout.asm
+          if-no-files-found: ignore

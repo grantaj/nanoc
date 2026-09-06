@@ -324,26 +324,6 @@ materialize_saved_address:
 ;;; Short hardware-stack lifetimes
 ;;; ---------------------------------------------------------------------------
 
-emit_push_expression_byte:
-	jsr materialize_expression_byte
-	bcc .failed
-	ldx #<exprPha
-	ldy #>exprPha
-	jmp emit_string
-.failed:
-	clc
-	rts
-
-emit_push_expression_word:
-	jsr materialize_expression_word
-	bcc .failed
-	ldx #<exprPushWord
-	ldy #>exprPushWord
-	jmp emit_string
-.failed:
-	clc
-	rts
-
 emit_push_saved_operand:
 	lda reduceLeftType
 	cmp #TYPE_CHAR

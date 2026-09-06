@@ -65,23 +65,23 @@ programHeader:
 	string "NC_PTR = $fe"
 	string "NC_BSS = $4800"
 	string "__nc_start:"
-	string "	jmp __nc_entry"
+	string "\tjmp __nc_entry"
 	byte 0
 
 programEntryPrefix:
 	string "__nc_entry:"
-	string "	jsr __nc_init"
+	string "\tjsr __nc_init"
 	byte 0
 
 programMainEntry:
-	string "	jsr __c_main"
-	string "	rts"
+	string "\tjsr __c_main"
+	string "\trts"
 	byte 0
 
 programPlainEntry:
-	string "	lda #$00"
-	string "	tax"
-	string "	rts"
+	string "\tlda #$00"
+	string "\ttax"
+	string "\trts"
 	byte 0
 
 compilerMain:
@@ -139,12 +139,9 @@ compilerMain:
 	bcs .entryEmitted
 	jmp .emitFailed
 .entryEmitted:
-
-	jsr close_source
-	jsr close_compiler_output
-	lda #NANOC_STATUS_OK
-	tax
-	rts
+	;;; The command status was cleared on entry. Success uses the same stream
+	;;; cleanup/return path as failure, so there is only one ownership exit.
+	jmp compiler_failure_return
 
 .sourceFailed:
 	lda sourceState

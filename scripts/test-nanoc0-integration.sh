@@ -170,54 +170,17 @@ if [ "$oversize" -ne 0 ]; then
     exit 0
 fi
 
-# Diagnostic #96 rung: stop at the generated assembler itself, then its first
-# source-line read and first line processor. vasm's listing for this exact
-# generated source gives these addresses. $3f99 is below native ass's $4000
-# origin, so the first breakpoint cannot fire during the bootstrap assembly.
-DEBUG_MONITOR="$BUILD_DIR/ass-from-c-debug.mon"
-DEBUG_LOG="$BUILD_DIR/ass-from-c-debug.vice.log"
-cat > "$DEBUG_MONITOR" <<EOF
-load "$BUILD_DIR/test_ass_from_c.prg" 0
-> 0001 36
-break exec 3f99
-break exec 35e6
-break exec 3bbf
-g 0200
-r
-m 0003 0008
-m 7504 7504
-m 760a 760b
-m b30f b310
-stopwatch reset
-profile on
-g
-r
-m 0003 0008
-m 7504 7504
-m 760a 760b
-m b30f b310
-stopwatch
-profile flat 20
-g
-r
-m 0003 008
-m 7504 7504
-m 760a 760b
-m b30f b310
-stopwatch
-profile flat 20
-quit
-EOF
-
-if ! timeout 240s "$VICE" -console -warp +sound \
-    -iecdevice8 -device8 1 -fs8 "$ROOT" \
-    -iecdevice9 -device9 1 -fs9 "$ROOT" \
-    -initbreak ready -moncommands "$DEBUG_MONITOR" >"$DEBUG_LOG" 2>&1; then
-    echo "ass-from-c entry diagnostic timed out" >&2
-    cat "$DEBUG_LOG" >&2
+# Once later work brings both budgets under their hard limits this script
+# naturally executes the decisive native rung as well. #77 makes that rung a
+# required acceptance condition rather than merely an available continuation.
+if ! VICE_TIMEOUT=240 VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
+    sh tests/run-test.sh "$BUILD_DIR/test_ass_from_c.prg" ass-from-c; then
+    report_ass_from_c_mailbox
     exit 1
 fi
 
-cat "$DEBUG_LOG"
-echo "ass-from-c entry diagnostic completed"
-exit 1
+report_ass_from_c_mailbox
+set -- $(od -An -tu1 -N8 "$ASS_FROM_C_RESULT")
+ASS_FROM_C_LOADED=$(($4 + 256 * $5))
+echo "ass-from-c loaded image: $ASS_FROM_C_LOADED bytes"
+echo "native bootstrap oracle matched"

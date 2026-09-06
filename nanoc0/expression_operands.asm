@@ -279,6 +279,10 @@ handle_postfix_index:
 	lda #EXPR_STACK_OVERFLOW
 	jmp expression_fail
 .space:
+	;;; An older A/A-X value must survive the index evaluation and load. The
+	;;; current base is handled separately just below.
+	jsr preserve_pending_machine_value
+	bcc .failed
 	jsr prepare_current_operand_for_stack
 	bcc .failed
 	ldx operatorCount
@@ -315,8 +319,9 @@ push_simple_operator:
 	sec
 	rts
 
-;;; A materialised operand has a real lifetime across the RHS. Put that lifetime
-;;; on the 6502 stack; source-nameable operands need no generated storage at all.
+;;; A materialised operand has a real lifetime across an index expression. Put
+;;; that lifetime on the 6502 stack; source-nameable operands need no generated
+;;; storage at all.
 prepare_current_operand_for_stack:
 	lda expressionValueKind
 	cmp #VALUE_A
@@ -330,14 +335,18 @@ prepare_current_operand_for_stack:
 	jsr materialize_expression_byte
 	bcc .failed
 .pushByte:
-	jsr emit_push_expression_byte
+	ldx #<exprPha
+	ldy #>exprPha
+	jsr emit_string
 	bcc .failed
 	lda #VALUE_STACK_BYTE
 	sta expressionValueKind
 	sec
 	rts
 .pushWord:
-	jsr emit_push_expression_word
+	ldx #<exprPushWord
+	ldy #>exprPushWord
+	jsr emit_string
 	bcc .failed
 	lda #VALUE_STACK_WORD
 	sta expressionValueKind
@@ -365,8 +374,23 @@ push_pending_binary:
 	lda #EXPR_STACK_OVERFLOW
 	jmp expression_fail
 .space:
+	;;; A/A-X can stay live while the RHS is merely a deferred literal or name.
+	;;; If an older operator already owns A/A-X, however, this new nested binary
+	;;; operation will eventually clobber it, so preserve that older value now.
+	jsr preserve_pending_machine_value
+	bcc .failed
+
+	;;; Comparison flags are more fragile than A/A-X: ordinary compiler output
+	;;; can change them before their eventual consumer, so keep their existing
+	;;; short stack lifetime.
+	lda expressionValueKind
+	cmp #VALUE_COND_EQ
+	bcc .save
+	cmp #VALUE_COND_LE+1
+	bcs .save
 	jsr prepare_current_operand_for_stack
 	bcc .failed
+.save:
 	ldx operatorCount
 	lda pendingOperator
 	sta operatorKind,x
@@ -380,8 +404,44 @@ push_pending_binary:
 	clc
 	rts
 
-;;; Preserve persistent scalar values only when a call can actually invalidate a
-;;; deferred reload. Bottom-to-top pushes make later reductions pop in LIFO order.
+;;; At most one older operator can own the generated machine's A/A-X value.
+;;; Search from the nearest operator outward and move that value to the hardware
+;;; stack immediately before some nested work is allowed to clobber it. Deferred
+;;; literals and named operands never call this routine just to sit on the stack.
+preserve_pending_machine_value:
+	ldx operatorCount
+.scan:
+	cpx #$00
+	beq .done
+	dex
+	lda operatorValueKind,x
+	cmp #VALUE_A
+	beq .byte
+	cmp #VALUE_AX
+	bne .scan
+
+	;;; Once emission fails the expression is abandoned, so updating the
+	;;; descriptor before emit_string avoids extra bookkeeping just for failure.
+	lda #VALUE_STACK_WORD
+	sta operatorValueKind,x
+	ldx #<exprPushWord
+	ldy #>exprPushWord
+	jmp emit_string
+
+.byte:
+	lda #VALUE_STACK_BYTE
+	sta operatorValueKind,x
+	ldx #<exprPha
+	ldy #>exprPha
+	jmp emit_string
+.done:
+	sec
+	rts
+
+;;; Preserve values only when a call can actually invalidate them. A/A-X is
+;;; handled first; persistent scalars then need preservation because the callee
+;;; may overwrite their named storage. Bottom-to-top pushes keep later reductions
+;;; LIFO-correct.
 preserve_pending_values_for_call:
 	lda #$00
 	sta preserveOperatorIndex
@@ -391,7 +451,18 @@ preserve_pending_values_for_call:
 	beq .done
 	lda operatorValueKind,x
 	cmp #VALUE_PERSISTENT
+	beq .preserve
+	cmp #VALUE_A
+	beq .preserve
+	cmp #VALUE_AX
 	bne .next
+.preserve:
+	;;; VALUE_A is the physical form of a byte result; VALUE_AX is the physical
+	;;; form of a word result. They can therefore use the same type-sized push as
+	;;; an ordinary deferred scalar while preserving bottom-to-top stack order.
+	sta reduceLeftKind
+	cmp #VALUE_PERSISTENT
+	bne .ordinaryType
 	;;; OP_INDEX stores the element/result type in operatorType. A persistent
 	;;; scalar under that marker is nevertheless the pointer base and must survive
 	;;; a call as a full address, not as the eventual char element.
@@ -408,8 +479,6 @@ preserve_pending_values_for_call:
 	sta reduceLeftLow
 	lda operatorValueHigh,x
 	sta reduceLeftHigh
-	lda #VALUE_PERSISTENT
-	sta reduceLeftKind
 	jsr emit_push_saved_operand
 	bcc .failed
 	ldx preserveOperatorIndex
@@ -523,6 +592,10 @@ reduce_unary_minus:
 	lda #EXPR_BAD_TYPE
 	jmp expression_fail
 .integer:
+	;;; Unary code is destructive target work. Preserve any older binary value
+	;;; immediately before emitting it, not when that older operator was parsed.
+	jsr preserve_pending_machine_value
+	bcc .emitFail
 	jsr materialize_expression_word
 	bcc .emitFail
 	jsr emit_unary_minus
@@ -540,4 +613,3 @@ reduce_unary_minus:
 	sta expressionIndexable
 	sec
 	rts
-
