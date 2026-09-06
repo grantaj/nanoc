@@ -94,16 +94,15 @@ emit_compare_reduction:
 	cmp #VALUE_A
 	bne .right
 	lda #VALUE_STACK_BYTE
-	sta reduceLeftKind
 	ldx #<exprPha
 	ldy #>exprPha
 	jmp .push
 .pushWord:
 	lda #VALUE_STACK_WORD
-	sta reduceLeftKind
 	ldx #<exprPushWord
 	ldy #>exprPushWord
 .push:
+	sta reduceLeftKind
 	jsr emit_string
 	bcc .failed
 .right:
@@ -242,39 +241,33 @@ emit_compare_helper_call:
 
 emit_compare_call:
 	jsr emit_string
-	bcs .newline
-	rts
-.newline:
+	bcc .failed
 	jsr emit_newline
-	bcs .done
-	rts
-.done:
+	bcc .failed
 	jmp mark_expression_ax_truth
+.failed:
+	rts
 
 emit_jump_label:
 	ldx #<exprJmp
 	ldy #>exprJmp
 	jsr emit_string
-	bcs .name
-	rts
-.name:
+	bcc .failed
 	jsr emit_generated_label_name
-	bcs .done
-	rts
-.done:
+	bcc .failed
 	jmp emit_newline
+.failed:
+	rts
 
 emit_label_definition:
 	jsr emit_generated_label_name
-	bcs .colon
-	rts
-.colon:
+	bcc .failed
 	lda #':'
 	jsr emit_output_byte
-	bcs .done
-	rts
-.done:
+	bcc .failed
 	jmp emit_newline
+.failed:
+	rts
 
 ;;; Save a full index in NC_TMP and scale it for word elements. Direct byte/Y
 ;;; cases bypass this routine entirely.
