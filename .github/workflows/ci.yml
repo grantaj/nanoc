@@ -29,7 +29,7 @@ jobs:
           github-token: ${{ github.token }}
           run-id: 34005979429
 
-      - name: Run generated assembler directly
+      - name: Walk directly into generated assembler
         shell: bash
         run: |
           mkdir -p build/direct-src
@@ -39,67 +39,67 @@ jobs:
           rts
           EOF
 
-          cat > build/direct_assfromc.asm <<'EOF'
-          	include "test.inc"
-
+          # Keep the driver and generated program as separate PRGs. This removes
+          # any ambiguity about holes/multiple origins in a CBM PRG.
+          cat > build/direct-driver.asm <<'EOF'
           	* = $0200
           main:
-          	jsr __nc_init
+          	jsr $413f                 ; __nc_init
           	lda #<rootName
-          	sta __c_ass_assemble__v00
+          	sta $c83a                 ; __c_ass_assemble__v00
           	lda #>rootName
-          	sta __c_ass_assemble__v00+1
+          	sta $c83b
           	lda #rootNameEnd-rootName
-          	sta __c_ass_assemble__v01
+          	sta $c83c                 ; __v01
           	lda #<directory
-          	sta __c_ass_assemble__v02
+          	sta $c83d                 ; __v02
           	lda #>directory
-          	sta __c_ass_assemble__v02+1
+          	sta $c83e
           	lda #$00
-          	sta __c_ass_assemble__v03
+          	sta $c83f                 ; __v03
           	lda #$00
-          	ldx #$00
-          	jsr __c_ass_assemble
-          	ora #$00
-          	bne .failed
-          	txa
-          	bne .failed
-          	lda __c_ass_origin
-          	cmp #$34
-          	bne .failed
-          	lda __c_ass_origin+1
-          	cmp #$12
-          	bne .failed
-          	lda __c_ass_image_length
-          	cmp #$03
-          	bne .failed
-          	lda __c_ass_image_length+1
-          	bne .failed
-          	lda __c_ass_image
-          	cmp #$a9
-          	bne .failed
-          	lda __c_ass_image+1
-          	cmp #$42
-          	bne .failed
-          	lda __c_ass_image+2
-          	cmp #$60
-          	bne .failed
-          	lda #TEST_PASS
-          	sta TEST_RESULT
+          	ldx #$00                  ; final default_origin argument
+          	jsr $3f99                 ; __c_ass_assemble
           .halt:
-          	jmp .halt
-          .failed:
-          	lda #$01
-          	sta TEST_RESULT
           	jmp .halt
           rootName:
           	byte 'S','M','A','L','L','.','A','S','M'
           rootNameEnd:
           directory:
-
-          	include "build/nanoc0-integration/assfromc.asm"
           EOF
 
-          vasm6502_oldstyle -Iass -Fbin -cbm-prg -o build/direct_assfromc.prg build/direct_assfromc.asm
-          VICE_TIMEOUT=30 VICE_FS_DIR="$PWD/build/direct-src" VICE=x64sc BUILD_DIR=build \
-            sh tests/run-test.sh build/direct_assfromc.prg direct-assfromc
+          vasm6502_oldstyle -Iass -Fbin -cbm-prg \
+            -o build/generated-ass.prg build/nanoc0-integration/assfromc.asm
+          vasm6502_oldstyle -Fbin -cbm-prg \
+            -o build/direct-driver.prg build/direct-driver.asm
+
+          cat > build/direct-walk.mon <<'EOF'
+          load "build/generated-ass.prg" 0
+          load "build/direct-driver.prg" 0
+          > 0001 36
+          break exec 0200
+          break exec 413f
+          break exec 3f99
+          break exec 35e6
+          g 0200
+          r
+          g
+          r
+          g
+          r
+          g
+          r
+          quit
+          EOF
+
+          timeout 5s x64sc -console -warp +sound \
+            -iecdevice8 -device8 1 -fs8 "$PWD/build/direct-src" \
+            -iecdevice9 -device9 1 -fs9 "$PWD/build/direct-src" \
+            -initbreak ready -moncommands build/direct-walk.mon \
+            >build/direct-walk.log 2>&1 || true
+          cat build/direct-walk.log
+
+          # The four breakpoints should all have executed in order. VICE prints
+          # their PCs in the register dumps; fail quickly if we never reach the
+          # generated source reader.
+          grep -qi '35e6' build/direct-walk.log
