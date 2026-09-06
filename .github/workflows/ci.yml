@@ -104,6 +104,9 @@ jobs:
           > 0400 53 4d 41 4c 4c 2e 41 53 4d
           watch store 0002
           g 0200
+          m 0002 0005
+          m 7400 7403
+          m 4800 4805
           bsave "build/direct.result" 0 0002 0005
           quit
           EOF
