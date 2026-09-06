@@ -100,9 +100,9 @@ parse_expression_primary:
 	bne .ordinaryScalar
 	lda primarySymbolKind
 	cmp #SYMBOL_FUNCTION
-	bmq .function
+	beq .function
 	cmp #SYMBOL_RUNTIME_FUNCTION
-	bmq .function
+	beq .function
 	cmp #SYMBOL_ARRAY
 	beq .array
 
