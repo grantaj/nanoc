@@ -85,51 +85,59 @@ emit_compare_reduction:
 	bcc .word
 	jmp emit_byte_compare_reduction
 .word:
-	;;; The shared 16-bit helpers expect left in A/X and right in NC_TMP.
+	;;; The 16-bit path loads the RHS through A/X before saving it in NC_TMP.
+	;;; Preserve a live left machine value at this destructive boundary, not when
+	;;; the comparison operator was parsed.
+	lda reduceLeftKind
+	cmp #VALUE_AX
+	beq .pushWord
+	cmp #VALUE_A
+	bne .right
+	lda #VALUE_STACK_BYTE
+	sta reduceLeftKind
+	ldx #<exprPha
+	ldy #>exprPha
+	jmp .push
+.pushWord:
+	lda #VALUE_STACK_WORD
+	sta reduceLeftKind
+	ldx #<exprPushWord
+	ldy #>exprPushWord
+.push:
+	jsr emit_string
+	bcc .failed
+.right:
 	jsr materialize_expression_word
-	bcs .saveRight
-	rts
-.saveRight:
+	bcc .failed
 	jsr emit_save_right_tmp
-	bcs .left
-	rts
-.left:
+	bcc .failed
 	jsr materialize_saved_word
-	bcs .call
-	rts
-.call:
+	bcc .failed
 	jmp emit_compare_helper_call
+.failed:
+	rts
 
 emit_byte_compare_reduction:
 	jsr right_operand_is_direct
 	bcc .savedRight
 	jsr materialize_saved_byte
-	bcs .directCmp
-	rts
-.directCmp:
+	bcc .failed
 	ldx #<exprCmpSpace
 	ldy #>exprCmpSpace
 	jsr emit_right_low_operand
-	bcs .mark
-	rts
+	bcc .failed
+	jmp .mark
 .savedRight:
 	jsr materialize_expression_byte
-	bcs .save
-	rts
-.save:
+	bcc .failed
 	jsr emit_save_right_byte_tmp
-	bcs .left
-	rts
-.left:
+	bcc .failed
 	jsr materialize_saved_byte
-	bcs .tmpCmp
-	rts
-.tmpCmp:
+	bcc .failed
 	ldx #<exprCmpTmp
 	ldy #>exprCmpTmp
 	jsr emit_string
-	bcs .mark
-	rts
+	bcc .failed
 .mark:
 	lda reduceOperator
 	cmp #OP_EQ
@@ -159,6 +167,8 @@ emit_byte_compare_reduction:
 .gt:
 	lda #VALUE_COND_GT
 	jmp mark_expression_condition
+.failed:
+	rts
 
 ;;; A/X is the left operand and NC_TMP the right. Select the one shared helper
 ;;; from the source operator and the usual Phase 1 integer-conversion rule.
