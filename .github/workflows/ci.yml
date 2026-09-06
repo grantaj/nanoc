@@ -29,18 +29,18 @@ jobs:
           github-token: ${{ github.token }}
           run-id: 34005979429
 
-      - name: Walk directly into generated assembler
+      - name: Run generated assembler directly
         shell: bash
         run: |
           mkdir -p build/direct-src
-          cat > build/direct-src/SMALL.ASM <<'EOF'
+          # C64 uppercase PETSCII filenames map to lowercase host filenames in
+          # VICE's filesystem device.
+          cat > build/direct-src/small.asm <<'EOF'
           * = $1234
           lda #$42
           rts
           EOF
 
-          # Keep the driver and generated program as separate PRGs. This removes
-          # any ambiguity about holes/multiple origins in a CBM PRG.
           cat > build/direct-driver.asm <<'EOF'
           	* = $0200
           main:
@@ -60,7 +60,37 @@ jobs:
           	lda #$00
           	ldx #$00                  ; final default_origin argument
           	jsr $3f99                 ; __c_ass_assemble
+          	sta $03
+          	stx $04
+          	ora $04
+          	bne .failed
+          	lda $7402                 ; __c_ass_origin
+          	cmp #$34
+          	bne .failed
+          	lda $7403
+          	cmp #$12
+          	bne .failed
+          	lda $7400                 ; __c_ass_image_length
+          	cmp #$03
+          	bne .failed
+          	lda $7401
+          	bne .failed
+          	lda $4800                 ; __c_ass_image
+          	cmp #$a9
+          	bne .failed
+          	lda $4801
+          	cmp #$42
+          	bne .failed
+          	lda $4802
+          	cmp #$60
+          	bne .failed
+          	lda #$ff
+          	sta $02
           .halt:
+          	jmp .halt
+          .failed:
+          	lda #$01
+          	sta $02
           	jmp .halt
           rootName:
           	byte 'S','M','A','L','L','.','A','S','M'
@@ -68,38 +98,28 @@ jobs:
           directory:
           EOF
 
+          # Deliberately keep these as two PRGs. The normal single-PRG test
+          # harness was the source of the misleading JAM during this diagnostic.
           vasm6502_oldstyle -Iass -Fbin -cbm-prg \
             -o build/generated-ass.prg build/nanoc0-integration/assfromc.asm
           vasm6502_oldstyle -Fbin -cbm-prg \
             -o build/direct-driver.prg build/direct-driver.asm
 
-          cat > build/direct-walk.mon <<'EOF'
+          cat > build/direct-run.mon <<'EOF'
           load "build/generated-ass.prg" 0
           load "build/direct-driver.prg" 0
           > 0001 36
-          break exec 0200
-          break exec 413f
-          break exec 3f99
-          break exec 35e6
+          watch store 0002
           g 0200
-          r
-          g
-          r
-          g
-          r
-          g
-          r
+          bsave "build/direct.result" 0 0002 0005
           quit
           EOF
 
-          timeout 5s x64sc -console -warp +sound \
+          timeout 8s x64sc -console -warp +sound \
             -iecdevice8 -device8 1 -fs8 "$PWD/build/direct-src" \
             -iecdevice9 -device9 1 -fs9 "$PWD/build/direct-src" \
-            -initbreak ready -moncommands build/direct-walk.mon \
-            >build/direct-walk.log 2>&1 || true
-          cat build/direct-walk.log
-
-          # The four breakpoints should all have executed in order. VICE prints
-          # their PCs in the register dumps; fail quickly if we never reach the
-          # generated source reader.
-          grep -qi '35e6' build/direct-walk.log
+            -initbreak ready -moncommands build/direct-run.mon \
+            >build/direct-run.log 2>&1
+          cat build/direct-run.log
+          test "$(od -An -tu1 -N1 build/direct.result | tr -d '[:space:]')" = 255
+          echo "PASS direct generated assembler"
