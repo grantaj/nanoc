@@ -33,8 +33,6 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/direct-src
-          # C64 uppercase PETSCII filenames map to lowercase host filenames in
-          # VICE's filesystem device.
           cat > build/direct-src/small.asm <<'EOF'
           * = $1234
           lda #$42
@@ -45,15 +43,15 @@ jobs:
           	* = $0200
           main:
           	jsr $413f                 ; __nc_init
-          	lda #<rootName
+          	lda #<$0400
           	sta $c83a                 ; __c_ass_assemble__v00
-          	lda #>rootName
+          	lda #>$0400
           	sta $c83b
-          	lda #rootNameEnd-rootName
+          	lda #9
           	sta $c83c                 ; __v01
-          	lda #<directory
+          	lda #<$0409
           	sta $c83d                 ; __v02
-          	lda #>directory
+          	lda #>$0409
           	sta $c83e
           	lda #$00
           	sta $c83f                 ; __v03
@@ -92,14 +90,8 @@ jobs:
           	lda #$01
           	sta $02
           	jmp .halt
-          rootName:
-          	byte 'S','M','A','L','L','.','A','S','M'
-          rootNameEnd:
-          directory:
           EOF
 
-          # Deliberately keep these as two PRGs. The normal single-PRG test
-          # harness was the source of the misleading JAM during this diagnostic.
           vasm6502_oldstyle -Iass -Fbin -cbm-prg \
             -o build/generated-ass.prg build/nanoc0-integration/assfromc.asm
           vasm6502_oldstyle -Fbin -cbm-prg \
@@ -109,6 +101,7 @@ jobs:
           load "build/generated-ass.prg" 0
           load "build/direct-driver.prg" 0
           > 0001 36
+          > 0400 53 4d 41 4c 4c 2e 41 53 4d
           watch store 0002
           g 0200
           bsave "build/direct.result" 0 0002 0005
@@ -121,5 +114,6 @@ jobs:
             -initbreak ready -moncommands build/direct-run.mon \
             >build/direct-run.log 2>&1
           cat build/direct-run.log
+          od -An -tx1 -N4 build/direct.result
           test "$(od -An -tu1 -N1 build/direct.result | tr -d '[:space:]')" = 255
           echo "PASS direct generated assembler"
