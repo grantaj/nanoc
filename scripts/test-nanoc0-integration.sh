@@ -170,17 +170,61 @@ if [ "$oversize" -ne 0 ]; then
     exit 0
 fi
 
-# Once later work brings both budgets under their hard limits this script
-# naturally executes the decisive native rung as well. #77 makes that rung a
-# required acceptance condition rather than merely an available continuation.
-if ! VICE_TIMEOUT=600 VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
-    sh tests/run-test.sh "$BUILD_DIR/test_ass_from_c.prg" ass-from-c; then
-    report_ass_from_c_mailbox
+# Diagnostic #96 rung: sample the generated assembler every 64 source lines.
+# vasm's exact listing for this generated source places __c_read_source_line at
+# $35e6. The condition matters because the native assembler occupies overlapping
+# addresses while it first assembles ASSFROMC.ASM; stage 3 begins only after the
+# generated image has been initialized and its ass_assemble entry is being run.
+DEBUG_MONITOR="$BUILD_DIR/ass-from-c-debug.mon"
+DEBUG_LOG="$BUILD_DIR/ass-from-c-debug.vice.log"
+cat > "$DEBUG_MONITOR" <<EOF
+load "$BUILD_DIR/test_ass_from_c.prg" 0
+> 0001 36
+break exec 35e6 if @cpu:\$0003 == \$03
+ignore 1 63
+stopwatch reset
+profile on
+g 0200
+r
+m 0003 0008
+stopwatch
+profile flat 20
+ignore 1 63
+g
+r
+m 0003 0008
+stopwatch
+profile flat 20
+ignore 1 63
+g
+r
+m 0003 0008
+stopwatch
+profile flat 20
+ignore 1 63
+g
+r
+m 0003 0008
+stopwatch
+profile flat 20
+ignore 1 63
+g
+r
+m 0003 0008
+stopwatch
+profile flat 20
+quit
+EOF
+
+if ! timeout 180s "$VICE" -console -warp +sound \
+    -iecdevice8 -device8 1 -fs8 "$ROOT" \
+    -iecdevice9 -device9 1 -fs9 "$ROOT" \
+    -initbreak ready -moncommands "$DEBUG_MONITOR" >"$DEBUG_LOG" 2>&1; then
+    echo "ass-from-c progress diagnostic timed out" >&2
+    cat "$DEBUG_LOG" >&2
     exit 1
 fi
 
-report_ass_from_c_mailbox
-set -- $(od -An -tu1 -N8 "$ASS_FROM_C_RESULT")
-ASS_FROM_C_LOADED=$(($4 + 256 * $5))
-echo "ass-from-c loaded image: $ASS_FROM_C_LOADED bytes"
-echo "native bootstrap oracle matched"
+cat "$DEBUG_LOG"
+echo "ass-from-c progress diagnostic completed"
+exit 1
