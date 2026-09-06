@@ -97,7 +97,7 @@ jobs:
           rootNameEnd:
           directory:
 
-          	include "build/nanoc0-integration/ASSFROMC.ASM"
+          	include "build/nanoc0-integration/assfromc.asm"
           EOF
 
           vasm6502_oldstyle -Iass -Fbin -cbm-prg -o build/direct_assfromc.prg build/direct_assfromc.asm
