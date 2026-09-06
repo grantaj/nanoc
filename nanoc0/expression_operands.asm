@@ -100,9 +100,9 @@ parse_expression_primary:
 	bne .ordinaryScalar
 	lda primarySymbolKind
 	cmp #SYMBOL_FUNCTION
-	beq .function
+	bmq .function
 	cmp #SYMBOL_RUNTIME_FUNCTION
-	beq .function
+	bmq .function
 	cmp #SYMBOL_ARRAY
 	beq .array
 
@@ -438,10 +438,10 @@ preserve_pending_machine_value:
 	sec
 	rts
 
-;;; Preserve values only when a call can actually invalidate them. A/A-X is
-;;; handled first; persistent scalars then need preservation because the callee
-;;; may overwrite their named storage. Bottom-to-top pushes keep later reductions
-;;; LIFO-correct.
+;;; Preserve values only when a call can actually invalidate them. Machine values
+;;; cannot survive the JSR, and persistent scalars may be overwritten by the callee.
+;;; One bottom-to-top scan preserves both kinds in reduction order so the later
+;;; pops remain LIFO-correct.
 preserve_pending_values_for_call:
 	lda #$00
 	sta preserveOperatorIndex
@@ -457,9 +457,9 @@ preserve_pending_values_for_call:
 	cmp #VALUE_AX
 	bne .next
 .preserve:
-	;;; VALUE_A is the physical form of a byte result; VALUE_AX is the physical
-	;;; form of a word result. They can therefore use the same type-sized push as
-	;;; an ordinary deferred scalar while preserving bottom-to-top stack order.
+	;;; A/A-X already names the live machine value. The ordinary saved-operand
+	;;; helper uses its C type to choose a byte or word push, just as it does for a
+	;;; deferred scalar, while this scan preserves bottom-to-top stack order.
 	sta reduceLeftKind
 	cmp #VALUE_PERSISTENT
 	bne .ordinaryType
