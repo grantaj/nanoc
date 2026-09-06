@@ -65,23 +65,23 @@ programHeader:
 	string "NC_PTR = $fe"
 	string "NC_BSS = $4800"
 	string "__nc_start:"
-	string "\tjmp __nc_entry"
+	string "	jmp __nc_entry"
 	byte 0
 
 programEntryPrefix:
 	string "__nc_entry:"
-	string "\tjsr __nc_init"
+	string "	jsr __nc_init"
 	byte 0
 
 programMainEntry:
-	string "\tjsr __c_main"
-	string "\trts"
+	string "	jsr __c_main"
+	string "	rts"
 	byte 0
 
 programPlainEntry:
-	string "\tlda #$00"
-	string "\ttax"
-	string "\trts"
+	string "	lda #$00"
+	string "	tax"
+	string "	rts"
 	byte 0
 
 compilerMain:
