@@ -104,10 +104,9 @@ jobs:
           > 0400 53 4d 41 4c 4c 2e 41 53 4d
           watch store 0002
           g 0200
-          m 0002 0005
-          m 7400 7403
-          m 4800 4805
           bsave "build/direct.result" 0 0002 0005
+          bsave "build/direct.meta" 0 7400 7403
+          bsave "build/direct.image" 0 4800 4805
           quit
           EOF
 
@@ -117,6 +116,8 @@ jobs:
             -initbreak ready -moncommands build/direct-run.mon \
             >build/direct-run.log 2>&1
           cat build/direct-run.log
-          od -An -tx1 -N4 build/direct.result
+          echo -n 'result: '; od -An -tx1 build/direct.result
+          echo -n 'meta:   '; od -An -tx1 build/direct.meta
+          echo -n 'image:  '; od -An -tx1 build/direct.image
           test "$(od -An -tu1 -N1 build/direct.result | tr -d '[:space:]')" = 255
           echo "PASS direct generated assembler"
