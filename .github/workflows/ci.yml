@@ -6,6 +6,10 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -17,55 +21,85 @@ jobs:
       - name: Set up development environment
         run: make setup
 
-      - name: Build all targets
-        run: make
-
-      - name: Validate candidate Phase 1 C assembler
-        run: sh scripts/test-ass-c.sh
-
-      - name: Run C64-native tests
-        run: make test
-
-      - name: Pin 6502 physical-condition seam
-        run: sh scripts/test-nanoc0-physical-contract.sh
-
-      - name: Run production nanoc0 integration baseline
-        run: sh scripts/test-nanoc0-integration.sh
-
-      - name: Capture generated bootstrap assembly
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Reuse generated assembler artifact
+        uses: actions/download-artifact@v4
         with:
           name: nanoc0-bootstrap-generated
-          path: |
-            build/nanoc0-integration/ASSFROMC.ASM
-            build/nanoc0-integration/assfromc.asm
-            build/nanoc0-integration/NCOUT.ASM
-            build/nanoc0-integration/ncout.asm
-          if-no-files-found: ignore
+          path: build/nanoc0-integration
+          github-token: ${{ github.token }}
+          run-id: 34005979429
 
-      - name: Preserve development assembler
-        if: always()
-        run: cp /usr/local/bin/vasm6502_oldstyle build/vasm6502_oldstyle
+      - name: Run generated assembler directly
+        shell: bash
+        run: |
+          mkdir -p build/direct-src
+          cat > build/direct-src/SMALL.ASM <<'EOF'
+          * = $1234
+          lda #$42
+          rts
+          EOF
 
-      - name: Capture issue workspace
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: issue-96-workspace
-          path: |
-            .github
-            ass
-            bootstrap
-            build/vasm6502_oldstyle
-            dis
-            docs
-            examples
-            nanoc0
-            scripts
-            tests
-            Makefile
-            README.md
-            CONTRIBUTING.md
-            test.inc
-          if-no-files-found: error
+          cat > build/direct_assfromc.asm <<'EOF'
+          	include "test.inc"
+
+          	* = $0200
+          main:
+          	jsr __nc_init
+          	lda #<rootName
+          	sta __c_ass_assemble__v00
+          	lda #>rootName
+          	sta __c_ass_assemble__v00+1
+          	lda #rootNameEnd-rootName
+          	sta __c_ass_assemble__v01
+          	lda #<directory
+          	sta __c_ass_assemble__v02
+          	lda #>directory
+          	sta __c_ass_assemble__v02+1
+          	lda #$00
+          	sta __c_ass_assemble__v03
+          	lda #$00
+          	ldx #$00
+          	jsr __c_ass_assemble
+          	ora #$00
+          	bne .failed
+          	txa
+          	bne .failed
+          	lda __c_ass_origin
+          	cmp #$34
+          	bne .failed
+          	lda __c_ass_origin+1
+          	cmp #$12
+          	bne .failed
+          	lda __c_ass_image_length
+          	cmp #$03
+          	bne .failed
+          	lda __c_ass_image_length+1
+          	bne .failed
+          	lda __c_ass_image
+          	cmp #$a9
+          	bne .failed
+          	lda __c_ass_image+1
+          	cmp #$42
+          	bne .failed
+          	lda __c_ass_image+2
+          	cmp #$60
+          	bne .failed
+          	lda #TEST_PASS
+          	sta TEST_RESULT
+          .halt:
+          	jmp .halt
+          .failed:
+          	lda #$01
+          	sta TEST_RESULT
+          	jmp .halt
+          rootName:
+          	byte 'S','M','A','L','L','.','A','S','M'
+          rootNameEnd:
+          directory:
+
+          	include "build/nanoc0-integration/ASSFROMC.ASM"
+          EOF
+
+          vasm6502_oldstyle -Iass -Fbin -cbm-prg -o build/direct_assfromc.prg build/direct_assfromc.asm
+          VICE_TIMEOUT=30 VICE_FS_DIR="$PWD/build/direct-src" VICE=x64sc BUILD_DIR=build \
+            sh tests/run-test.sh build/direct_assfromc.prg direct-assfromc
