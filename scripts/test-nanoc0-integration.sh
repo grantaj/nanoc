@@ -170,61 +170,54 @@ if [ "$oversize" -ne 0 ]; then
     exit 0
 fi
 
-# Diagnostic #96 rung: sample the generated assembler every 64 source lines.
-# vasm's exact listing for this generated source places __c_read_source_line at
-# $35e6. The condition matters because the native assembler occupies overlapping
-# addresses while it first assembles ASSFROMC.ASM; stage 3 begins only after the
-# generated image has been initialized and its ass_assemble entry is being run.
+# Diagnostic #96 rung: stop at the generated assembler itself, then its first
+# source-line read and first line processor. vasm's listing for this exact
+# generated source gives these addresses. $3f99 is below native ass's $4000
+# origin, so the first breakpoint cannot fire during the bootstrap assembly.
 DEBUG_MONITOR="$BUILD_DIR/ass-from-c-debug.mon"
 DEBUG_LOG="$BUILD_DIR/ass-from-c-debug.vice.log"
 cat > "$DEBUG_MONITOR" <<EOF
 load "$BUILD_DIR/test_ass_from_c.prg" 0
 > 0001 36
-break exec 35e6 if @cpu:\$0003 == \$03
-ignore 1 63
-stopwatch reset
-profile on
+break exec 3f99
+break exec 35e6
+break exec 3bbf
 g 0200
 r
 m 0003 0008
-stopwatch
-profile flat 20
-ignore 1 63
+m 7504 7504
+m 760a 760b
+m b30f b310
+stopwatch reset
+profile on
 g
 r
 m 0003 0008
+m 7504 7504
+m 760a 760b
+m b30f b310
 stopwatch
 profile flat 20
-ignore 1 63
 g
 r
-m 0003 0008
-stopwatch
-profile flat 20
-ignore 1 63
-g
-r
-m 0003 0008
-stopwatch
-profile flat 20
-ignore 1 63
-g
-r
-m 0003 0008
+m 0003 008
+m 7504 7504
+m 760a 760b
+m b30f b310
 stopwatch
 profile flat 20
 quit
 EOF
 
-if ! timeout 180s "$VICE" -console -warp +sound \
+if ! timeout 240s "$VICE" -console -warp +sound \
     -iecdevice8 -device8 1 -fs8 "$ROOT" \
     -iecdevice9 -device9 1 -fs9 "$ROOT" \
     -initbreak ready -moncommands "$DEBUG_MONITOR" >"$DEBUG_LOG" 2>&1; then
-    echo "ass-from-c progress diagnostic timed out" >&2
+    echo "ass-from-c entry diagnostic timed out" >&2
     cat "$DEBUG_LOG" >&2
     exit 1
 fi
 
 cat "$DEBUG_LOG"
-echo "ass-from-c progress diagnostic completed"
+echo "ass-from-c entry diagnostic completed"
 exit 1
