@@ -11,59 +11,43 @@ emit_load_literal:
 	ldx #<exprLdaImm
 	ldy #>exprLdaImm
 	jsr emit_string
-	bcs .lowPrefix
-	rts
-.lowPrefix:
+	bcc .failed
 	lda expressionValueLow
 	jsr emit_hex_byte
-	bcs .lowValue
-	rts
-.lowValue:
+	bcc .failed
 	jsr emit_newline
-	bcs .high
-	rts
-.high:
+	bcc .failed
 	ldx #<exprLdxImm
 	ldy #>exprLdxImm
 	jsr emit_string
-	bcs .highPrefix
-	rts
-.highPrefix:
+	bcc .failed
 	lda expressionValueHigh
 	jsr emit_hex_byte
-	bcs .done
-	rts
-.done:
+	bcc .failed
 	jmp emit_newline
+.failed:
+	rts
 
 emit_load_literal_address:
 	ldx #<exprLdaLowImm
 	ldy #>exprLdaLowImm
 	jsr emit_string
-	bcs .lowName
-	rts
-.lowName:
+	bcc .failed
 	lda expressionValueLow
 	jsr emit_literal_name
-	bcs .lowDone
-	rts
-.lowDone:
+	bcc .failed
 	jsr emit_newline
-	bcs .high
-	rts
-.high:
+	bcc .failed
 	ldx #<exprLdxHighImm
 	ldy #>exprLdxHighImm
 	jsr emit_string
-	bcs .highName
-	rts
-.highName:
+	bcc .failed
 	lda expressionValueLow
 	jsr emit_literal_name
-	bcs .done
-	rts
-.done:
+	bcc .failed
 	jmp emit_newline
+.failed:
+	rts
 
 emit_plus_one_newline:
 	ldx #<exprPlusOne
@@ -258,34 +242,22 @@ emit_byte_arithmetic_reduction:
 	jsr right_operand_is_direct
 	bcc .savedRight
 	jsr materialize_saved_byte
-	bcs .directLeft
-	rts
-.directLeft:
+	bcc .failed
 	jsr emit_arithmetic_carry
-	bcs .directOp
-	rts
-.directOp:
+	bcc .failed
 	jsr select_arithmetic_prefix
 	jsr emit_right_low_operand
-	bcs .done
-	rts
+	bcc .failed
+	jmp mark_expression_a
 .savedRight:
 	jsr materialize_expression_byte
-	bcs .save
-	rts
-.save:
+	bcc .failed
 	jsr emit_save_right_byte_tmp
-	bcs .loadLeft
-	rts
-.loadLeft:
+	bcc .failed
 	jsr materialize_saved_byte
-	bcs .carry
-	rts
-.carry:
+	bcc .failed
 	jsr emit_arithmetic_carry
-	bcs .tmpOp
-	rts
-.tmpOp:
+	bcc .failed
 	lda reduceOperator
 	cmp #OP_ADD
 	beq .addTmp
@@ -310,58 +282,40 @@ emit_byte_arithmetic_reduction:
 .emitTmp:
 	jsr emit_string
 	bcc .failed
-.done:
 	jmp mark_expression_a
 .failed:
-	clc
 	rts
 
 emit_word_arithmetic_reduction:
 	jsr right_operand_is_direct
 	bcc .savedRight
 	jsr materialize_saved_word
-	bcs .directCarry
-	rts
-.directCarry:
+	bcc .failed
 	jsr emit_arithmetic_carry
-	bcs .directLow
-	rts
-.directLow:
+	bcc .failed
 	jsr select_arithmetic_prefix
 	jsr emit_right_low_operand
-	bcs .toHigh
-	rts
-.toHigh:
+	bcc .failed
 	ldx #<exprTayTxa
 	ldy #>exprTayTxa
 	jsr emit_string
-	bcs .directHigh
-	rts
-.directHigh:
+	bcc .failed
 	jsr select_arithmetic_prefix
 	jsr emit_right_high_operand
-	bcs .finish
-	rts
-.finish:
+	bcc .failed
 	ldx #<exprTaxTya
 	ldy #>exprTaxTya
 	jsr emit_string
-	bcs .done
-	rts
+	bcc .failed
+	jmp mark_expression_ax
 
 .savedRight:
 	jsr materialize_expression_word
-	bcs .saveRight
-	rts
-.saveRight:
+	bcc .failed
 	jsr emit_save_right_tmp
-	bcs .loadSaved
-	rts
-.loadSaved:
+	bcc .failed
 	jsr materialize_saved_word
-	bcs .tmpChoice
-	rts
-.tmpChoice:
+	bcc .failed
 	lda reduceOperator
 	cmp #OP_ADD
 	beq .addTmp
@@ -386,10 +340,8 @@ emit_word_arithmetic_reduction:
 .emitTmp:
 	jsr emit_string
 	bcc .failed
-.done:
 	jmp mark_expression_ax
 .failed:
-	clc
 	rts
 
 ;;; __nc_mul16 keeps the small frozen helper convention: left in NC_TMP, right
@@ -398,13 +350,9 @@ emit_mul_reduction:
 	lda #$01
 	sta multiplyUsed
 	jsr materialize_saved_word
-	bcs .saveLeft
-	rts
-.saveLeft:
+	bcc .failed
 	jsr emit_save_right_tmp
-	bcs .right
-	rts
-.right:
+	bcc .failed
 	;;; materialize_saved_word selected the left descriptor. The RHS identity is
 	;;; still in reduceRight*, so restore it at the exact point the helper consumes it.
 	lda reduceRightKind
@@ -416,16 +364,14 @@ emit_mul_reduction:
 	lda reduceRightType
 	sta expressionValueType
 	jsr materialize_expression_word
-	bcs .call
-	rts
-.call:
+	bcc .failed
 	ldx #<exprCallMul16
 	ldy #>exprCallMul16
 	jsr emit_string
-	bcs .done
-	rts
-.done:
+	bcc .failed
 	jmp mark_expression_ax
+.failed:
+	rts
 
 emit_shift_reduction:
 	;;; Exact logical >> 8 is simply the previous high byte.
@@ -441,35 +387,28 @@ emit_shift_reduction:
 	lda reduceRightHigh
 	bne .general
 	jsr materialize_saved_word
-	bcs .shift8
-	rts
-.shift8:
+	bcc .earlyFailed
 	ldx #<exprShift8
 	ldy #>exprShift8
 	jsr emit_string
-	bcs .shift8Done
-	rts
-.shift8Done:
+	bcc .earlyFailed
 	jmp mark_expression_ax
 
 .general:
 	jsr materialize_expression_byte
-	bcs .countReady
-	rts
-.countReady:
+	bcc .earlyFailed
 	ldx #<exprTay
 	ldy #>exprTay
 	jsr emit_string
-	bcs .left
-	rts
-.left:
+	bcc .earlyFailed
 	jsr materialize_saved_word
-	bcs .saveLeft
-	rts
-.saveLeft:
+	bcc .earlyFailed
 	jsr emit_save_right_tmp
-	bcs .labels
+	bcc .earlyFailed
+	jmp .labels
+.earlyFailed:
 	rts
+
 .labels:
 	lda #EMIT_LABEL_GENERIC
 	sta emitLabelKind
@@ -487,34 +426,29 @@ emit_shift_reduction:
 	ldx #<exprCpyZero
 	ldy #>exprCpyZero
 	jsr emit_string
-	bcs .zeroBranch
-	rts
-.zeroBranch:
+	bcc .middleFailed
 	ldx #<exprBeq
 	ldy #>exprBeq
 	jsr emit_string
-	bcs .doneName
-	rts
-.doneName:
+	bcc .middleFailed
 	lda shiftDoneLabel
 	sta emitLabelValue
 	lda shiftDoneLabel+1
 	sta emitLabelValue+1
 	jsr emit_generated_label_name
-	bcs .zeroNewline
-	rts
-.zeroNewline:
+	bcc .middleFailed
 	jsr emit_newline
-	bcs .loopLabel
-	rts
-.loopLabel:
+	bcc .middleFailed
 	lda shiftLoopLabel
 	sta emitLabelValue
 	lda shiftLoopLabel+1
 	sta emitLabelValue+1
 	jsr emit_label_definition
-	bcs .body
+	bcc .middleFailed
+	jmp .body
+.middleFailed:
 	rts
+
 .body:
 	lda reduceOperator
 	cmp #OP_SHL
@@ -527,42 +461,32 @@ emit_shift_reduction:
 	ldy #>exprShiftRightBody
 .emitBody:
 	jsr emit_string
-	bcs .loopBranch
-	rts
-.loopBranch:
+	bcc .lateFailed
 	ldx #<exprBne
 	ldy #>exprBne
 	jsr emit_string
-	bcs .loopName
-	rts
-.loopName:
+	bcc .lateFailed
 	lda shiftLoopLabel
 	sta emitLabelValue
 	lda shiftLoopLabel+1
 	sta emitLabelValue+1
 	jsr emit_generated_label_name
-	bcs .loopNewline
-	rts
-.loopNewline:
+	bcc .lateFailed
 	jsr emit_newline
-	bcs .doneLabel
-	rts
-.doneLabel:
+	bcc .lateFailed
 	lda shiftDoneLabel
 	sta emitLabelValue
 	lda shiftDoneLabel+1
 	sta emitLabelValue+1
 	jsr emit_label_definition
-	bcs .result
-	rts
-.result:
+	bcc .lateFailed
 	ldx #<exprLoadTmpResult
 	ldy #>exprLoadTmpResult
 	jsr emit_string
-	bcs .done
-	rts
-.done:
+	bcc .lateFailed
 	jmp mark_expression_ax
+.lateFailed:
+	rts
 
 
 ;;; Comparisons/indexing and the emitted text vocabulary are kept beside the
