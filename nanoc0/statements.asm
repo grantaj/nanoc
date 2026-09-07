@@ -120,7 +120,6 @@ parse_function_statements:
 reset_statement_function_state:
 	lda #$00
 	sta controlDepth
-	sta statementByteConsumer
 	rts
 
 ;;; ---------------------------------------------------------------------------
@@ -450,8 +449,6 @@ parse_break_statement:
 ;;; Conditions are ordinary expressions. The statement layer adds only the Phase
 ;;; 1 rule that pointer values are not conditions.
 parse_condition_expression:
-	lda #$00
-	sta statementByteConsumer
 	jsr parse_expression
 	bcs .parsed
 	jmp statement_expression_failed
@@ -478,9 +475,6 @@ parse_return_statement:
 	lda #PARSE_BAD_RETURN
 	jmp parser_fail
 .expression:
-	ldx currentFunctionIndex
-	lda persistentType,x
-	jsr set_statement_byte_consumer
 	jsr parse_expression
 	bcs .parsed
 	jmp statement_expression_failed
@@ -569,8 +563,6 @@ parse_identifier_statement:
 ;;; rejected here rather than silently broadening the language to arbitrary
 ;;; expression statements.
 parse_call_statement_expression:
-	lda #$00
-	sta statementByteConsumer
 	jsr parse_call_expression_statement
 	bcs .parsed
 	jmp statement_expression_failed
@@ -593,8 +585,6 @@ parse_scalar_assignment:
 	lda #PARSE_BAD_ASSIGNMENT
 	jmp parser_fail
 .targetOk:
-	lda #$00
-	sta statementByteConsumer
 	;;; expression.asm may narrow this marker to the exact `x = x +/- 1` form.
 	lda #STATEMENT_SCALAR_ASSIGNMENT
 	sta statementTargetKind
@@ -672,8 +662,6 @@ parse_indexed_assignment:
 	clc
 	rts
 .indexStarted:
-	lda #$00
-	sta statementByteConsumer
 	jsr parse_expression
 	bcs .indexParsed
 	jmp statement_expression_failed
@@ -726,8 +714,6 @@ parse_indexed_assignment:
 .equals:
 	jsr parser_next
 	bcc .failed
-	lda statementElementType
-	jsr set_statement_byte_consumer
 	jsr parse_expression
 	bcs .rhsParsed
 	jmp statement_expression_failed
@@ -788,66 +774,6 @@ validate_indexed_target:
 	clc
 	rts
 
-;;; A byte consumer is a physical promise, not the semantic type of the expression.
-;;; Return and indexed-assignment parsing record that promise explicitly; scalar
-;;; assignment already has its exact target facts. Call arguments need no retained
-;;; flag because the pending-call frame names their parameter type at the delimiter.
-set_statement_byte_consumer:
-	cmp #TYPE_CHAR
-	beq .byte
-	lda #$00
-	sta statementByteConsumer
-	rts
-.byte:
-	lda #$01
-	sta statementByteConsumer
-	rts
-
-;;; Carry set only when the expression is at a boundary that proves its high byte
-;;; cannot be observed. Parenthesized subexpressions deliberately fail this test:
-;;; a later word operation may still consume their promoted value.
-final_consumer_observes_byte:
-	lda currentTokenKind
-	cmp #';'
-	beq .statement
-	cmp #','
-	beq .call
-	cmp #')'
-	bne .no
-.call:
-	jsr call_delimiter_belongs_to_call
-	bcc .no
-	lda callDepth
-	beq .no
-	sec
-	sbc #$01
-	tax
-	lda callArgumentIndex,x
-	tay
-	lda callCallee,x
-	tax
-	tya
-	cmp persistentParamCount,x
-	bcs .no
-	clc
-	adc persistentParamStart,x
-	tax
-	lda parameterType,x
-	cmp #TYPE_CHAR
-	beq .yes
-	jmp .no
-.statement:
-	jsr byte_result_is_final_scalar_assignment
-	bcs .yes
-	lda statementByteConsumer
-	beq .no
-.yes:
-	sec
-	rts
-.no:
-	clc
-	rts
-
 ;;; Expression failures retain their precise expressionError. Scanner failure is
 ;;; already layered through parserError/scannerError and must not be relabelled.
 statement_expression_failed:
@@ -873,6 +799,5 @@ statementTargetArea:	byte SYMBOL_AREA_NONE
 statementTargetKind:	byte 0
 statementTargetType:	byte TYPE_INT
 statementElementType:	byte TYPE_CHAR
-statementByteConsumer:	byte 0
 
 	include "statement_codegen.asm"

@@ -190,11 +190,8 @@ emit_binary_reduction:
 .compare:
 	jmp emit_compare_reduction
 
-;;; C integer promotion remains a semantic type rule. The final consumer can
-;;; nevertheless prove that no later C operation can observe the high byte. Only
-;;; at that proven boundary do +, -, &, and | use their natural byte operation.
 emit_arithmetic_reduction:
-	jsr final_consumer_observes_byte
+	jsr byte_result_is_final_scalar_assignment
 	bcc .word
 	jmp emit_byte_arithmetic_reduction
 .word:
@@ -347,9 +344,17 @@ emit_word_arithmetic_reduction:
 .failed:
 	rts
 
-;;; A reduction temporarily selected its saved left descriptor to materialise it.
-;;; Restore the RHS descriptor exactly when the target instruction consumes it.
-select_reduction_right_operand:
+;;; __nc_mul16 keeps the small frozen helper convention: left in NC_TMP, right
+;;; in A/X, result in A/X. No static expression spill is involved.
+emit_mul_reduction:
+	lda #$01
+	sta multiplyUsed
+	jsr materialize_saved_word
+	bcc .failed
+	jsr emit_save_right_tmp
+	bcc .failed
+	;;; materialize_saved_word selected the left descriptor. The RHS identity is
+	;;; still in reduceRight*, so restore it at the exact point the helper consumes it.
 	lda reduceRightKind
 	sta expressionValueKind
 	lda reduceRightLow
@@ -358,36 +363,6 @@ select_reduction_right_operand:
 	sta expressionValueHigh
 	lda reduceRightType
 	sta expressionValueType
-	rts
-
-;;; Multiplication has two concrete machine contracts. A byte consumer needs only
-;;; the product modulo 256, so neither operand's high byte is physically needed.
-;;; A word consumer keeps the existing full A/X helper convention.
-emit_mul_reduction:
-	lda #$01
-	sta multiplyUsed
-	jsr final_consumer_observes_byte
-	bcc .word
-
-	jsr materialize_saved_byte
-	bcc .failed
-	jsr emit_save_right_byte_tmp
-	bcc .failed
-	jsr select_reduction_right_operand
-	jsr materialize_expression_byte
-	bcc .failed
-	ldx #<exprCallMul8
-	ldy #>exprCallMul8
-	jsr emit_string
-	bcc .failed
-	jmp mark_expression_a
-
-.word:
-	jsr materialize_saved_word
-	bcc .failed
-	jsr emit_save_right_tmp
-	bcc .failed
-	jsr select_reduction_right_operand
 	jsr materialize_expression_word
 	bcc .failed
 	ldx #<exprCallMul16
