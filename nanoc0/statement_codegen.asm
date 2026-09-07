@@ -18,7 +18,6 @@ emit_statement_index_address:
 	bcc .failed
 	jmp emit_index_address_call
 .failed:
-	clc
 	rts
 
 load_statement_target_base:
@@ -71,21 +70,26 @@ emit_statement_target_line:
 	bcc .failed
 	jmp emit_newline
 .failed:
-	clc
 	rts
 
 emit_return_value:
-	;;; Phase 1 C-defined functions return int. Delay promotion until this exact
-	;;; observable boundary; a named char or byte comparison need not carry X
-	;;; through the expression that produced it.
+	;;; The declared return width is the observable boundary. A char function
+	;;; returns only A; int functions keep the existing A/X convention.
+	ldx currentFunctionIndex
+	lda persistentType,x
+	cmp #TYPE_CHAR
+	bne .word
+	jsr materialize_expression_byte
+	bcs .emit
+	rts
+.word:
 	jsr materialize_expression_word
-	bcc .failed
+	bcs .emit
+	rts
+.emit:
 	ldx #<statementRts
 	ldy #>statementRts
 	jmp emit_string
-.failed:
-	clc
-	rts
 
 emit_store_persistent_value:
 	lda statementTargetType
@@ -122,7 +126,6 @@ emit_store_persistent_value:
 	sec
 	rts
 .failed:
-	clc
 	rts
 
 ;;; The lvalue index/address must survive exactly one RHS expression. That is a
@@ -134,7 +137,6 @@ emit_save_statement_index:
 	ldy #>exprPha
 	jmp emit_string
 .failed:
-	clc
 	rts
 
 emit_save_statement_address:
@@ -181,7 +183,6 @@ emit_indexed_store:
 	ldy #>statementStoreChar
 	jmp emit_string
 .failed:
-	clc
 	rts
 
 emit_indexed_array_store:
@@ -206,7 +207,6 @@ emit_indexed_array_store:
 	ldy #>exprIndexYSuffix
 	jmp emit_string
 .failed:
-	clc
 	rts
 
 emit_indexed_current_pointer_store:
@@ -226,7 +226,6 @@ emit_indexed_current_pointer_store:
 	ldy #>statementStoreCharY
 	jmp emit_string
 .failed:
-	clc
 	rts
 
 ;;; A direct byte comparison is already in processor flags. Branch from those

@@ -82,7 +82,6 @@ parse_call_expression_statement:
 	sec
 	rts
 .failed:
-	clc
 	rts
 
 ;;; expression_call_primary
@@ -149,7 +148,6 @@ expression_call_primary:
 	sec
 	rts
 .failed:
-	clc
 	rts
 
 ;;; call_delimiter_belongs_to_call
@@ -193,7 +191,6 @@ finish_call_separator:
 	sec
 	rts
 .failed:
-	clc
 	rts
 
 ;;; finish_call_close
@@ -207,7 +204,6 @@ finish_call_close:
 	bcc .failed
 	jmp complete_current_call
 .failed:
-	clc
 	rts
 
 ;;; finish_current_call_argument
@@ -221,7 +217,6 @@ finish_current_call_argument:
 	sec
 	rts
 .failed:
-	clc
 	rts
 
 ;;; finish_current_call_value
@@ -244,7 +239,6 @@ finish_current_call_value:
 	jsr verify_current_call_marker
 	rts
 .failed:
-	clc
 	rts
 
 ;;; verify_current_call_marker
@@ -333,7 +327,6 @@ stage_current_call_argument:
 	sec
 	rts
 .failed:
-	clc
 	rts
 
 ;;; store_final_call_argument
@@ -377,7 +370,6 @@ store_final_call_argument:
 	lda #EXPR_EMIT_ERROR
 	jmp expression_fail
 .failed:
-	clc
 	rts
 
 ;;; complete_current_call
@@ -471,6 +463,14 @@ complete_current_call:
 	ldx callEmitCallee
 	lda persistentType,x
 	sta expressionValueType
+	;;; emit_call_instruction leaves the conventional word result in A/X. A
+	;;; char callee promises only A, so narrow the physical fact without emitting
+	;;; any target instruction.
+	cmp #TYPE_CHAR
+	bne .resultWidthDone
+	lda #VALUE_A
+	sta expressionValueKind
+.resultWidthDone:
 	lda #$00
 	sta expressionIndexable
 	sta expressionMustIndex
