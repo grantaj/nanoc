@@ -347,10 +347,11 @@ emit_word_arithmetic_reduction:
 .failed:
 	rts
 
-;;; Multiplication is commutative, so the current RHS can go to NC_TMP before
-;;; materialising the saved LHS. That avoids rebuilding an operand descriptor.
-;;; At a proven byte boundary, multiplication by low-byte 3 is even simpler:
-;;; A + 2*A is the exact low byte, regardless of the promoted high bytes.
+;;; Multiplication has the same lifetime split as ordinary arithmetic. A direct
+;;; RHS has not disturbed a physical left value, so save the left in NC_TMP and
+;;; spell the RHS directly. A computed RHS forced the parser to preserve its left
+;;; operand already, so the commutative helper may save the RHS first instead.
+;;; At a proven byte boundary, multiplication by low-byte 3 is simply A + 2*A.
 emit_mul_reduction:
 	jsr byte_result_is_final_scalar_assignment
 	bcc .word
@@ -379,12 +380,29 @@ emit_mul_reduction:
 .word:
 	lda #$01
 	sta multiplyUsed
+	jsr right_operand_is_direct
+	bcc .savedRight
+	jsr materialize_saved_word
+	bcc .failed
+	jsr emit_save_right_tmp
+	bcc .failed
+	ldx #<exprLdaSpace
+	ldy #>exprLdaSpace
+	jsr emit_right_low_operand
+	bcc .failed
+	ldx #<exprLdxSpace
+	ldy #>exprLdxSpace
+	jsr emit_right_high_operand
+	bcc .failed
+	jmp .call
+.savedRight:
 	jsr materialize_expression_word
 	bcc .failed
 	jsr emit_save_right_tmp
 	bcc .failed
 	jsr materialize_saved_word
 	bcc .failed
+.call:
 	ldx #<exprCallMul16
 	ldy #>exprCallMul16
 	jsr emit_string

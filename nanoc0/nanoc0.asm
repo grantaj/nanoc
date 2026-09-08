@@ -54,12 +54,10 @@ nanoc0Entry:
 	include "runtime_codegen.asm"
 	include "program_output.asm"
 
-;;; Fixed target assembly lives with the other target helpers rather than as a
-;;; second textual copy inside resident nanoc0. The generated source still shows
-;;; the machine map explicitly through this ordinary include.
-programHeader:
-	string "	include \"../nanoc0/target/header.asm\""
-	byte 0
+;;; The fixed target prelude is emitted through the same target-include spelling
+;;; as the runtime helpers. Resident nanoc0 therefore keeps only this short path,
+;;; not a second text copy of the generated machine map.
+programHeaderPath:	byte 'h','e','a','d','e','r',0
 
 programEntryPrefix:
 	string "__nc_entry:"
@@ -112,9 +110,9 @@ compilerMain:
 	jmp .outputFailed
 .outputOpen:
 
-	ldx #<programHeader
-	ldy #>programHeader
-	jsr emit_runtime_lines
+	ldx #<programHeaderPath
+	ldy #>programHeaderPath
+	jsr emit_runtime_include
 	bcs .headerEmitted
 	jmp .emitFailed
 .headerEmitted:
