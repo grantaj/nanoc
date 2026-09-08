@@ -365,12 +365,15 @@ emit_mul_reduction:
 	bcc .failed
 	jsr emit_save_right_byte_tmp
 	bcc .failed
-	lda #exprMul3ShiftEnd-exprShiftLeftBody
+	;;; These are fixed prefixes of existing target text. Spell their byte counts
+	;;; explicitly because native ass deliberately does not evaluate label-label
+	;;; arithmetic in an immediate operand.
+	lda #$0c			; "\tasl NC_TMP\n"
 	ldx #<exprShiftLeftBody
 	ldy #>exprShiftLeftBody
 	jsr emit_text
 	bcc .failed
-	lda #exprMul3AddEnd-exprWordAddTmp
+	lda #$11			; "\tclc\n\tadc NC_TMP\n"
 	ldx #<exprWordAddTmp
 	ldy #>exprWordAddTmp
 	jsr emit_text
