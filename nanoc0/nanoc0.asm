@@ -54,18 +54,11 @@ nanoc0Entry:
 	include "runtime_codegen.asm"
 	include "program_output.asm"
 
-;;; Fixed generated-program text and the driver's tiny private state are kept
-;;; before the routines that name them. Native ass is one-pass, so fixed data has
-;;; no reason to consume forward-fixup workspace while the compiler is assembled.
-;;; emit_runtime_lines writes these bytes verbatim; tabs inside instruction
-;;; strings are therefore real output tabs.
+;;; Fixed target assembly lives with the other target helpers rather than as a
+;;; second textual copy inside resident nanoc0. The generated source still shows
+;;; the machine map explicitly through this ordinary include.
 programHeader:
-	string "* = $0800"
-	string "NC_TMP = $fc"
-	string "NC_PTR = $fe"
-	string "NC_BSS = $4800"
-	string "__nc_start:"
-	string "	jmp __nc_entry"
+	string "	include \"../nanoc0/target/header.asm\""
 	byte 0
 
 programEntryPrefix:

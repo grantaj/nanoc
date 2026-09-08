@@ -190,6 +190,9 @@ emit_binary_reduction:
 .compare:
 	jmp emit_compare_reduction
 
+;;; The C expression still has its promoted integer type. Only a proven final
+;;; char consumer changes the physical width that this reduction must compute.
+;;; Returns temporarily use the same statement marker as scalar assignments.
 emit_arithmetic_reduction:
 	jsr byte_result_is_final_scalar_assignment
 	bcc .word
@@ -344,26 +347,43 @@ emit_word_arithmetic_reduction:
 .failed:
 	rts
 
-;;; __nc_mul16 keeps the small frozen helper convention: left in NC_TMP, right
-;;; in A/X, result in A/X. No static expression spill is involved.
+;;; Multiplication is commutative, so the current RHS can go to NC_TMP before
+;;; materialising the saved LHS. That avoids rebuilding an operand descriptor.
+;;; At a proven byte boundary, multiplication by low-byte 3 is even simpler:
+;;; A + 2*A is the exact low byte, regardless of the promoted high bytes.
 emit_mul_reduction:
+	jsr byte_result_is_final_scalar_assignment
+	bcc .word
+	lda reduceRightKind
+	cmp #VALUE_LITERAL
+	bne .word
+	lda reduceRightLow
+	cmp #$03
+	bne .word
+	jsr materialize_saved_byte
+	bcc .failed
+	jsr emit_save_right_byte_tmp
+	bcc .failed
+	lda #exprMul3ShiftEnd-exprShiftLeftBody
+	ldx #<exprShiftLeftBody
+	ldy #>exprShiftLeftBody
+	jsr emit_text
+	bcc .failed
+	lda #exprMul3AddEnd-exprWordAddTmp
+	ldx #<exprWordAddTmp
+	ldy #>exprWordAddTmp
+	jsr emit_text
+	bcc .failed
+	jmp mark_expression_a
+
+.word:
 	lda #$01
 	sta multiplyUsed
-	jsr materialize_saved_word
+	jsr materialize_expression_word
 	bcc .failed
 	jsr emit_save_right_tmp
 	bcc .failed
-	;;; materialize_saved_word selected the left descriptor. The RHS identity is
-	;;; still in reduceRight*, so restore it at the exact point the helper consumes it.
-	lda reduceRightKind
-	sta expressionValueKind
-	lda reduceRightLow
-	sta expressionValueLow
-	lda reduceRightHigh
-	sta expressionValueHigh
-	lda reduceRightType
-	sta expressionValueType
-	jsr materialize_expression_word
+	jsr materialize_saved_word
 	bcc .failed
 	ldx #<exprCallMul16
 	ldy #>exprCallMul16

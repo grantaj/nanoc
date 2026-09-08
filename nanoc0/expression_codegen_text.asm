@@ -53,6 +53,7 @@ exprTya:	byte $09,'t','y','a',$0a,0
 exprWordAddTmp:
 	byte $09,'c','l','c',$0a
 	byte $09,'a','d','c',' ','N','C','_','T','M','P',$0a
+exprMul3AddEnd:
 	byte $09,'t','a','y',$0a
 	byte $09,'t','x','a',$0a
 	byte $09,'a','d','c',' ','N','C','_','T','M','P','+','1',$0a
@@ -111,6 +112,7 @@ exprCpyZero:		byte $09,'c','p','y',' ','#','$','0','0',$0a
 exprCpyZeroEnd:		byte 0
 exprShiftLeftBody:
 	byte $09,'a','s','l',' ','N','C','_','T','M','P',$0a
+exprMul3ShiftEnd:
 	byte $09,'r','o','l',' ','N','C','_','T','M','P','+','1',$0a
 	byte $09,'d','e','y',$0a
 exprShiftLeftBodyEnd:	byte 0

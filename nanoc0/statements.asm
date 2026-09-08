@@ -475,10 +475,20 @@ parse_return_statement:
 	lda #PARSE_BAD_RETURN
 	jmp parser_fail
 .expression:
+	;;; Reuse the scalar-assignment marker only while this expression is being
+	;;; reduced. It means exactly the same physical fact here: the final `;`
+	;;; consumer has a known destination width.
+	lda #STATEMENT_SCALAR_ASSIGNMENT
+	sta statementTargetKind
+	ldx currentFunctionIndex
+	lda persistentType,x
+	sta statementTargetType
 	jsr parse_expression
 	bcs .parsed
 	jmp statement_expression_failed
 .parsed:
+	lda #$00
+	sta statementTargetKind
 	lda expressionValueType
 	jsr type_is_integer
 	bcc .badType
