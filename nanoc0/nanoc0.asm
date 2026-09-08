@@ -24,6 +24,7 @@ NANOC_OUTPUT_DEVICE = 9
 NANOC_TARGET_ORIGIN = $0800
 NANOC_TARGET_BSS    = $4800
 NANOC_TARGET_LIMIT  = $d000
+NANOC_TARGET_BSS_LIMIT = NANOC_TARGET_LIMIT-NANOC_TARGET_BSS
 
 	* = $4000
 
@@ -34,70 +35,55 @@ NANOC_TARGET_LIMIT  = $d000
 ;;; The compiler's bounded work RAM uses the area under BASIC ROM. Like ass, the
 ;;; public native entry therefore owns the C64 memory map explicitly: BASIC is
 ;;; hidden while KERNAL and I/O remain visible, then the caller's $01 value is
-;;; restored. PHA/PLA preserve only the returned status byte across that restore;
-;;; the hardware stack is never C storage.
+;;; restored. The caller's mapping lives beneath compiler call frames on the
+;;; hardware stack; X preserves the returned status while that byte is restored.
+;;; The hardware stack is never C storage.
 nanoc0Entry:
 	lda $01
-	sta compilerMemoryConfig
+	pha
 	lda #$36
 	sta $01
 	jsr compilerMain
-	pha
-	lda compilerMemoryConfig
-	sta $01
+	tax
 	pla
+	sta $01
+	txa
 	rts
 
-compilerMemoryConfig:
-	byte 0
-
 	include "declarations.asm"
-	include "program_output.asm"
 	include "runtime_codegen.asm"
+	include "program_output.asm"
 
-;;; Fixed generated-program text and the driver's tiny private state are kept
-;;; before the routines that name them. Native ass is one-pass, so fixed data has
-;;; no reason to consume forward-fixup workspace while the compiler is assembled.
-;;; emit_runtime_lines writes these bytes verbatim; tabs inside instruction
-;;; strings are therefore real output tabs.
-programHeader:
-	string "* = $0800"
-	string "NC_TMP = $fc"
-	string "NC_PTR = $fe"
-	string "NC_BSS = $4800"
-	string "__nc_start:"
-	string "	jmp __nc_entry"
+;;; The fixed target prelude is emitted through the same target-include spelling
+;;; as the runtime helpers. Resident nanoc0 therefore keeps only this short path,
+;;; not a second text copy of the generated machine map.
+programHeaderPath:	byte 'h','e','a','d','e','r',0
+
+programEntryPrefix:
+	string "__nc_entry:"
+	string "	jsr __nc_init"
 	byte 0
 
 programMainEntry:
-	string "__nc_entry:"
-	string "	jsr __nc_init"
 	string "	jsr __c_main"
 	string "	rts"
 	byte 0
 
 programPlainEntry:
-	string "__nc_entry:"
-	string "	jsr __nc_init"
 	string "	lda #$00"
 	string "	tax"
 	string "	rts"
 	byte 0
 
-compilerOutputOpen:	byte 0
-compilerOutputStatus:	byte 0
-generatedBssEnd:	word 0
-
 compilerMain:
 	lda #$00
-	sta NANOC_COMMAND_STATUS
-	sta NANOC_COMMAND_DETAIL
-	sta NANOC_COMMAND_LINE
-	sta NANOC_COMMAND_LINE+1
-	sta NANOC_COMMAND_BSS_BYTES
-	sta NANOC_COMMAND_BSS_BYTES+1
-	sta compilerOutputOpen
+	ldy #$05
+.clearCommandResult:
+	sta NANOC_COMMAND_STATUS,y
+	dey
+	bpl .clearCommandResult
 	sta emitOutputEnabled
+	sta emitOutputStatus
 
 	lda #<NANOC_TARGET_BSS
 	sta bssBase
@@ -124,9 +110,9 @@ compilerMain:
 	jmp .outputFailed
 .outputOpen:
 
-	ldx #<programHeader
-	ldy #>programHeader
-	jsr emit_runtime_lines
+	ldx #<programHeaderPath
+	ldy #>programHeaderPath
+	jsr emit_runtime_include
 	bcs .headerEmitted
 	jmp .emitFailed
 .headerEmitted:
@@ -144,28 +130,19 @@ compilerMain:
 	bcs .entryEmitted
 	jmp .emitFailed
 .entryEmitted:
-
-	jsr close_source
-	jsr close_compiler_output
-	lda #NANOC_STATUS_OK
-	sta NANOC_COMMAND_STATUS
-	lda #$00
-	tax
-	rts
+	;;; The command status was cleared on entry. Success uses the same stream
+	;;; cleanup/return path as failure, so there is only one ownership exit.
+	jmp compiler_failure_return
 
 .sourceFailed:
-	lda #NANOC_STATUS_SOURCE
-	sta NANOC_COMMAND_STATUS
 	lda sourceState
-	sta NANOC_COMMAND_DETAIL
-	jmp compiler_failure_return
+	ldx #NANOC_STATUS_SOURCE
+	jmp compiler_failure
 
 .outputFailed:
-	lda #NANOC_STATUS_OUTPUT
-	sta NANOC_COMMAND_STATUS
-	lda compilerOutputStatus
-	sta NANOC_COMMAND_DETAIL
-	jmp compiler_failure_return
+	lda emitOutputStatus
+	ldx #NANOC_STATUS_OUTPUT
+	jmp compiler_failure
 
 .compileFailed:
 	jsr record_bss_bytes
@@ -177,50 +154,44 @@ compilerMain:
 	beq .expressionFailure
 	cmp #PARSE_EMIT_ERROR
 	beq .emitCompileFailure
-	lda #NANOC_STATUS_PARSER
-	sta NANOC_COMMAND_STATUS
 	lda parserError
-	sta NANOC_COMMAND_DETAIL
-	jmp compiler_failure_return
+	ldx #NANOC_STATUS_PARSER
+	jmp compiler_failure
 
 .scannerFailure:
-	lda #NANOC_STATUS_SCANNER
-	sta NANOC_COMMAND_STATUS
 	lda scannerError
-	sta NANOC_COMMAND_DETAIL
-	jmp compiler_failure_return
+	ldx #NANOC_STATUS_SCANNER
+	jmp compiler_failure
 
 .expressionFailure:
-	lda #NANOC_STATUS_EXPRESSION
-	sta NANOC_COMMAND_STATUS
 	lda expressionError
-	sta NANOC_COMMAND_DETAIL
-	jmp compiler_failure_return
+	ldx #NANOC_STATUS_EXPRESSION
+	jmp compiler_failure
 
 .emitCompileFailure:
-	lda #NANOC_STATUS_EMIT
-	sta NANOC_COMMAND_STATUS
 	lda emitOutputStatus
-	bne .saveEmitDetail
+	bne .haveEmitDetail
 	lda parserError
-.saveEmitDetail:
-	sta NANOC_COMMAND_DETAIL
-	jmp compiler_failure_return
+.haveEmitDetail:
+	ldx #NANOC_STATUS_EMIT
+	jmp compiler_failure
 
 .emitFailed:
 	jsr record_bss_bytes
 	jsr record_current_line
-	lda #NANOC_STATUS_EMIT
-	sta NANOC_COMMAND_STATUS
 	lda emitOutputStatus
-	sta NANOC_COMMAND_DETAIL
-	jmp compiler_failure_return
+	ldx #NANOC_STATUS_EMIT
+	jmp compiler_failure
 
 .layoutFailed:
-	lda #NANOC_STATUS_LAYOUT
-	sta NANOC_COMMAND_STATUS
 	lda #$01
+	ldx #NANOC_STATUS_LAYOUT
+
+;;; A=layer detail, X=NANOC_STATUS_*. All failures close both streams and return
+;;; the broad status in A.
+compiler_failure:
 	sta NANOC_COMMAND_DETAIL
+	stx NANOC_COMMAND_STATUS
 
 compiler_failure_return:
 	jsr close_source
@@ -246,30 +217,27 @@ open_compiler_output:
 	jsr OPEN
 	bcs .failed
 	lda #$01
-	sta compilerOutputOpen
 	sta emitOutputEnabled
-	lda #$00
-	sta compilerOutputStatus
 	sec
 	rts
 .failed:
 	jsr READST
-	sta compilerOutputStatus
+	sta emitOutputStatus
 	clc
 	rts
 
+;;; emitOutputEnabled is also the ownership flag: it becomes nonzero only after
+;;; this compiler has successfully opened its output logical file.
 close_compiler_output:
-	lda #$00
-	sta emitOutputEnabled
 	jsr CLRCHN
 	lda #COMPILER_IO_NONE
 	sta compilerIecDirection
-	lda compilerOutputOpen
+	lda emitOutputEnabled
 	beq .done
+	lda #$00
+	sta emitOutputEnabled
 	lda #EMIT_OUTPUT_LFN
 	jsr CLOSE
-	lda #$00
-	sta compilerOutputOpen
 .done:
 	rts
 
@@ -291,19 +259,12 @@ record_bss_bytes:
 ;;; The loaded-image side of the map is independently bounded by ass's 16 KiB
 ;;; representation when the generated source is assembled.
 generated_layout_fits:
-	clc
-	lda #<NANOC_TARGET_BSS
-	adc bssOffset
-	sta generatedBssEnd
-	lda #>NANOC_TARGET_BSS
-	adc bssOffset+1
-	sta generatedBssEnd+1
-	bcs .failed
-	lda generatedBssEnd+1
-	cmp #>NANOC_TARGET_LIMIT
+	;;; Compare the offset itself: NC_BSS has exactly this much room before I/O.
+	lda bssOffset+1
+	cmp #>NANOC_TARGET_BSS_LIMIT
 	bcc .fits
 	bne .failed
-	lda generatedBssEnd
+	lda bssOffset
 	beq .fits
 .failed:
 	clc
@@ -316,6 +277,10 @@ generated_layout_fits:
 ;;; merely makes the common zero-argument main case convenient for complete
 ;;; native tests while leaving library-like translation units usable.
 emit_program_entry:
+	ldx #<programEntryPrefix
+	ldy #>programEntryPrefix
+	jsr emit_runtime_lines
+	bcc .failed
 	jsr source_has_zero_arg_main
 	bcc .plain
 	ldx #<programMainEntry
@@ -325,6 +290,9 @@ emit_program_entry:
 	ldx #<programPlainEntry
 	ldy #>programPlainEntry
 	jmp emit_runtime_lines
+.failed:
+	clc
+	rts
 
 source_has_zero_arg_main:
 	lda #$04

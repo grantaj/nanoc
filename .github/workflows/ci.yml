@@ -42,4 +42,6 @@ jobs:
             build/nanoc0-integration/assfromc.asm
             build/nanoc0-integration/NCOUT.ASM
             build/nanoc0-integration/ncout.asm
+            tests/nanoc0-expr/EXPROUT.ASM
+            tests/nanoc0-expr/exprout.asm
           if-no-files-found: ignore

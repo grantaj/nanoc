@@ -2,29 +2,25 @@
 ;;;
 ;;; Nano C Phase 1 expression parser.
 ;;;
-;;; This is one explicit bounded state machine, not recursive descent. The
-;;; generated program's current value is always in A/X. A binary left operand
-;;; that must survive later source is emitted to a reusable fixed per-function
-;;; spill slot. A simple literal or scalar right operand may instead reduce
-;;; immediately when precedence proves there is nothing later that can clobber
-;;; the left value. The compiler retains no expression tree, RPN stream or
-;;; generic intermediate representation.
+;;; This is one explicit bounded state machine, not recursive descent. A current
+;;; source operand stays in the cheapest 6502 form that still names it: literal,
+;;; current/persistent scalar, fixed address, A, or A/X. Binary stack entries keep
+;;; that small identity beside the operator. Only a value that genuinely has to
+;;; survive later generated code is pushed on the 6502 hardware stack. The
+;;; compiler retains no expression tree, RPN stream or generic IR.
 ;;;
 ;;; The important state is deliberately small:
 ;;;
 ;;;   operatorCount          entries currently on the one operator stack
-;;;   expressionSpillDepth   live saved left operands
-;;;   spillAllocatedCount    spill words already reserved for this function
+;;;   operatorValueKind      physical/source form of each saved left operand
 ;;;   expressionNeedValue    parser expects a primary/unary, not an operator
 ;;;   expressionIndexable    current value may be followed by [index]
 ;;;   expressionMustIndex    non-char array address is only valid for [index]
 ;;;   callDepth              live pending calls, handled by calls.asm
 ;;;
-;;; expression_codegen.asm contains the ordinary literal 6502 sequences emitted
-;;; by reductions. expression_immediate.asm contains the few literal-RHS forms
-;;; that can operate directly on A/X. Keeping those sequences separate makes the
-;;; parser itself readable without introducing an abstraction between parsing
-;;; and code generation.
+;;; expression_codegen.asm contains the literal 6502 sequences emitted by
+;;; reductions. expression_immediate.asm contains the small operand-formatting
+;;; helpers used to spell direct immediate and named-memory instructions.
 ;;;
 ;;; Function calls use OP_CALL on this same operator stack. Commas and the call's
 ;;; closing ')' reduce only the current argument back to that marker; calls.asm
@@ -53,10 +49,31 @@ EXPR_LITERAL_CAPACITY = 16
 EXPR_LITERAL_BYTES    = 512
 EXPR_LITERAL_ROW      = 16
 
-IMMEDIATE_BINARY_NONE             = 0
-IMMEDIATE_BINARY_CAPTURED_LITERAL = 1
-IMMEDIATE_BINARY_REDUCED          = 2
-IMMEDIATE_BINARY_CAPTURED_SCALAR  = 3
+RIGHT_START_NORMAL   = 0
+RIGHT_START_CAPTURED = 1
+RIGHT_START_UPDATED  = 2
+
+VALUE_NONE        = 0
+VALUE_LITERAL     = 1
+VALUE_CURRENT     = 2
+VALUE_PERSISTENT  = 3
+VALUE_STRING      = 4
+VALUE_ARRAY       = 5
+VALUE_A           = 6
+VALUE_AX          = 7
+VALUE_STACK_BYTE  = 8
+VALUE_STACK_WORD  = 9
+VALUE_COND_EQ      = 10
+VALUE_COND_NE      = 11
+VALUE_COND_LT      = 12
+VALUE_COND_GE      = 13
+VALUE_COND_GT      = 14
+VALUE_COND_LE      = 15
+
+;;; Physical truth flags are expression-machine facts. Keep these constants here,
+;;; before any parser/codegen reference, because native ass is deliberately one-pass.
+EXPR_CONDITION_NONE = 0
+EXPR_CONDITION_BNE  = 1
 
 ;;; Scalar assignment and expression parsing share these two temporary target
 ;;; states. Define them here, before expression code can reference them: native
@@ -65,24 +82,93 @@ IMMEDIATE_BINARY_CAPTURED_SCALAR  = 3
 STATEMENT_SCALAR_ASSIGNMENT = $82
 STATEMENT_SELF_UPDATE       = $83
 
-;;; Index markers need only one byte of base identity. Ordinary expression
-;;; spills are 0..15; a fixed char array uses the unused range above them. The
-;;; pointer path keeps its old saved runtime value, which is required when an
-;;; index expression contains a call that could change a global pointer.
-INDEX_ARRAY_BIAS = EXPR_STACK_CAPACITY
-
 INDEXABLE_POINTER     = 1
 INDEXABLE_FIXED_ARRAY = 2
 
 ;;; Mutable expression tables are compiler work RAM, not loaded data. Define the
 ;;; fixed map before parser code references it so native ass sees constants, not
 ;;; forward labels that are later redefined.
-operatorKind   = $b0c0
-operatorSpill  = $b0d0
-operatorType   = $b0e0
-literalOffset  = $b0f0
-literalLength  = $b110
-literalBytes   = $b130
+operatorKind      = $b0c0
+operatorValueLow  = $b0d0
+operatorType      = $b0e0
+literalOffset     = $b0f0
+literalLength     = $b110
+literalBytes      = $b130
+
+;;; Two more bytes per operator live after emit.asm's four-byte KERNAL scratch
+;;; save area. They are compiler work RAM, not loaded program data.
+operatorValueKind = $b3a0
+operatorValueHigh = $b3b0
+
+;;; The rest of the expression/call machine is scalar working state in the same
+;;; RAM-under-BASIC workspace. Keep the complete map here, before any parser or
+;;; emitter code references it: native ass is deliberately one-pass. Every byte
+;;; below is reset or assigned before it is observed; none is program data.
+operatorCount                = $b3c0
+expressionNeedValue          = $b3c1
+expressionValueType          = $b3c2
+expressionValueKind          = $b3c3
+expressionValueLow           = $b3c4
+expressionValueHigh          = $b3c5
+expressionIndexable          = $b3c6
+expressionMustIndex          = $b3c7
+expressionElementType        = $b3c8
+expressionError              = $b3c9
+pendingOperator              = $b3ca
+pendingPrecedence            = $b3cb
+rightStartState              = $b3cc
+wantedMarker                 = $b3cd
+reduceOperator               = $b3ce
+reduceLeftKind               = $b3cf
+reduceLeftLow                = $b3d0
+reduceLeftHigh               = $b3d1
+reduceRightKind              = $b3d2
+reduceRightLow               = $b3d3
+reduceRightHigh              = $b3d4
+reduceLeftType               = $b3d5
+reduceRightType              = $b3d6
+preserveOperatorIndex        = $b3d7
+reduceResultType             = $b3d8
+primarySymbolIndex           = $b3d9
+primarySymbolArea            = $b3da
+primarySymbolKind            = $b3db
+primarySymbolType            = $b3dc
+literalCount                 = $b3dd
+literalBytesUsed             = $b3de
+currentLiteralIndex          = $b3e0
+literalNewEnd                = $b3e1
+literalEmitIndex             = $b3e3
+literalEmitOffset            = $b3e4
+literalEmitRemaining         = $b3e6
+literalEmitColumn            = $b3e7
+
+;;; Short-lived target-code formatting facts follow the parser state.
+shiftLoopLabel               = $b3e8
+shiftDoneLabel               = $b3ea
+operandPrefix                = $b3ec
+expressionConditionBranch    = $b3ee
+compareUsed                  = $b3ef
+multiplyUsed                 = $b3f0
+indexUsed                    = $b3f1
+
+;;; Pending-call scalar state follows the formatter scratch.
+callDepth                    = $b3f2
+callBeginCallee              = $b3f3
+callEmitDepth                = $b3f4
+callEmitArgument             = $b3f5
+callEmitArgumentCount        = $b3f6
+callEmitCallee               = $b3f7
+callEmitParamType            = $b3f8
+callCopyIndex                = $b3f9
+callRuntimeArgument          = $b3fa
+callStatementMode            = $b3fb
+callStatementSawOuter        = $b3fc
+callStatementTerminator      = $b3fd
+
+;;; Branch-over-JMP formatting needs two 16-bit labels and their target kind.
+conditionalTargetLabel       = $b400
+conditionalSkipLabel         = $b402
+conditionalTargetKind        = $b404
 
 OP_GROUP = 1
 OP_INDEX = 2
@@ -123,14 +209,9 @@ reset_expression_translation_state:
 	jmp reset_expression_function_state
 
 ;;; reset_expression_function_state
-;;; Spill and call-staging names are reused by depth inside each function.
-;;; Previously allocated BSS remains allocated, but the new function has a new
-;;; generated storage namespace.
 reset_expression_function_state:
 	lda #$00
 	sta operatorCount
-	sta expressionSpillDepth
-	sta spillAllocatedCount
 	sta expressionError
 	jsr reset_call_function_state
 	rts
@@ -139,8 +220,8 @@ reset_expression_function_state:
 ;;; Compile one expression beginning at currentToken. The first token that is
 ;;; not part of it remains current for the caller, normally ';', ')' or ']'.
 ;;; Commas belonging to calls are consumed internally by the same state machine.
-;;; Carry set means the generated value is in target A/X and
-;;; expressionValueType describes it.
+;;; Carry set means expressionValueType describes the result and
+;;; expressionValueKind says whether it is still nameable or materialised.
 ;;;
 ;;; A scanner failure is already fully described by parserError/scannerError.
 ;;; Expression code therefore returns it unchanged rather than relabelling it as
@@ -148,9 +229,10 @@ reset_expression_function_state:
 parse_expression:
 	lda #EXPR_OK
 	sta expressionError
+	lda #EXPR_CONDITION_NONE
+	sta expressionConditionBranch
 	lda #$00
 	sta operatorCount
-	sta expressionSpillDepth
 	lda #$01
 	sta expressionNeedValue
 
@@ -254,61 +336,29 @@ parse_expression:
 	bcs .precedenceDone
 	rts
 .precedenceDone:
-	;;; Advancing the source does not disturb target A/X. One literal or ordinary
-	;;; scalar can be consumed here and reduced immediately when the following
-	;;; token proves there is no tighter RHS operation.
-	jsr parser_next
-	bcs .rightStarted
-	rts
-.rightStarted:
-	jsr try_immediate_binary
-	bcs .immediateChecked
-	rts
-.immediateChecked:
-	lda immediateBinaryState
-	cmp #IMMEDIATE_BINARY_REDUCED
-	beq .immediateReduced
-
-	jsr spill_current_value
-	bcs .leftSpilled
-	rts
-.leftSpilled:
 	jsr push_pending_binary
 	bcs .binaryPushed
 	rts
 .binaryPushed:
-	lda immediateBinaryState
-	cmp #IMMEDIATE_BINARY_CAPTURED_LITERAL
-	beq .capturedLiteral
-	cmp #IMMEDIATE_BINARY_CAPTURED_SCALAR
-	beq .capturedScalar
+	jsr parser_next
+	bcs .rightStarted
+	rts
+.rightStarted:
+	jsr try_scalar_self_update_rhs
+	bcs .rightChecked
+	rts
+.rightChecked:
+	lda rightStartState
+	cmp #RIGHT_START_UPDATED
+	beq .updated
+	cmp #RIGHT_START_CAPTURED
+	beq .captured
 	lda #$01
 	sta expressionNeedValue
 	jmp .value
-
-.capturedScalar:
-	;;; A tighter operator followed the scalar. The left value now uses the normal
-	;;; static spill, so materialise the consumed scalar and resume the old path.
-	jsr emit_load_primary_scalar
-	jmp .capturedLoadDone
-.capturedLiteral:
-	;;; A tighter operator followed the literal. We already consumed that literal
-	;;; while looking ahead, so materialise it now and resume the normal machine.
-	jsr emit_load_literal
-.capturedLoadDone:
-	bcs .capturedLoaded
-	jmp expression_emit_fail
-.capturedLoaded:
-	lda reduceRightType
-	sta expressionValueType
-	lda #$00
-	sta expressionIndexable
-	sta expressionMustIndex
+.captured:
 	jmp .primaryActions
-
-.immediateReduced:
-	;;; currentToken is already the token after the simple RHS and A/X contains the
-	;;; reduction result.
+.updated:
 	jmp .operator
 
 .closeGroup:
@@ -399,1293 +449,18 @@ expression_fail:
 	clc
 	rts
 
-;;; parse_expression_primary
-;;; Emit one primary and advance currentToken beyond it. The routine records
-;;; whether the result may be indexed and whether an array address is legal only
-;;; as the base of an immediate index operation.
-parse_expression_primary:
-	lda #$00
-	sta expressionIndexable
-	sta expressionMustIndex
-	lda currentTokenKind
-	cmp #TOKEN_INTEGER
-	bne .notInteger
-	jmp .integer
-.notInteger:
-	cmp #TOKEN_CHARACTER
-	bne .notCharacter
-	jmp .character
-.notCharacter:
-	cmp #TOKEN_STRING
-	bne .notString
-	jmp .string
-.notString:
-	cmp #TOKEN_IDENTIFIER
-	bne .badPrimary
-	jmp .identifier
-.badPrimary:
-	lda #EXPR_EXPECTED_VALUE
-	jmp expression_fail
 
-.integer:
-	lda currentTokenValue
-	sta expressionLiteralValue
-	lda currentTokenValue+1
-	sta expressionLiteralValue+1
-	lda currentTokenType
-	cmp #TOKEN_TYPE_UNSIGNED
-	bne .integerSigned
-	lda #TYPE_UNSIGNED
-	jmp .integerTypeDone
-.integerSigned:
-	lda #TYPE_INT
-.integerTypeDone:
-	sta expressionValueType
-	jsr emit_load_literal
-	bcs .integerEmitted
-	jmp expression_emit_fail
-.integerEmitted:
-	jsr parser_next
-	bcc .integerFailed
-	jmp .primaryDone
-.integerFailed:
-	rts
+;;; The parser stays one bounded state machine; these includes only keep its
+;;; concrete source/lifetime/reduction sections readable in assembly source.
+	include "expression_operands.asm"
+	include "expression_reduce.asm"
+	include "expression_literals.asm"
 
-.character:
-	lda currentTokenValue
-	sta expressionLiteralValue
-	lda #$00
-	sta expressionLiteralValue+1
-	lda #TYPE_INT
-	sta expressionValueType
-	jsr emit_load_literal
-	bcs .characterEmitted
-	jmp expression_emit_fail
-.characterEmitted:
-	jsr parser_next
-	bcc .characterFailed
-	jmp .primaryDone
-.characterFailed:
-	rts
-
-.string:
-	jsr capture_string_literal
-	bcs .stringCaptured
-	rts
-.stringCaptured:
-	jsr emit_load_literal_address
-	bcs .stringEmitted
-	jmp expression_emit_fail
-.stringEmitted:
-	lda #TYPE_CHAR_PTR
-	sta expressionValueType
-	lda #$01
-	sta expressionIndexable
-	lda #TYPE_CHAR
-	sta expressionElementType
-	jsr parser_next
-	bcc .stringFailed
-	jmp .primaryDone
-.stringFailed:
-	rts
-
-.identifier:
-	jsr capture_primary_identifier
-	bcs .advanceName
-	rts
-.advanceName:
-	jsr parser_next
-	bcs .nameAdvanced
-	rts
-.nameAdvanced:
-	lda primarySymbolArea
-	cmp #SYMBOL_AREA_PERSISTENT
-	bne .ordinaryScalar
-	lda primarySymbolKind
-	cmp #SYMBOL_FUNCTION
-	beq .function
-	cmp #SYMBOL_RUNTIME_FUNCTION
-	beq .function
-	cmp #SYMBOL_ARRAY
-	beq .array
-
-.ordinaryScalar:
-	lda primarySymbolType
-	sta expressionValueType
-	cmp #TYPE_CHAR_PTR
-	bne .loadScalar
-	lda #INDEXABLE_POINTER
-	sta expressionIndexable
-	lda #TYPE_CHAR
-	sta expressionElementType
-.loadScalar:
-	jsr emit_or_defer_scalar_self_update
-	bcs .primaryDone
-	jmp expression_emit_fail
-
-.array:
-	lda primarySymbolType
-	sta expressionElementType
-	lda #TYPE_CHAR_PTR
-	sta expressionValueType
-	lda #INDEXABLE_POINTER
-	sta expressionIndexable
-	lda primarySymbolType
-	cmp #TYPE_CHAR
-	bne .arrayMustIndex
-	lda currentTokenKind
-	cmp #'['
-	bne .arrayAddress
-	;;; A fixed char array needs no runtime base value. The following index marker
-	;;; keeps this symbol index instead of allocating a two-byte spill.
-	lda #INDEXABLE_FIXED_ARRAY
-	sta expressionIndexable
-	jmp .primaryDone
-.arrayMustIndex:
-	lda #$01
-	sta expressionMustIndex
-.arrayAddress:
-	jsr emit_load_primary_address
-	bcs .primaryDone
-	jmp expression_emit_fail
-
-.function:
-	lda currentTokenKind
-	cmp #'('
-	beq .call
-	lda #EXPR_BAD_PRIMARY
-	jmp expression_fail
-.call:
-	ldx primarySymbolIndex
-	jsr expression_call_primary
-	bcc .callFailed
-	lda expressionNeedValue
-	bne .callOpened
-	jmp .primaryDone
-.callOpened:
-	sec
-	rts
-.callFailed:
-	rts
-
-.primaryDone:
-	lda #$00
-	sta expressionNeedValue
-	sec
-	rts
-
-;;; Resolve one identifier while its scanner text is still current and retain
-;;; exactly the same small symbol facts used by ordinary primary emission. The
-;;; simple-RHS lookahead reuses this rather than carrying a second lookup path.
-;;; A scalar assignment may defer the load of its own first byte primary. The
-;;; literal/semicolon lookahead below confirms only exact `x = x +/- 1`; every
-;;; near miss restores the ordinary load before rejoining the expression machine.
-emit_or_defer_scalar_self_update:
-	lda statementTargetKind
-	cmp #STATEMENT_SCALAR_ASSIGNMENT
-	bne .emit
-	lda operatorCount
-	bne .emit
-	lda primarySymbolType
-	cmp #TYPE_CHAR
-	bne .emit
-	lda primarySymbolArea
-	cmp statementTargetArea
-	bne .emit
-	lda primarySymbolIndex
-	cmp statementTargetIndex
-	bne .emit
-	lda currentTokenKind
-	cmp #'+'
-	beq .defer
-	cmp #'-'
-	bne .emit
-.defer:
-	lda #STATEMENT_SELF_UPDATE
-	sta statementTargetKind
-	sec
-	rts
-.emit:
-	jmp emit_load_primary_scalar
-
-capture_primary_identifier:
-	jsr lookup_symbol
-	bcs .found
-	lda #EXPR_UNDECLARED
-	jmp expression_fail
-.found:
-	stx primarySymbolIndex
-	lda lookupArea
-	sta primarySymbolArea
-	cmp #SYMBOL_AREA_CURRENT
-	beq .current
-	ldx primarySymbolIndex
-	lda persistentKind,x
-	sta primarySymbolKind
-	lda persistentType,x
-	sta primarySymbolType
-	sec
-	rts
-.current:
-	lda #SYMBOL_GLOBAL
-	sta primarySymbolKind
-	ldx primarySymbolIndex
-	lda currentType,x
-	sta primarySymbolType
-	sec
-	rts
-
-;;; Function calls are implemented by calls.asm below. Keeping the implementation
-;;; after the ordinary expression code makes this primary a forward reference
-;;; rather than placing the pending-call tables in the middle of the parser.
-
-;;; Postfix indexing uses the ordinary operator marker. A general base still
-;;; takes an expression spill, while a fixed char array can keep its source
-;;; identity in operatorSpill itself. Arrays have no runtime base value to lose,
-;;; so this is safe even when the index expression contains a call.
-handle_postfix_index:
-	lda currentTokenKind
-	cmp #'['
-	beq .index
-	lda expressionMustIndex
-	beq .done
-	lda #EXPR_BAD_TYPE
-	jmp expression_fail
-.done:
-	sec
-	rts
-.index:
-	lda expressionIndexable
-	bne .allowed
-	lda expressionValueType
-	cmp #TYPE_CHAR_PTR
-	beq .genericPointer
-	lda #EXPR_BAD_TYPE
-	jmp expression_fail
-.genericPointer:
-	lda #TYPE_CHAR
-	sta expressionElementType
-.allowed:
-	ldx operatorCount
-	cpx #EXPR_STACK_CAPACITY
-	bcc .space
-	lda #EXPR_STACK_OVERFLOW
-	jmp expression_fail
-.space:
-	lda #OP_INDEX
-	sta operatorKind,x
-	lda expressionElementType
-	sta operatorType,x
-
-	lda expressionIndexable
-	cmp #INDEXABLE_FIXED_ARRAY
-	beq .fixedArray
-	jsr spill_current_value
-	bcc .failed
-	ldx operatorCount
-	lda expressionSpillDepth
-	sec
-	sbc #$01
-	jmp .saveBase
-.fixedArray:
-	lda primarySymbolIndex
-	clc
-	adc #INDEX_ARRAY_BIAS
-.saveBase:
-	sta operatorSpill,x
-	inc operatorCount
-	jsr parser_next
-	bcc .failed
-	lda #$01
-	sta expressionNeedValue
-	lda #$00
-	sta expressionIndexable
-	sta expressionMustIndex
-	sec
-.failed:
-	rts
-
-;;; push_simple_operator
-;;; A=OP_GROUP or OP_NEG.
-push_simple_operator:
-	ldx operatorCount
-	cpx #EXPR_STACK_CAPACITY
-	bcc .space
-	lda #EXPR_STACK_OVERFLOW
-	jmp expression_fail
-.space:
-	sta operatorKind,x
-	inc operatorCount
-	sec
-	rts
-
-;;; spill_current_value
-;;; Save target A/X into the slot for expressionSpillDepth. Allocate that static
-;;; word only the first time this function reaches the depth.
-spill_current_value:
-	lda expressionSpillDepth
-	cmp #EXPR_STACK_CAPACITY
-	bcc .depthOk
-	lda #EXPR_STACK_OVERFLOW
-	jmp expression_fail
-.depthOk:
-	cmp spillAllocatedCount
-	bcc .allocated
-	lda #$02
-	sta allocSize
-	lda #$00
-	sta allocSize+1
-	jsr allocate_bss
-	bcs .bssOk
-	lda #EXPR_BSS_OVERFLOW
-	jmp expression_fail
-.bssOk:
-	lda expressionSpillDepth
-	jsr emit_spill_definition
-	bcs .definitionDone
-	jmp expression_emit_fail
-.definitionDone:
-	inc spillAllocatedCount
-.allocated:
-	lda expressionSpillDepth
-	jsr emit_store_spill
-	bcs .stored
-	jmp expression_emit_fail
-.stored:
-	inc expressionSpillDepth
-	sec
-	rts
-
-push_pending_binary:
-	ldx operatorCount
-	cpx #EXPR_STACK_CAPACITY
-	bcc .space
-	lda #EXPR_STACK_OVERFLOW
-	jmp expression_fail
-.space:
-	lda pendingOperator
-	sta operatorKind,x
-	lda expressionSpillDepth
-	sec
-	sbc #$01
-	sta operatorSpill,x
-	lda expressionValueType
-	sta operatorType,x
-	inc operatorCount
-	sec
-	rts
-
-;;; A rejected byte self-update candidate must recreate the load that was
-;;; deliberately deferred above. Tail-calling the ordinary emitter preserves its
-;;; carry result for the local error check.
-restore_scalar_self_update:
-	lda #$00
-	sta statementTargetKind
-	jmp emit_load_primary_scalar_now
-
-;;; try_immediate_binary
-;;; currentToken is the first RHS token and A/X still describes the left value.
-;;; The existing literal fast path and a plain scalar use the same one-token
-;;; precedence lookahead. A simple scalar keeps the left value in NC_PTR; a
-;;; nested/tighter RHS falls back to the ordinary static spill machine.
-try_immediate_binary:
-	;;; A matching scalar target followed by + or - is a possible self-update.
-	;;; Literal one reuses the existing one-token lookahead; any near miss simply
-	;;; clears the statement marker and follows the ordinary expression path.
-	lda statementTargetKind
-	cmp #STATEMENT_SELF_UPDATE
-	bne .ordinaryStart
-	lda currentTokenKind
-	cmp #TOKEN_INTEGER
-	bne .selfFallback
-	lda currentTokenValue
-	eor #$01
-	ora currentTokenValue+1
-	beq .ordinaryStart
-.selfFallback:
-	jsr restore_scalar_self_update
-	bcs .ordinaryStart
-	jmp expression_emit_fail
-.ordinaryStart:
-	lda #IMMEDIATE_BINARY_NONE
-	sta immediateBinaryState
-
-	;;; Multiply and left shift keep their ordinary lowering. Right shift has
-	;;; one source-recognised direct count: exactly integer 8.
-	lda pendingOperator
-	cmp #OP_MUL
-	beq .notImmediate
-	cmp #OP_SHL
-	bne .checkShift
-.notImmediate:
-	sec
-	rts
-.checkShift:
-	cmp #OP_SHR
-	bne .supported
-	lda currentTokenKind
-	cmp #TOKEN_INTEGER
-	bne .notImmediate
-	lda currentTokenValue
-	cmp #$08
-	bne .notImmediate
-	lda currentTokenValue+1
-	bne .notImmediate
-.supported:
-	lda currentTokenKind
-	cmp #TOKEN_INTEGER
-	beq .integer
-	cmp #TOKEN_CHARACTER
-	beq .character
-	cmp #TOKEN_IDENTIFIER
-	beq .scalar
-	sec
-	rts
-
-.integer:
-	lda currentTokenValue+1
-	sta expressionLiteralValue+1
-	lda currentTokenType
-	cmp #TOKEN_TYPE_UNSIGNED
-	bne .setInt
-	lda #TYPE_UNSIGNED
-	jmp .typeDone
-
-.character:
-	lda #$00
-	sta expressionLiteralValue+1
-.setInt:
-	lda #TYPE_INT
-.typeDone:
-	sta reduceRightType
-	lda currentTokenValue
-	sta expressionLiteralValue
-.literalCaptured:
-	lda #IMMEDIATE_BINARY_CAPTURED_LITERAL
-	jmp .captured
-
-.scalar:
-	jsr capture_primary_identifier
-	bcs .scalarCaptured
-	rts
-.scalarCaptured:
-	lda primarySymbolKind
-	cmp #SYMBOL_GLOBAL
-	bne .done
-	lda primarySymbolType
-	sta reduceRightType
-	lda #IMMEDIATE_BINARY_CAPTURED_SCALAR
-.captured:
-	sta immediateBinaryState
-	jsr parser_next
-	bcs .advanced
-	rts
-.advanced:
-	;;; Only literal one followed immediately by the assignment semicolon confirms
-	;;; the direct update. A longer expression keeps the normal loaded value.
-	lda statementTargetKind
-	cmp #STATEMENT_SELF_UPDATE
-	bne .ordinaryAdvanced
-	lda currentTokenKind
-	cmp #';'
-	bne .selfLonger
-	lda #IMMEDIATE_BINARY_REDUCED
-	sta immediateBinaryState
-	sec
-	rts
-.selfLonger:
-	jsr restore_scalar_self_update
-	bcs .ordinaryAdvanced
-	jmp expression_emit_fail
-.ordinaryAdvanced:
-	;;; Keep postfix handling on the ordinary path. It may use NC_PTR itself and
-	;;; therefore must never overlap the transient-left convention.
-	lda currentTokenKind
-	cmp #'['
-	beq .done
-	jsr binary_operator_for_token
-	bcc .reduce
-	jsr operator_precedence
-	cpy pendingPrecedence
-	bcc .reduce
-	beq .reduce
-.done:
-	sec
-	rts
-
-.reduce:
-	lda pendingOperator
-	sta reduceOperator
-	lda expressionValueType
-	sta reduceLeftType
-	jsr validate_binary_types
-	bcc .failed
-	lda immediateBinaryState
-	cmp #IMMEDIATE_BINARY_CAPTURED_SCALAR
-	beq .scalarReduction
-	jsr emit_immediate_binary_reduction
-	bcs .emitted
-	jmp .emitFailed
-
-.scalarReduction:
-	;;; The RHS is one ordinary scalar and the lookahead proved it has no tighter
-	;;; work. NC_PTR is dead at this point, so it is the natural transient word for
-	;;; the left value; all ordinary reduction emitters can then be reused unchanged.
-	lda #EMIT_TRANSIENT_SPILL
-	jsr emit_store_spill
-	bcc .emitFailed
-	jsr emit_load_primary_scalar
-	bcc .emitFailed
-	lda #EMIT_TRANSIENT_SPILL
-	sta reduceSpill
-	jsr emit_binary_reduction
-	bcs .emitted
-.emitFailed:
-	jmp expression_emit_fail
-.emitted:
-	lda #IMMEDIATE_BINARY_REDUCED
-	sta immediateBinaryState
-	jmp finish_binary_result
-.failed:
-	rts
-
-;;; Unary minus is right-associative because consecutive '-' markers remain
-;;; stacked until a primary arrives, then reduce from the top.
-reduce_unary_operators:
-.loop:
-	lda operatorCount
-	beq .done
-	tax
-	dex
-	lda operatorKind,x
-	cmp #OP_NEG
-	bne .done
-	jsr reduce_unary_minus
-	bcs .reduced
-	rts
-.reduced:
-	dec operatorCount
-	jmp .loop
-.done:
-	sec
-	rts
-
-reduce_unary_minus:
-	lda expressionValueType
-	cmp #TYPE_CHAR_PTR
-	bne .integer
-	lda #EXPR_BAD_TYPE
-	jmp expression_fail
-.integer:
-	jsr emit_unary_minus
-	bcs .emitted
-	jmp expression_emit_fail
-.emitted:
-	lda expressionValueType
-	cmp #TYPE_UNSIGNED
-	beq .typeDone
-	lda #TYPE_INT
-	sta expressionValueType
-.typeDone:
-	lda #$00
-	sta expressionIndexable
-	sec
-	rts
-
-;;; binary_operator_for_token
-;;; Carry set: A=OP_*. Carry clear means the token terminates the expression.
-;;; Precedence is deliberately looked up only by operator_precedence, so there is
-;;; one authoritative description of the precedence table.
-binary_operator_for_token:
-	lda currentTokenKind
-	cmp #'*'
-	bne .notMul
-	lda #OP_MUL
-	sec
-	rts
-.notMul:
-	cmp #'+'
-	bne .notAdd
-	lda #OP_ADD
-	sec
-	rts
-.notAdd:
-	cmp #'-'
-	bne .notSub
-	lda #OP_SUB
-	sec
-	rts
-.notSub:
-	cmp #TOKEN_SHL
-	bne .notShl
-	lda #OP_SHL
-	sec
-	rts
-.notShl:
-	cmp #TOKEN_SHR
-	bne .notShr
-	lda #OP_SHR
-	sec
-	rts
-.notShr:
-	cmp #'<'
-	bne .notLt
-	lda #OP_LT
-	sec
-	rts
-.notLt:
-	cmp #TOKEN_LE
-	bne .notLe
-	lda #OP_LE
-	sec
-	rts
-.notLe:
-	cmp #'>'
-	bne .notGt
-	lda #OP_GT
-	sec
-	rts
-.notGt:
-	cmp #TOKEN_GE
-	bne .notGe
-	lda #OP_GE
-	sec
-	rts
-.notGe:
-	cmp #TOKEN_EQ
-	bne .notEq
-	lda #OP_EQ
-	sec
-	rts
-.notEq:
-	cmp #TOKEN_NE
-	bne .notNe
-	lda #OP_NE
-	sec
-	rts
-.notNe:
-	cmp #'&'
-	bne .notAnd
-	lda #OP_AND
-	sec
-	rts
-.notAnd:
-	cmp #'|'
-	bne .none
-	lda #OP_OR
-	sec
-	rts
-.none:
-	clc
-	rts
-
-;;; A=OP_*; Y=precedence, or zero for a marker/unary kind.
-operator_precedence:
-	cmp #OP_MUL
-	bne .notMul
-	ldy #PREC_MUL
-	rts
-.notMul:
-	cmp #OP_ADD
-	beq .add
-	cmp #OP_SUB
-	bne .notAdd
-.add:
-	ldy #PREC_ADD
-	rts
-.notAdd:
-	cmp #OP_SHL
-	beq .shift
-	cmp #OP_SHR
-	bne .notShift
-.shift:
-	ldy #PREC_SHIFT
-	rts
-.notShift:
-	cmp #OP_LT
-	beq .rel
-	cmp #OP_LE
-	beq .rel
-	cmp #OP_GT
-	beq .rel
-	cmp #OP_GE
-	bne .notRel
-.rel:
-	ldy #PREC_REL
-	rts
-.notRel:
-	cmp #OP_EQ
-	beq .eq
-	cmp #OP_NE
-	bne .notEq
-.eq:
-	ldy #PREC_EQ
-	rts
-.notEq:
-	cmp #OP_AND
-	bne .notAnd
-	ldy #PREC_AND
-	rts
-.notAnd:
-	cmp #OP_OR
-	bne .none
-	ldy #PREC_OR
-	rts
-.none:
-	ldy #$00
-	rts
-
-;;; All Phase 1 binary operators are left associative. Reduce an operator with
-;;; precedence >= the incoming one before pushing the incoming operator. Group,
-;;; index and call markers are hard boundaries.
-reduce_for_precedence:
-.loop:
-	lda operatorCount
-	beq .done
-	tax
-	dex
-	lda operatorKind,x
-	cmp #OP_GROUP
-	beq .done
-	cmp #OP_INDEX
-	beq .done
-	cmp #OP_CALL
-	beq .done
-	cmp #OP_NEG
-	beq .unary
-	jsr operator_precedence
-	cpy pendingPrecedence
-	bcc .done
-	jsr reduce_top_binary
-	bcs .binaryDone
-	rts
-.binaryDone:
-	jmp .loop
-.unary:
-	jsr reduce_unary_operators
-	bcs .unaryDone
-	rts
-.unaryDone:
-	jmp .loop
-.done:
-	sec
-	rts
-
-;;; A=marker kind. Binary operators above the marker are reduced. Carry clear
-;;; with expressionError still zero means the delimiter belongs to the caller;
-;;; carry clear with an error means malformed nesting/evaluation.
-reduce_to_marker:
-	sta wantedMarker
-.loop:
-	lda operatorCount
-	beq .notFound
-	tax
-	dex
-	lda operatorKind,x
-	cmp wantedMarker
-	beq .found
-	cmp #OP_GROUP
-	beq .mismatch
-	cmp #OP_INDEX
-	beq .mismatch
-	cmp #OP_CALL
-	beq .mismatch
-	cmp #OP_NEG
-	beq .unary
-	jsr reduce_top_binary
-	bcs .binaryDone
-	rts
-.binaryDone:
-	jmp .loop
-.unary:
-	jsr reduce_unary_operators
-	bcs .unaryDone
-	rts
-.unaryDone:
-	jmp .loop
-.mismatch:
-	lda #EXPR_UNMATCHED_DELIMITER
-	jmp expression_fail
-.found:
-	sec
-	rts
-.notFound:
-	clc
-	rts
-
-pop_group_marker:
-	lda operatorCount
-	beq .bad
-	dec operatorCount
-	sec
-	rts
-.bad:
-	lda #EXPR_UNMATCHED_DELIMITER
-	jmp expression_fail
-
-pop_index_marker:
-	lda operatorCount
-	beq .bad
-	tax
-	dex
-	lda operatorKind,x
-	cmp #OP_INDEX
-	bne .bad
-	lda expressionValueType
-	cmp #TYPE_CHAR_PTR
-	beq .badType
-	lda operatorSpill,x
-	sta reduceSpill
-	lda operatorType,x
-	sta reduceLeftType
-	dec operatorCount
-	lda reduceSpill
-	cmp #INDEX_ARRAY_BIAS
-	bcs .baseReleased
-	dec expressionSpillDepth
-.baseReleased:
-	jsr emit_index_load
-	bcs .emitted
-	jmp expression_emit_fail
-.emitted:
-	lda reduceLeftType
-	sta expressionValueType
-	lda #$00
-	sta expressionMustIndex
-	sta expressionIndexable
-	sec
-	rts
-.badType:
-	lda #EXPR_BAD_TYPE
-	jmp expression_fail
-.bad:
-	lda #EXPR_UNMATCHED_DELIMITER
-	jmp expression_fail
-
-reduce_all_operators:
-.loop:
-	lda operatorCount
-	beq .done
-	tax
-	dex
-	lda operatorKind,x
-	cmp #OP_GROUP
-	beq .marker
-	cmp #OP_INDEX
-	beq .marker
-	cmp #OP_CALL
-	beq .marker
-	cmp #OP_NEG
-	beq .unary
-	jsr reduce_top_binary
-	bcs .binaryDone
-	rts
-.binaryDone:
-	jmp .loop
-.unary:
-	jsr reduce_unary_operators
-	bcs .unaryDone
-	rts
-.unaryDone:
-	jmp .loop
-.marker:
-	lda #EXPR_UNMATCHED_DELIMITER
-	jmp expression_fail
-.done:
-	sec
-	rts
-
-reduce_top_binary:
-	lda operatorCount
-	beq .bad
-	tax
-	dex
-	lda operatorKind,x
-	sta reduceOperator
-	lda operatorSpill,x
-	sta reduceSpill
-	lda operatorType,x
-	sta reduceLeftType
-	lda expressionValueType
-	sta reduceRightType
-	jsr validate_binary_types
-	bcs .typesOk
-	rts
-.typesOk:
-	jsr emit_binary_reduction
-	bcs .emitted
-	jmp expression_emit_fail
-.emitted:
-	dec operatorCount
-	dec expressionSpillDepth
-	jmp finish_binary_result
-.bad:
-	lda #EXPR_EXPECTED_VALUE
-	jmp expression_fail
-
-;;; Ordinary static spills, immediate literals and transient scalar reductions
-;;; all finish with the same type/indexability bookkeeping.
-finish_binary_result:
-	lda reduceResultType
-	sta expressionValueType
-	lda #$00
-	sta expressionMustIndex
-	sta expressionIndexable
-	lda expressionValueType
-	cmp #TYPE_CHAR_PTR
-	bne .done
-	lda #$01
-	sta expressionIndexable
-	lda #TYPE_CHAR
-	sta expressionElementType
-.done:
-	sec
-	rts
-
-;;; Work only with the four Phase 1 scalar types. char promotes to int. Operator
-;;; classes are spelled out explicitly; their meaning does not depend on OP_*
-;;; numeric ordering.
-validate_binary_types:
-	lda reduceOperator
-	cmp #OP_ADD
-	beq .add
-	cmp #OP_SUB
-	beq .integerOnly
-	cmp #OP_MUL
-	beq .integerOnly
-	cmp #OP_SHL
-	beq .shift
-	cmp #OP_SHR
-	beq .shift
-	cmp #OP_AND
-	beq .integerOnly
-	cmp #OP_OR
-	beq .integerOnly
-	cmp #OP_LT
-	beq .comparison
-	cmp #OP_LE
-	beq .comparison
-	cmp #OP_GT
-	beq .comparison
-	cmp #OP_GE
-	beq .comparison
-	cmp #OP_EQ
-	beq .comparison
-	cmp #OP_NE
-	beq .comparison
-	jmp .bad
-
-.add:
-	lda reduceLeftType
-	cmp #TYPE_CHAR_PTR
-	bne .integerOnly
-	lda reduceRightType
-	jsr type_is_integer
-	bcc .bad
-	lda #TYPE_CHAR_PTR
-	sta reduceResultType
-	sec
-	rts
-
-.integerOnly:
-	lda reduceLeftType
-	jsr type_is_integer
-	bcc .bad
-	lda reduceRightType
-	jsr type_is_integer
-	bcc .bad
-	jsr combined_integer_type
-	sta reduceResultType
-	sec
-	rts
-
-.shift:
-	lda reduceLeftType
-	jsr type_is_integer
-	bcc .bad
-	lda reduceRightType
-	jsr type_is_integer
-	bcc .bad
-	lda reduceLeftType
-	cmp #TYPE_UNSIGNED
-	beq .shiftUnsigned
-	lda #TYPE_INT
-	jmp .shiftStore
-.shiftUnsigned:
-	lda #TYPE_UNSIGNED
-.shiftStore:
-	sta reduceResultType
-	sec
-	rts
-
-.comparison:
-	lda reduceLeftType
-	jsr type_is_integer
-	bcc .bad
-	lda reduceRightType
-	jsr type_is_integer
-	bcc .bad
-	lda #TYPE_INT
-	sta reduceResultType
-	sec
-	rts
-.bad:
-	lda #EXPR_BAD_TYPE
-	jmp expression_fail
-
-type_is_integer:
-	cmp #TYPE_CHAR
-	beq .yes
-	cmp #TYPE_INT
-	beq .yes
-	cmp #TYPE_UNSIGNED
-	beq .yes
-	clc
-	rts
-.yes:
-	sec
-	rts
-
-combined_integer_type:
-	lda reduceLeftType
-	cmp #TYPE_UNSIGNED
-	beq .unsigned
-	lda reduceRightType
-	cmp #TYPE_UNSIGNED
-	beq .unsigned
-	lda #TYPE_INT
-	rts
-.unsigned:
-	lda #TYPE_UNSIGNED
-	rts
-
-;;; ---------------------------------------------------------------------------
-;;; Deferred string literals
-;;; ---------------------------------------------------------------------------
-
-capture_string_literal:
-	lda literalCount
-	cmp #EXPR_LITERAL_CAPACITY
-	bcc .countOk
-	lda #EXPR_LITERAL_COUNT_OVERFLOW
-	jmp expression_fail
-.countOk:
-	sta currentLiteralIndex
-	asl
-	tax
-	lda literalBytesUsed
-	sta literalOffset,x
-	lda literalBytesUsed+1
-	sta literalOffset+1,x
-	lda currentTokenLength
-	sta literalLength,x
-	lda #$00
-	sta literalLength+1,x
-
-	clc
-	lda literalBytesUsed
-	adc currentTokenLength
-	sta literalNewEnd
-	lda literalBytesUsed+1
-	adc #$00
-	sta literalNewEnd+1
-	inc literalNewEnd
-	bne .capacity
-	inc literalNewEnd+1
-.capacity:
-	lda literalNewEnd+1
-	cmp #>EXPR_LITERAL_BYTES
-	bcc .fits
-	bne .tooMany
-	lda literalNewEnd
-	cmp #<EXPR_LITERAL_BYTES
-	bcc .fits
-	beq .fits
-.tooMany:
-	lda #EXPR_LITERAL_POOL_OVERFLOW
-	jmp expression_fail
-.fits:
-	clc
-	lda #<literalBytes
-	adc literalBytesUsed
-	sta EMIT_PTR
-	lda #>literalBytes
-	adc literalBytesUsed+1
-	sta EMIT_PTR+1
-	ldy #$00
-.copy:
-	cpy currentTokenLength
-	beq .nul
-	lda currentTokenText,y
-	sta (EMIT_PTR),y
-	iny
-	jmp .copy
-.nul:
-	lda #$00
-	sta (EMIT_PTR),y
-	lda literalNewEnd
-	sta literalBytesUsed
-	lda literalNewEnd+1
-	sta literalBytesUsed+1
-	inc literalCount
-	sec
-	rts
-
-;;; emit_deferred_literals
-;;; Called after executable/runtime output. Each literal is a label followed by
-;;; ordinary byte directives. Rows are deliberately capped at 16 values so the
-;;; generated source always stays well inside ass's 255-byte line buffer.
-emit_deferred_literals:
-	lda #$00
-	sta literalEmitIndex
-.loop:
-	lda literalEmitIndex
-	cmp literalCount
-	beq .done
-	jsr emit_one_literal
-	bcs .emitted
-	rts
-.emitted:
-	inc literalEmitIndex
-	jmp .loop
-.done:
-	sec
-	rts
-
-emit_one_literal:
-	lda literalEmitIndex
-	jsr emit_literal_name
-	bcs .colon
-	rts
-.colon:
-	lda #':'
-	jsr emit_output_byte
-	bcs .labelDone
-	rts
-.labelDone:
-	jsr emit_newline
-	bcs .prepare
-	rts
-.prepare:
-	lda literalEmitIndex
-	asl
-	tax
-	lda literalOffset,x
-	sta literalEmitOffset
-	lda literalOffset+1,x
-	sta literalEmitOffset+1
-	lda literalLength,x
-	sta literalEmitRemaining
-	inc literalEmitRemaining		; include NUL; scanner text < 255 bytes
-	lda #$00
-	sta literalEmitColumn
-
-.bytes:
-	lda literalEmitRemaining
-	beq .done
-	lda literalEmitColumn
-	bne .comma
-	ldx #<exprBytePrefix
-	ldy #>exprBytePrefix
-	jsr emit_string
-	bcs .bytePrefixDone
-	rts
-.bytePrefixDone:
-	jmp .byte
-.comma:
-	lda #','
-	jsr emit_output_byte
-	bcs .byte
-	rts
-.byte:
-	lda #'$'
-	jsr emit_output_byte
-	bcs .byteAddress
-	rts
-.byteAddress:
-	clc
-	lda #<literalBytes
-	adc literalEmitOffset
-	sta EMIT_PTR
-	lda #>literalBytes
-	adc literalEmitOffset+1
-	sta EMIT_PTR+1
-	ldy #$00
-	lda (EMIT_PTR),y
-	jsr emit_hex_byte
-	bcs .byteDone
-	rts
-.byteDone:
-	inc literalEmitOffset
-	bne .offsetOk
-	inc literalEmitOffset+1
-.offsetOk:
-	inc literalEmitColumn
-	dec literalEmitRemaining
-	lda literalEmitRemaining
-	beq .endRow
-	lda literalEmitColumn
-	cmp #EXPR_LITERAL_ROW
-	bne .bytes
-.endRow:
-	jsr emit_newline
-	bcs .rowDone
-	rts
-.rowDone:
-	lda #$00
-	sta literalEmitColumn
-	lda literalEmitRemaining
-	bne .bytes
-.done:
-	sec
-	rts
-
-;;; The output side is kept in separate readable slabs. Calls remain direct;
-;;; there is no intermediate representation or template-dispatch layer.
+;;; The expression machine owns these peer output slabs directly. Keeping them
+;;; here avoids making literals an accidental include parent, and keeps the
+;;; production source within native ass's deliberately small include stack.
 	include "expression_codegen.asm"
 	include "expression_immediate.asm"
 	include "expression_codegen_state.asm"
 	include "calls.asm"
 
-;;; ---------------------------------------------------------------------------
-;;; Expression compiler state
-;;; ---------------------------------------------------------------------------
-
-;;; One bounded operator stack. Group/index/call markers use the same arrays as
-;;; binary operators so nesting needs no recursive parser state. Their mutable
-;;; arrays use the fixed work-RAM constants declared above.
-operatorCount:		byte 0
-expressionSpillDepth:	byte 0
-spillAllocatedCount:	byte 0
-expressionNeedValue:	byte 0
-expressionValueType:	byte TYPE_INT
-expressionIndexable:	byte 0
-expressionMustIndex:	byte 0
-expressionElementType:	byte TYPE_CHAR
-expressionError:	byte EXPR_OK
-pendingOperator:	byte 0
-pendingPrecedence:	byte 0
-immediateBinaryState:	byte IMMEDIATE_BINARY_NONE
-wantedMarker:		byte 0
-reduceOperator:		byte 0
-reduceSpill:		byte 0
-reduceLeftType:		byte TYPE_INT
-reduceRightType:	byte TYPE_INT
-reduceResultType:	byte TYPE_INT
-primarySymbolIndex:	byte 0
-primarySymbolArea:	byte SYMBOL_AREA_NONE
-primarySymbolKind:	byte 0
-primarySymbolType:	byte TYPE_INT
-expressionLiteralValue:	word 0
-
-;;; Narrow deferred literal pool. Offsets/lengths are 16-bit so this storage is
-;;; independent of the scanner's reusable token width. Its mutable tables and
-;;; bytes use the fixed work-RAM constants above; only counters/scratch are loaded.
-literalCount:		byte 0
-literalBytesUsed:	word 0
-currentLiteralIndex:	byte 0
-literalNewEnd:		word 0
-literalEmitIndex:	byte 0
-literalEmitOffset:	word 0
-literalEmitRemaining:	byte 0
-literalEmitColumn:	byte 0

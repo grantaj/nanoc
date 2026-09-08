@@ -15,7 +15,7 @@ int add_pair(int a, int b)
     return a + b;
 }
 
-int return_one()
+char return_one()
 {
     return 1;
 }
@@ -29,7 +29,7 @@ int mark_arg(int expected, int value)
     return value;
 }
 
-int take_char(char value)
+char take_char(char value)
 {
     return value;
 }
@@ -39,7 +39,7 @@ int take_unsigned(unsigned value)
     return value;
 }
 
-int take_pointer(char *value)
+char take_pointer(char *value)
 {
     return value[1];
 }

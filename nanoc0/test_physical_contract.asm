@@ -2,7 +2,7 @@
 
 PC_FAIL_NONE    = $01
 PC_FAIL_BRANCH  = $02
-PC_FAIL_ALIAS   = $03
+PC_FAIL_DEFER   = $03
 PC_FAIL_INVALID = $04
 
 ;;; This is a seam test, not a second expression evaluator. It calls the real
@@ -15,10 +15,12 @@ main:
 	sta emitOutputEnabled
 	jsr reset_generated_labels
 
-	;;; No live condition: an ordinary byte value must still be accepted and the
-	;;; production emitter forms its truth test before the branch.
+	;;; No live condition: an ordinary byte value in A must still be accepted and
+	;;; the production emitter forms its truth test before the branch.
 	lda #EXPR_CONDITION_NONE
 	sta expressionConditionBranch
+	lda #VALUE_A
+	sta expressionValueKind
 	lda #TYPE_CHAR
 	sta expressionValueType
 	jsr pc_prepare_target
@@ -41,12 +43,18 @@ main:
 	jmp pc_finish
 
 .alias:
-	;;; Existing #71 comparison producers still use this assembler alias. Pin that
-	;;; it is literally the same byte rather than duplicate compatibility state.
-	lda expressionTruthInZ
-	cmp #EXPR_CONDITION_BNE
-	beq .invalid
-	lda #PC_FAIL_ALIAS
+	;;; A deferred named byte is a complete physical operand state. The production
+	;;; control-flow emitter materialises it only at this consumer boundary.
+	lda #VALUE_CURRENT
+	sta expressionValueKind
+	lda #TYPE_CHAR
+	sta expressionValueType
+	lda #$00
+	sta expressionValueLow
+	jsr pc_prepare_target
+	jsr emit_statement_false_jump
+	bcs .invalid
+	lda #PC_FAIL_DEFER
 	jmp pc_finish
 
 .invalid:
