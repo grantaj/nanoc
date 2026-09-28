@@ -167,7 +167,7 @@ TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=60 VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_
 # source has run as real 6502 code above even when its own resident image was too
 # large for current ass to stage. Native self-assembly remains a later convergence
 # rung rather than a gate on generated-code development.
-"$VASM" -Fbin -cbm-prg -o "$OUT_DIR/ncout.prg" "$GENERATED"
+"$VASM" -I"$ROOT/ass" -Fbin -cbm-prg -o "$OUT_DIR/ncout.prg" "$GENERATED"
 bytes=$(wc -c < "$OUT_DIR/ncout.prg")
 echo "small generated loaded image: $((bytes - 2)) bytes"
 
