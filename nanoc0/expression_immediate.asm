@@ -492,18 +492,33 @@ right_operand_is_byte_domain:
 	sec
 	rts
 
-;;; At a semicolon the statement parser still remembers the scalar assignment.
-;;; A char destination observes only the low byte, so + - & | can stay native.
-byte_result_is_final_scalar_assignment:
-	lda statementTargetKind
-	cmp #STATEMENT_SCALAR_ASSIGNMENT
-	bne .no
-	lda statementTargetType
-	cmp #TYPE_CHAR
-	bne .no
+;;; A reduction narrows only when its actual delimiter proves that the high byte
+;;; cannot be observed. Statement-owned expressions publish their destination type
+;;; before parsing. Call arguments use the active call frame; a grouping ')' is
+;;; rejected by call_delimiter_belongs_to_call and therefore cannot leak a byte
+;;; promise into an inner expression.
+final_consumer_observes_byte:
 	lda currentTokenKind
 	cmp #';'
+	beq .statement
+	cmp #','
+	beq .call
+	cmp #')'
 	bne .no
+.call:
+	jsr call_delimiter_belongs_to_call
+	bcc .no
+	jsr current_call_parameter_type
+	bcc .no
+	cmp #TYPE_CHAR
+	beq .yes
+	clc
+	rts
+.statement:
+	lda statementConsumerType
+	cmp #TYPE_CHAR
+	bne .no
+.yes:
 	sec
 	rts
 .no:
