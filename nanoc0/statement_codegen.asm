@@ -49,7 +49,9 @@ emit_direct_scalar_update:
 	;;; INC/DEC reads backing memory, so a stale resident target must be committed
 	;;; before this deliberately memory-native self-update.
 	jsr resident_spill_and_forget
-	bcc .failed
+	bcs .residentDone
+	rts
+.residentDone:
 	lda pendingOperator
 	cmp #OP_SUB
 	beq .subtract
