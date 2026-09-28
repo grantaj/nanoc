@@ -11,13 +11,12 @@
 programStaticByte = $b3fe
 
 emit_persistent_symbol:
-	stx callEmitCallee
 	cmp #EMIT_STORAGE_BSS
 	beq .bss
 
-	;;; Data and functions are ordinary loaded text with a global label. A C-defined
-	;;; function receives its final parameter in A/X and stores it once at entry,
-	;;; rather than making every caller write that static slot.
+	;;; Data and functions are ordinary loaded text with a global label. #98 keeps
+	;;; a C-defined function's final parameter authoritative in incoming A/A-X;
+	;;; declarations.asm records that ownership immediately after this label.
 .label:
 	jsr emit_persistent_name
 	bcc .failed
@@ -26,13 +25,6 @@ emit_persistent_symbol:
 	bcc .failed
 	jsr emit_newline
 	bcc .failed
-	ldx callEmitCallee
-	lda persistentKind,x
-	cmp #SYMBOL_FUNCTION
-	bne .labelDone
-	jsr emit_function_final_parameter_store
-	bcc .failed
-.labelDone:
 	sec
 	rts
 
@@ -42,28 +34,6 @@ emit_persistent_symbol:
 	jmp emit_program_bss_assignment
 .failed:
 	clc
-	rts
-
-;;; Earlier parameters have already been restored by the caller. The final one is
-;;; still in the natural call registers, so copy it to its allocated parameter
-;;; slot once here. Zero-argument functions need no entry store.
-emit_function_final_parameter_store:
-	ldx callEmitCallee
-	lda persistentParamCount,x
-	beq .done
-	sec
-	sbc #$01
-	sta callEmitArgument
-	lda persistentParamStart,x
-	clc
-	adc callEmitArgument
-	tax
-	lda parameterType,x
-	sta callEmitParamType
-	jsr emit_store_call_registers_to_callee
-	rts
-.done:
-	sec
 	rts
 
 emit_current_symbol:
