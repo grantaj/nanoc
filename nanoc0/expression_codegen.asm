@@ -363,22 +363,25 @@ emit_mul_reduction:
 	cmp #$03
 	bne .byte
 	jsr materialize_saved_byte
-	bcc .failed
+	bcc .byteFailed
 	jsr emit_save_right_byte_tmp
-	bcc .failed
+	bcc .byteFailed
 	;;; Fixed prefixes of existing target text; native ass intentionally does not
 	;;; evaluate label-label arithmetic in an immediate operand.
 	lda #$0c			; "\tasl NC_TMP\n"
 	ldx #<exprShiftLeftBody
 	ldy #>exprShiftLeftBody
 	jsr emit_text
-	bcc .failed
+	bcc .byteFailed
 	lda #$11			; "\tclc\n\tadc NC_TMP\n"
 	ldx #<exprWordAddTmp
 	ldy #>exprWordAddTmp
 	jsr emit_text
-	bcc .failed
+	bcc .byteFailed
 	jmp mark_expression_a
+
+.byteFailed:
+	rts
 
 .byte:
 	;;; Only the low product survives a char consumer. Arbitrary byte products use
@@ -389,26 +392,26 @@ emit_mul_reduction:
 	jsr right_operand_is_direct
 	bcc .byteSavedRight
 	jsr materialize_saved_byte
-	bcc .failed
+	bcc .byteFailed
 	jsr emit_save_right_byte_tmp
-	bcc .failed
+	bcc .byteFailed
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
 	jsr emit_right_low_operand
-	bcc .failed
+	bcc .byteFailed
 	jmp .byteCall
 .byteSavedRight:
 	jsr materialize_expression_byte
-	bcc .failed
+	bcc .byteFailed
 	jsr emit_save_right_byte_tmp
-	bcc .failed
+	bcc .byteFailed
 	jsr materialize_saved_byte
-	bcc .failed
+	bcc .byteFailed
 .byteCall:
 	ldx #<exprCallMul8
 	ldy #>exprCallMul8
 	jsr emit_string
-	bcc .failed
+	bcc .byteFailed
 	jmp mark_expression_a
 
 .word:
