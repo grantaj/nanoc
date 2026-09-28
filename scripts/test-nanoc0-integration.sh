@@ -160,7 +160,7 @@ fi
 
 # current ass -> small generated ass -> executable 6502 -> zero-argument main
 # result. This keeps a short complete rung before the much larger bootstrap.
-TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=60 VICE_FS_DIR="$OUT_DIR" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
+TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=60 VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc0_generated.prg" nanoc0-generated
 
 # Host vasm measures the generated image. The C compiler that produced this
