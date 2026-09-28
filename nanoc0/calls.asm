@@ -10,8 +10,9 @@
 ;;; Arguments that must survive later argument expressions use the bounded 6502
 ;;; hardware stack. For a C-defined function the final argument stays naturally in
 ;;; A/X; if earlier arguments must be restored, Y holds its low byte while PLA/STA
-;;; copies those earlier values to their fixed slots. The callee stores the final
-;;; parameter once at function entry. Runtime routines keep their established
+;;; copies those earlier values to their fixed slots. #98 lets the callee initially
+;;; own that final parameter in A/A-X instead of immediately round-tripping it
+;;; through its static slot. Runtime routines keep their established
 ;;; static-slot interface. Nested calls naturally nest these short lifetimes;
 ;;; Phase 1 has no recursion or re-entrancy.
 ;;;
@@ -439,6 +440,12 @@ complete_current_call:
 	sta runtimeUsed,x
 
 .copyArguments:
+	;;; A call is a hard ownership boundary. At this point the final argument is
+	;;; still in A/X (and, for multi-argument C calls, its low byte is also in Y),
+	;;; so a resident scalar can be committed before PLA/JSR destroys the registers.
+	jsr resident_spill_and_forget
+	bcc .callEmitFailed
+
 	;;; Earlier arguments were pushed in source order, so restore them in reverse.
 	;;; A C-defined final argument remains in A/X (or Y/X while these restores run);
 	;;; runtime calls have already stored their final argument in the fixed slot.
