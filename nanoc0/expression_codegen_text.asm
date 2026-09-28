@@ -83,8 +83,7 @@ exprWordOrTmp:
 	byte $09,'t','y','a',$0a,0
 exprCallMul16:		byte $09,'j','s','r',' ','_','_','n','c','_','m','u','l','1','6',$0a,0
 exprShift8:
-	byte $09,'t','x','a',$0a
-	byte $09,'l','d','x',' ','#','$','0','0',$0a,0
+	byte $09,'t','x','a',$0a,0
 
 exprNegate:
 	byte $09,'s','t','a',' ','N','C','_','T','M','P',$0a
