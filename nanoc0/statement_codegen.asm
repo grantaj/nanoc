@@ -283,11 +283,15 @@ emit_statement_false_jump:
 	;;; same false destination when its required flag is absent. Commit a resident
 	;;; scalar after CMP; STA/STX leave those flags intact.
 	jsr resident_spill_and_forget
-	bcc .failed
+	bcs .gtResidentDone
+	rts
+.gtResidentDone:
 	ldx #<exprBne
 	ldy #>exprBne
 	jsr emit_long_conditional_jump
-	bcc .failed
+	bcs .gtFirstDone
+	rts
+.gtFirstDone:
 	ldx #<exprBcs
 	ldy #>exprBcs
 	jmp emit_long_conditional_jump
@@ -295,7 +299,9 @@ emit_statement_false_jump:
 	cmp #VALUE_COND_LE
 	bne .notLe
 	jsr resident_spill_and_forget
-	bcc .failed
+	bcs .leResidentDone
+	rts
+.leResidentDone:
 	jmp emit_statement_le_false_jump
 .notLe:
 
