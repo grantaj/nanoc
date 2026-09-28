@@ -90,13 +90,7 @@ report_ass_from_c_mailbox() {
     "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/nanoc0.prg" nanoc0.asm
 )
 bytes=$(wc -c < "$BUILD_DIR/nanoc0.prg")
-NANOC0_LOADED=$((bytes - 2))
-echo "production nanoc0 loaded image: $NANOC0_LOADED bytes"
-
-(
-    cd nanoc0
-    "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_nanoc0_codegen_driver.prg" test_codegen_driver.asm
-)
+echo "production nanoc0 loaded image: $((bytes - 2)) bytes"
 
 (
     cd ass
@@ -105,34 +99,19 @@ echo "production nanoc0 loaded image: $NANOC0_LOADED bytes"
     "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_ass_from_c.prg" test_ass_from_c.asm
 )
 
-# Keep the strongest native ladder whenever current ass can stage nanoc0:
+# The low-resident integration copy of the native assembler stages nanoc0
+# directly in its $4000-$9fff target window. That gives this development rung
+# 24 KiB without changing the production assembler's ordinary workspace:
 #
-#   current ass -> production nanoc0 -> exact C sources.
+#   native ass -> production nanoc0 -> exact C sources.
 #
-# During generated-code work nanoc0 is allowed to exceed the assembler's 16 KiB
-# staging window. In that one case, record the native size failure and continue
-# with test_nanoc0_codegen_driver: VASM has assembled the exact production 6502
-# compiler into the test PRG, and that compiler still runs natively under VICE.
-# No host compiler or private emitter substitutes for nanoc0.
+# If this fails, report the native assembler/compiler mailbox and stop. There is
+# deliberately no host-built compiler fallback.
 if ! TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=180 VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
     VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc0_driver.prg" nanoc0-driver; then
     report_driver_mailbox
-    set -- $(od -An -tu1 -N3 "$DRIVER_RESULT")
-    stage=$2
-    status=$3
-    if [ "$stage" -ne 1 ] || [ "$status" -ne 11 ] || [ "$NANOC0_LOADED" -le 16384 ]; then
-        exit 1
-    fi
-
-    echo "nanoc0 exceeds native ass staging; continuing code-generation validation with the exact VASM-built 6502 compiler" >&2
-    DRIVER_RESULT="$BUILD_DIR/nanoc0-codegen-driver.result"
-    if ! VICE_TIMEOUT=180 VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
-        VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
-        sh tests/run-test.sh "$BUILD_DIR/test_nanoc0_codegen_driver.prg" nanoc0-codegen-driver; then
-        report_driver_mailbox
-        exit 1
-    fi
+    exit 1
 fi
 
 report_driver_mailbox
