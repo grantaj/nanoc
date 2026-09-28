@@ -71,6 +71,10 @@ emit_push_call_argument:
 .word:
 	jsr materialize_expression_word
 	bcc .failed
+	;;; TXA in the word push destroys A. Commit a resident argument first while
+	;;; A/X still carry its named source value.
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprPushWord
 	ldy #>exprPushWord
 	jmp emit_string
