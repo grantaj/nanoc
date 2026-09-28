@@ -432,7 +432,9 @@ emit_shift_reduction:
 	ldy #>exprShift8
 	jsr emit_string
 	bcc .earlyFailed
-	jmp mark_expression_ax
+	;;; The low byte is now the old high byte. Keep only that physical fact;
+	;;; a later word consumer can zero-extend it at the point it actually needs X.
+	jmp mark_expression_a
 
 .general:
 	jsr materialize_expression_byte
