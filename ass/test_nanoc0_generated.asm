@@ -39,8 +39,10 @@ finish:
 .halt:
 	jmp .halt
 
+;;; The repository root is mounted on device 8. Keep the generated filename
+;;; explicit so target includes resolve exactly as they do for bootstrap output.
 generatedName:
-	byte 'N','C','O','U','T','.','A','S','M'
+	byte 'B','U','I','L','D','/','N','A','N','O','C','0','-','I','N','T','E','G','R','A','T','I','O','N','/','N','C','O','U','T','.','A','S','M'
 generatedNameEnd:
 
 	include "ass.asm"
