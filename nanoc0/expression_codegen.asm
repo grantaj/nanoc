@@ -349,8 +349,9 @@ emit_word_arithmetic_reduction:
 ;;; Multiplication has the same lifetime split as ordinary arithmetic. A direct
 ;;; RHS has not disturbed a physical left value, so save the left in NC_TMP and
 ;;; spell the RHS directly. A computed RHS forced the parser to preserve its left
-;;; operand already, so the commutative helper may save the RHS first instead.
-;;; At a proven byte boundary, multiplication by low-byte 3 is simply A + 2*A.
+;;; operand already, so commutativity lets the helper consume whichever byte/word
+;;; was cheapest to save. A final char consumer uses only the low product; literal
+;;; *3 is shorter still as A + 2*A.
 emit_mul_reduction:
 	jsr final_consumer_observes_byte
 	bcc .word
