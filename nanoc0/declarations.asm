@@ -934,6 +934,11 @@ compile_local_initializer:
 	lda #PARSE_BAD_INITIALIZER
 	jmp parser_fail
 .expression:
+	;;; The local being constructed is the final consumer of this initializer.
+	;;; Keep C promotion in expressionValueType; expose only the destination width.
+	ldx currentCount
+	lda currentType,x
+	sta statementConsumerType
 	jsr parse_expression
 	bcc .expressionFail
 	lda currentTokenKind
