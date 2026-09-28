@@ -771,6 +771,10 @@ parse_function_definition:
 	lda #EMIT_STORAGE_NONE
 	jsr emit_persistent_checked
 	bcc .failed
+	;;; The final parameter arrives in A/A-X by the existing C-call convention.
+	;;; Keep it there until generated code actually needs those registers.
+	jsr resident_begin_function_parameter
+	bcc .failed
 	jsr parser_next
 	bcc .failed
 	jsr parse_function_locals
