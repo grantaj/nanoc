@@ -129,7 +129,8 @@ emit_runtime_support:
 	ldx #<runtimeMul8Path
 	ldy #>runtimeMul8Path
 	jsr emit_runtime_include
-	bcc .failed
+	bcs .mul16Check
+	rts
 
 .mul16Check:
 	lda multiplyUsed
@@ -138,7 +139,8 @@ emit_runtime_support:
 	ldx #<runtimeMulPath
 	ldy #>runtimeMulPath
 	jsr emit_runtime_include
-	bcc .failed
+	bcs .compareCheck
+	rts
 
 .compareCheck:
 	lda compareUsed
