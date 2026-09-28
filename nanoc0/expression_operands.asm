@@ -443,6 +443,9 @@ preserve_pending_machine_value:
 	ldx #<exprPha
 	ldy #>exprPha
 	jmp emit_string
+.failed:
+	clc
+	rts
 .done:
 	sec
 	rts
