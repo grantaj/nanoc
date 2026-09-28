@@ -288,6 +288,9 @@ materialize_expression_byte:
 	jsr emit_newline
 	bcc .middleFailed
 	jmp mark_expression_a_truth
+.middleFailed:
+	clc
+	rts
 .stackByte:
 	jsr resident_spill_and_forget
 	bcc .failed
