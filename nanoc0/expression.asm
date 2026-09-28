@@ -148,6 +148,7 @@ shiftDoneLabel               = $b3ea
 operandPrefix                = $b3ec
 expressionConditionBranch    = $b3ee
 compareUsed                  = $b3ef
+;;; multiplyUsed bits: 0 = mul16 helper, 1 = mul8 low-product helper.
 multiplyUsed                 = $b3f0
 indexUsed                    = $b3f1
 
