@@ -171,6 +171,15 @@ conditionalTargetLabel       = $b400
 conditionalSkipLabel         = $b402
 conditionalTargetKind        = $b404
 
+;;; #98 keeps one source scalar authoritative in the generated machine registers
+;;; across straight-line statement boundaries. This is deliberately not a
+;;; register map: one owner, its source identity/type, and whether its backing
+;;; slot is stale are the whole model.
+residentArea                  = $b405
+residentIndex                 = $b406
+residentType                  = $b407
+residentDirty                 = $b408
+
 OP_GROUP = 1
 OP_INDEX = 2
 OP_NEG   = 3
@@ -214,6 +223,8 @@ reset_expression_function_state:
 	lda #$00
 	sta operatorCount
 	sta expressionError
+	sta residentArea
+	sta residentDirty
 	jsr reset_call_function_state
 	rts
 
