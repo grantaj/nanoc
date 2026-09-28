@@ -144,10 +144,13 @@ emit_store_current_value:
 	rts
 
 emit_unary_minus:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprNegate
 	ldy #>exprNegate
 	jsr emit_string
 	bcs .done
+.failed:
 	rts
 .done:
 	jmp mark_expression_ax
@@ -245,6 +248,8 @@ emit_byte_arithmetic_reduction:
 	bcc .savedRight
 	jsr materialize_saved_byte
 	bcc .failed
+	jsr resident_spill_and_forget
+	bcc .failed
 	jsr emit_arithmetic_carry
 	bcc .failed
 	jsr select_arithmetic_prefix
@@ -257,6 +262,8 @@ emit_byte_arithmetic_reduction:
 	jsr emit_save_right_byte_tmp
 	bcc .failed
 	jsr materialize_saved_byte
+	bcc .failed
+	jsr resident_spill_and_forget
 	bcc .failed
 	jsr emit_arithmetic_carry
 	bcc .failed
@@ -293,6 +300,8 @@ emit_word_arithmetic_reduction:
 	bcc .savedRight
 	jsr materialize_saved_word
 	bcc .failed
+	jsr resident_spill_and_forget
+	bcc .failed
 	jsr emit_arithmetic_carry
 	bcc .failed
 	jsr select_arithmetic_prefix
@@ -317,6 +326,8 @@ emit_word_arithmetic_reduction:
 	jsr emit_save_right_tmp
 	bcc .failed
 	jsr materialize_saved_word
+	bcc .failed
+	jsr resident_spill_and_forget
 	bcc .failed
 	lda reduceOperator
 	cmp #OP_ADD
@@ -367,6 +378,8 @@ emit_mul_reduction:
 	bcc .byteFailed
 	jsr emit_save_right_byte_tmp
 	bcc .byteFailed
+	jsr resident_spill_and_forget
+	bcc .byteFailed
 	;;; Fixed prefixes of existing target text; native ass intentionally does not
 	;;; evaluate label-label arithmetic in an immediate operand.
 	lda #$0c			; "\tasl NC_TMP\n"
@@ -396,6 +409,8 @@ emit_mul_reduction:
 	bcc .byteFailed
 	jsr emit_save_right_byte_tmp
 	bcc .byteFailed
+	jsr resident_spill_and_forget
+	bcc .byteFailed
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
 	jsr emit_right_low_operand
@@ -409,6 +424,8 @@ emit_mul_reduction:
 	jsr materialize_saved_byte
 	bcc .byteFailed
 .byteCall:
+	jsr resident_spill_and_forget
+	bcc .byteFailed
 	ldx #<exprCallMul8
 	ldy #>exprCallMul8
 	jsr emit_string
@@ -424,6 +441,8 @@ emit_mul_reduction:
 	jsr materialize_saved_word
 	bcc .failed
 	jsr emit_save_right_tmp
+	bcc .failed
+	jsr resident_spill_and_forget
 	bcc .failed
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
@@ -442,6 +461,8 @@ emit_mul_reduction:
 	jsr materialize_saved_word
 	bcc .failed
 .call:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprCallMul16
 	ldy #>exprCallMul16
 	jsr emit_string
@@ -465,6 +486,8 @@ emit_shift_reduction:
 	bne .general
 	jsr materialize_saved_word
 	bcc .earlyFailed
+	jsr resident_spill_and_forget
+	bcc .earlyFailed
 	ldx #<exprShift8
 	ldy #>exprShift8
 	jsr emit_string
@@ -483,6 +506,8 @@ emit_shift_reduction:
 	jsr materialize_saved_word
 	bcc .earlyFailed
 	jsr emit_save_right_tmp
+	bcc .earlyFailed
+	jsr resident_spill_and_forget
 	bcc .earlyFailed
 	jmp .labels
 .earlyFailed:
