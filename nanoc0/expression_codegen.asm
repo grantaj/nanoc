@@ -354,19 +354,20 @@ emit_word_arithmetic_reduction:
 emit_mul_reduction:
 	jsr final_consumer_observes_byte
 	bcc .word
+
+	;;; Multiplication by three has a shorter natural 6502 spelling than a call.
 	lda reduceRightKind
 	cmp #VALUE_LITERAL
-	bne .word
+	bne .byte
 	lda reduceRightLow
 	cmp #$03
-	bne .word
+	bne .byte
 	jsr materialize_saved_byte
 	bcc .failed
 	jsr emit_save_right_byte_tmp
 	bcc .failed
-	;;; These are fixed prefixes of existing target text. Spell their byte counts
-	;;; explicitly because native ass deliberately does not evaluate label-label
-	;;; arithmetic in an immediate operand.
+	;;; Fixed prefixes of existing target text; native ass intentionally does not
+	;;; evaluate label-label arithmetic in an immediate operand.
 	lda #$0c			; "\tasl NC_TMP\n"
 	ldx #<exprShiftLeftBody
 	ldy #>exprShiftLeftBody
@@ -379,8 +380,40 @@ emit_mul_reduction:
 	bcc .failed
 	jmp mark_expression_a
 
+.byte:
+	;;; Only the low product survives a char consumer. Arbitrary byte products use
+	;;; the small mul8 helper rather than manufacturing a 16-bit result and dropping X.
+	lda multiplyUsed
+	ora #$02
+	sta multiplyUsed
+	jsr right_operand_is_direct
+	bcc .byteSavedRight
+	jsr materialize_saved_byte
+	bcc .failed
+	jsr emit_save_right_byte_tmp
+	bcc .failed
+	ldx #<exprLdaSpace
+	ldy #>exprLdaSpace
+	jsr emit_right_low_operand
+	bcc .failed
+	jmp .byteCall
+.byteSavedRight:
+	jsr materialize_expression_byte
+	bcc .failed
+	jsr emit_save_right_byte_tmp
+	bcc .failed
+	jsr materialize_saved_byte
+	bcc .failed
+.byteCall:
+	ldx #<exprCallMul8
+	ldy #>exprCallMul8
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_a
+
 .word:
-	lda #$01
+	lda multiplyUsed
+	ora #$01
 	sta multiplyUsed
 	jsr right_operand_is_direct
 	bcc .savedRight
