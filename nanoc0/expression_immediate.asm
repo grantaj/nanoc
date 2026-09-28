@@ -393,7 +393,7 @@ materialize_expression_word:
 
 .literal:
 	jsr resident_spill_and_forget
-	bcc .failed
+	bcc .middleFailed
 	jsr emit_load_literal
 	bcs .literalDone
 	rts
@@ -402,15 +402,15 @@ materialize_expression_word:
 
 .scalar:
 	jsr resident_spill_and_forget
-	bcc .failed
+	bcc .middleFailed
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
 	jsr emit_string
-	bcc .failed
+	bcc .middleFailed
 	jsr emit_expression_scalar_name
-	bcc .failed
+	bcc .middleFailed
 	jsr emit_newline
-	bcc .failed
+	bcc .middleFailed
 	lda expressionValueType
 	cmp #TYPE_CHAR
 	beq .extend
