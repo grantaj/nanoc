@@ -190,11 +190,10 @@ emit_binary_reduction:
 .compare:
 	jmp emit_compare_reduction
 
-;;; The C expression still has its promoted integer type. Only a proven final
-;;; char consumer changes the physical width that this reduction must compute.
-;;; Returns temporarily use the same statement marker as scalar assignments.
+;;; The C expression still has its promoted integer type. Only the delimiter's
+;;; proven final consumer changes the physical width that this reduction computes.
 emit_arithmetic_reduction:
-	jsr byte_result_is_final_scalar_assignment
+	jsr final_consumer_observes_byte
 	bcc .word
 	jmp emit_byte_arithmetic_reduction
 .word:
@@ -353,7 +352,7 @@ emit_word_arithmetic_reduction:
 ;;; operand already, so the commutative helper may save the RHS first instead.
 ;;; At a proven byte boundary, multiplication by low-byte 3 is simply A + 2*A.
 emit_mul_reduction:
-	jsr byte_result_is_final_scalar_assignment
+	jsr final_consumer_observes_byte
 	bcc .word
 	lda reduceRightKind
 	cmp #VALUE_LITERAL
