@@ -88,6 +88,35 @@ resident_expression_matches:
 	clc
 	rts
 
+resident_right_matches:
+	lda residentArea
+	beq .no
+	lda reduceRightKind
+	cmp #VALUE_CURRENT
+	beq .current
+	cmp #VALUE_PERSISTENT
+	bne .no
+	lda residentArea
+	cmp #SYMBOL_AREA_PERSISTENT
+	bne .no
+	jmp .identity
+.current:
+	lda residentArea
+	cmp #SYMBOL_AREA_CURRENT
+	bne .no
+.identity:
+	lda reduceRightLow
+	cmp residentIndex
+	bne .no
+	lda reduceRightType
+	cmp residentType
+	bne .no
+	sec
+	rts
+.no:
+	clc
+	rts
+
 emit_resident_name:
 	ldx residentIndex
 	lda residentArea
@@ -102,14 +131,14 @@ emit_resident_name:
 	clc
 	rts
 
-;;; Commit a stale owner before generated code reuses A/X or crosses a boundary.
-;;; STA/STX preserve 6502 condition flags, which lets this routine sit between a
-;;; CMP and its branch without manufacturing a Boolean.
-resident_spill_and_forget:
+;;; Write a stale owner to its backing slot without discarding the useful
+;;; register fact. STA/STX preserve flags, so this is also safe between CMP and a
+;;; branch. A clean owner costs no generated instruction here.
+resident_commit:
 	lda residentArea
 	beq .done
 	lda residentDirty
-	beq .forget
+	beq .done
 	ldx #<exprStaSpace
 	ldy #>exprStaSpace
 	jsr emit_string
@@ -120,7 +149,7 @@ resident_spill_and_forget:
 	bcc .failed
 	lda residentType
 	cmp #TYPE_CHAR
-	beq .forget
+	beq .clean
 	ldx #<exprStxSpace
 	ldy #>exprStxSpace
 	jsr emit_string
@@ -129,9 +158,8 @@ resident_spill_and_forget:
 	bcc .failed
 	jsr emit_plus_one_newline
 	bcc .failed
-.forget:
+.clean:
 	lda #$00
-	sta residentArea
 	sta residentDirty
 .done:
 	sec
@@ -140,10 +168,56 @@ resident_spill_and_forget:
 	clc
 	rts
 
+;;; Destructive work or an ambiguous join needs canonical memory and no owner.
+resident_spill_and_forget:
+	jsr resident_commit
+	bcc .failed
+	jmp resident_forget
+.failed:
+	clc
+	rts
+
 resident_forget:
 	lda #$00
 	sta residentArea
 	sta residentDirty
+	sec
+	rts
+
+;;; A scalar just loaded from its static slot is a useful clean owner too. This
+;;; is not allocation: the load already happened for the immediate consumer.
+resident_bind_expression_clean:
+	lda expressionValueKind
+	cmp #VALUE_CURRENT
+	beq .current
+	cmp #VALUE_PERSISTENT
+	bne .failed
+	lda #SYMBOL_AREA_PERSISTENT
+	bne .area
+.current:
+	lda #SYMBOL_AREA_CURRENT
+.area:
+	sta residentArea
+	lda expressionValueLow
+	sta residentIndex
+	lda expressionValueType
+	sta residentType
+	lda #$00
+	sta residentDirty
+	sec
+	rts
+.failed:
+	clc
+	rts
+
+;;; A direct named RHS may read backing memory while another scalar is resident.
+;;; Only the exceptional case where that RHS is the resident value itself needs a
+;;; commit; a different resident owner can remain live in A/A-X.
+resident_commit_right_operand:
+	jsr resident_right_matches
+	bcc .different
+	jmp resident_commit
+.different:
 	sec
 	rts
 
@@ -287,6 +361,12 @@ materialize_expression_byte:
 	bcc .middleFailed
 	jsr emit_newline
 	bcc .middleFailed
+	lda expressionValueType
+	cmp #TYPE_CHAR
+	bne .scalarReady
+	jsr resident_bind_expression_clean
+	bcc .middleFailed
+.scalarReady:
 	jmp mark_expression_a_truth
 .middleFailed:
 	clc
@@ -416,7 +496,15 @@ materialize_expression_word:
 	bcc .middleFailed
 	lda expressionValueType
 	cmp #TYPE_CHAR
-	beq .extend
+	bne .scalarWord
+	ldx #<exprLdxZero
+	ldy #>exprLdxZero
+	jsr emit_string
+	bcc .middleFailed
+	jsr resident_bind_expression_clean
+	bcc .middleFailed
+	jmp mark_expression_ax
+.scalarWord:
 	ldx #<exprLdxSpace
 	ldy #>exprLdxSpace
 	jsr emit_string
@@ -424,6 +512,8 @@ materialize_expression_word:
 	jsr emit_expression_scalar_name
 	bcc .middleFailed
 	jsr emit_plus_one_newline
+	bcc .middleFailed
+	jsr resident_bind_expression_clean
 	bcc .middleFailed
 	jmp mark_expression_ax
 .middleFailed:
@@ -587,9 +677,7 @@ emit_right_low_operand:
 	bcc .failed
 	jmp emit_newline
 .scalar:
-	;;; A direct memory RHS must not name a stale backing slot. If a resident
-	;;; owner is live here it is the value still in A/X, so committing it is safe.
-	jsr resident_spill_and_forget
+	jsr resident_commit_right_operand
 	bcc .failed
 	ldx operandPrefix
 	ldy operandPrefix+1
