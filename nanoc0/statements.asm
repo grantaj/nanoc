@@ -239,7 +239,9 @@ parse_if_statement:
 ;;; the token already read belongs to the surrounding construct.
 close_if_true_body:
 	jsr parser_next
-	bcc .failed
+	bcs .trueCloseToken
+	jmp .failed
+.trueCloseToken:
 	;;; Both the false target and the optional end target are joins. End the
 	;;; straight-line ownership fact before either edge is emitted/defined.
 	jsr resident_spill_and_forget
@@ -331,7 +333,9 @@ parse_while_statement:
 	;;; A loop header has an incoming back-edge, so it starts from canonical
 	;;; backing memory rather than carrying straight-line ownership across it.
 	jsr resident_spill_and_forget
-	bcc .emitFail
+	bcs .whileResidentDone
+	jmp .emitFail
+.whileResidentDone:
 	ldx controlDepth
 	jsr reserve_generated_label
 	lda emitLabelValue
@@ -686,7 +690,9 @@ parse_indexed_assignment:
 	;;; Pointer/index work is deliberately outside the one-scalar ownership
 	;;; experiment. Commit before entering the concrete addressing machinery.
 	jsr resident_spill_and_forget
-	bcc .emitFail
+	bcs .indexedResidentDone
+	jmp .emitFail
+.indexedResidentDone:
 	jsr parser_next
 	bcs .indexStarted
 .failed:
