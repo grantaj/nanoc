@@ -98,6 +98,10 @@ emit_compare_reduction:
 	ldy #>exprPha
 	jmp .push
 .pushWord:
+	;;; TXA in the word push destroys the resident low byte, so commit before
+	;;; preserving this older A/X value for the 16-bit comparison.
+	jsr resident_spill_and_forget
+	bcc .failed
 	lda #VALUE_STACK_WORD
 	ldx #<exprPushWord
 	ldy #>exprPushWord
