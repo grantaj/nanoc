@@ -70,6 +70,12 @@ parse_function_statements:
 	lda controlDepth
 	bne .closeNested
 	;;; No unfinished frame means this is the function's own closing brace.
+	;;; Only a dirty global has an externally visible backing-store obligation.
+	jsr resident_finish_function
+	bcs .functionResidentDone
+	lda #PARSE_EMIT_ERROR
+	jmp parser_fail
+.functionResidentDone:
 	lda #EMIT_LABEL_GENERIC
 	sta emitLabelKind
 	jsr parser_next
@@ -234,6 +240,10 @@ parse_if_statement:
 close_if_true_body:
 	jsr parser_next
 	bcc .failed
+	;;; Both the false target and the optional end target are joins. End the
+	;;; straight-line ownership fact before either edge is emitted/defined.
+	jsr resident_spill_and_forget
+	bcc .emitFail
 	lda currentTokenKind
 	cmp #TOKEN_KW_ELSE
 	beq .elseBody
@@ -295,6 +305,8 @@ close_if_true_body:
 	rts
 
 close_if_else_body:
+	jsr resident_spill_and_forget
+	bcc .emitFail
 	ldx controlDepth
 	dex
 	lda controlLabel1Lo,x
@@ -316,6 +328,10 @@ parse_while_statement:
 	bcs .haveSpace
 	rts
 .haveSpace:
+	;;; A loop header has an incoming back-edge, so it starts from canonical
+	;;; backing memory rather than carrying straight-line ownership across it.
+	jsr resident_spill_and_forget
+	bcc .emitFail
 	ldx controlDepth
 	jsr reserve_generated_label
 	lda emitLabelValue
@@ -386,6 +402,9 @@ parse_while_statement:
 	jmp parser_fail
 
 close_while_body:
+	;;; Canonicalize the body before the back-edge and end-label join.
+	jsr resident_spill_and_forget
+	bcc .emitFail
 	ldx controlDepth
 	dex
 	lda controlLabel0Lo,x
@@ -437,6 +456,8 @@ parse_break_statement:
 	lda #PARSE_BAD_STATEMENT
 	jmp parser_fail
 .emit:
+	jsr resident_spill_and_forget
+	bcc .emitFail
 	jsr emit_jump_label
 	bcc .emitFail
 	jmp parser_next
@@ -624,15 +645,9 @@ parse_scalar_assignment:
 	bcc .emitFail
 	jmp parser_next
 .ordinaryStore:
-	lda statementTargetArea
-	cmp #SYMBOL_AREA_CURRENT
-	bne .persistent
-	ldx statementTargetIndex
-	jsr emit_store_current_value
-	bcc .emitFail
-	jmp parser_next
-.persistent:
-	jsr emit_store_persistent_value
+	;;; #98 keeps the completed scalar authoritative in A/A-X. The target's
+	;;; static slot becomes current only when a later clobber/barrier requires it.
+	jsr emit_bind_scalar_value
 	bcc .emitFail
 	jmp parser_next
 .emitFail:
@@ -668,6 +683,10 @@ scalar_assignment_type_ok:
 parse_indexed_assignment:
 	jsr validate_indexed_target
 	bcc .badTarget
+	;;; Pointer/index work is deliberately outside the one-scalar ownership
+	;;; experiment. Commit before entering the concrete addressing machinery.
+	jsr resident_spill_and_forget
+	bcc .emitFail
 	jsr parser_next
 	bcs .indexStarted
 .failed:
