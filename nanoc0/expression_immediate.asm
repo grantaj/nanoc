@@ -52,6 +52,152 @@ mark_expression_condition:
 	rts
 
 ;;; ---------------------------------------------------------------------------
+;;; One straight-line scalar owner (#98)
+;;; ---------------------------------------------------------------------------
+
+;;; The generated machine may carry one named scalar in A or A/X while its static
+;;; backing slot is stale. This is intentionally smaller than a register model:
+;;; no liveness set, no allocation, and no merge state. Any ambiguous boundary
+;;; spills or forgets this single fact.
+resident_expression_matches:
+	lda residentArea
+	beq .no
+	lda expressionValueKind
+	cmp #VALUE_CURRENT
+	beq .current
+	cmp #VALUE_PERSISTENT
+	bne .no
+	lda residentArea
+	cmp #SYMBOL_AREA_PERSISTENT
+	bne .no
+	jmp .identity
+.current:
+	lda residentArea
+	cmp #SYMBOL_AREA_CURRENT
+	bne .no
+.identity:
+	lda expressionValueLow
+	cmp residentIndex
+	bne .no
+	lda expressionValueType
+	cmp residentType
+	bne .no
+	sec
+	rts
+.no:
+	clc
+	rts
+
+emit_resident_name:
+	ldx residentIndex
+	lda residentArea
+	cmp #SYMBOL_AREA_CURRENT
+	beq .current
+	cmp #SYMBOL_AREA_PERSISTENT
+	bne .failed
+	jmp emit_persistent_name
+.current:
+	jmp emit_current_name
+.failed:
+	clc
+	rts
+
+;;; Commit a stale owner before generated code reuses A/X or crosses a boundary.
+;;; STA/STX preserve 6502 condition flags, which lets this routine sit between a
+;;; CMP and its branch without manufacturing a Boolean.
+resident_spill_and_forget:
+	lda residentArea
+	beq .done
+	lda residentDirty
+	beq .forget
+	ldx #<exprStaSpace
+	ldy #>exprStaSpace
+	jsr emit_string
+	bcc .failed
+	jsr emit_resident_name
+	bcc .failed
+	jsr emit_newline
+	bcc .failed
+	lda residentType
+	cmp #TYPE_CHAR
+	beq .forget
+	ldx #<exprStxSpace
+	ldy #>exprStxSpace
+	jsr emit_string
+	bcc .failed
+	jsr emit_resident_name
+	bcc .failed
+	jsr emit_plus_one_newline
+	bcc .failed
+.forget:
+	lda #$00
+	sta residentArea
+	sta residentDirty
+.done:
+	sec
+	rts
+.failed:
+	clc
+	rts
+
+resident_forget:
+	lda #$00
+	sta residentArea
+	sta residentDirty
+	sec
+	rts
+
+;;; The final C-defined argument already arrives in its natural return registers.
+;;; Parameters are the first current-function symbols, so count-1 identifies the
+;;; one value whose backing slot has not yet been written.
+resident_begin_function_parameter:
+	jsr resident_forget
+	ldx currentFunctionIndex
+	lda persistentParamCount,x
+	beq .done
+	sec
+	sbc #$01
+	sta residentIndex
+	tax
+	lda currentType,x
+	sta residentType
+	lda #SYMBOL_AREA_CURRENT
+	sta residentArea
+	lda #$01
+	sta residentDirty
+.done:
+	sec
+	rts
+
+;;; Locals/parameters have no externally visible backing-store requirement at
+;;; function exit. A dirty global does, so commit only that case.
+resident_finish_function:
+	lda residentArea
+	cmp #SYMBOL_AREA_PERSISTENT
+	beq resident_spill_and_forget
+	jmp resident_forget
+
+;;; A completed scalar assignment rebinds the one machine owner to its target.
+;;; Any different old owner is committed first; stores do not disturb the new
+;;; A/A-X value being assigned.
+resident_bind_statement_target:
+	jsr resident_spill_and_forget
+	bcc .failed
+	lda statementTargetArea
+	sta residentArea
+	lda statementTargetIndex
+	sta residentIndex
+	lda statementTargetType
+	sta residentType
+	lda #$01
+	sta residentDirty
+	sec
+	rts
+.failed:
+	clc
+	rts
+
+;;; ---------------------------------------------------------------------------
 ;;; Operand names
 ;;; ---------------------------------------------------------------------------
 
@@ -88,6 +234,10 @@ emit_right_scalar_name:
 ;;; ---------------------------------------------------------------------------
 
 materialize_expression_byte:
+	jsr resident_expression_matches
+	bcc .ordinary
+	jmp mark_expression_a
+.ordinary:
 	lda expressionValueKind
 	cmp #VALUE_A
 	beq .ready
@@ -112,6 +262,8 @@ materialize_expression_byte:
 .narrow:
 	jmp mark_expression_a
 .literal:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprLdaImm
 	ldy #>exprLdaImm
 	jsr emit_string
@@ -123,6 +275,8 @@ materialize_expression_byte:
 	bcc .failed
 	jmp mark_expression_a_truth
 .scalar:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
 	jsr emit_string
@@ -133,6 +287,8 @@ materialize_expression_byte:
 	bcc .failed
 	jmp mark_expression_a_truth
 .stackByte:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprPla
 	ldy #>exprPla
 	jsr emit_string
@@ -140,6 +296,8 @@ materialize_expression_byte:
 	jmp mark_expression_a_truth
 .stackWord:
 	;;; Word pushes place high on top. Discard it, then recover the low byte.
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprPlaPla
 	ldy #>exprPlaPla
 	jsr emit_string
@@ -153,6 +311,20 @@ materialize_expression_byte:
 	rts
 
 materialize_expression_word:
+	jsr resident_expression_matches
+	bcc .ordinary
+	lda expressionValueType
+	cmp #TYPE_CHAR
+	beq .residentByte
+	jmp mark_expression_ax
+.residentByte:
+	;;; A already owns the byte; only a genuine word consumer needs X=0.
+	ldx #<exprLdxZero
+	ldy #>exprLdxZero
+	jsr emit_string
+	bcc .failed
+	jmp mark_expression_ax
+.ordinary:
 	lda expressionValueKind
 	cmp #VALUE_AX
 	bne .notAx
@@ -204,6 +376,8 @@ materialize_expression_word:
 	jmp .extend
 
 .extend:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprLdxZero
 	ldy #>exprLdxZero
 	jsr emit_string
@@ -213,6 +387,8 @@ materialize_expression_word:
 	jmp mark_expression_ax
 
 .literal:
+	jsr resident_spill_and_forget
+	bcc .failed
 	jsr emit_load_literal
 	bcs .literalDone
 	rts
@@ -220,6 +396,8 @@ materialize_expression_word:
 	jmp mark_expression_ax
 
 .scalar:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
 	jsr emit_string
@@ -242,11 +420,15 @@ materialize_expression_word:
 	jmp mark_expression_ax
 
 .string:
+	jsr resident_spill_and_forget
+	bcc .failed
 	jsr emit_load_literal_address
 	bcc .failed
 	jmp mark_expression_ax
 
 .array:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprLdaLowImm
 	ldy #>exprLdaLowImm
 	jsr emit_string
@@ -268,12 +450,16 @@ materialize_expression_word:
 	jmp mark_expression_ax
 
 .stackByte:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprPla
 	ldy #>exprPla
 	jsr emit_string
 	bcc .failed
 	jmp .extend
 .stackWord:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprPopWord
 	ldy #>exprPopWord
 	jsr emit_string
@@ -388,6 +574,10 @@ emit_right_low_operand:
 	bcc .failed
 	jmp emit_newline
 .scalar:
+	;;; A direct memory RHS must not name a stale backing slot. If a resident
+	;;; owner is live here it is the value still in A/X, so committing it is safe.
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx operandPrefix
 	ldy operandPrefix+1
 	jsr emit_string
@@ -534,6 +724,10 @@ final_consumer_observes_byte:
 ;;; GT is C & !Z. __nc_init keeps decimal mode clear, so ADC #$00 is ordinary
 ;;; binary addition in the GT/LE combiner.
 materialize_expression_condition:
+	;;; The following PHP/PLA overwrites A. Commit a resident scalar first; the
+	;;; emitted STA/STX instructions leave the comparison flags untouched.
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprStatusToA
 	ldy #>exprStatusToA
 	jsr emit_string
