@@ -44,7 +44,7 @@ report_driver_mailbox() {
     case "$stage" in
         1)
             if [ "$status" -eq 11 ]; then
-                staged=$((line - 24576))
+                staged=$((line - 16384))
                 fixups=$((40960 - bss))
                 free_gap=$((bss - line))
                 echo "native bootstrap stage=assemble-nanoc0 assembler-status=$status staged=$staged fixup-bytes=$fixups free-gap=$free_gap" >&2
