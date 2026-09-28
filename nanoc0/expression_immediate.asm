@@ -240,7 +240,9 @@ materialize_expression_byte:
 .ordinary:
 	lda expressionValueKind
 	cmp #VALUE_A
-	beq .ready
+	bne .notReadyByte
+	jmp .ready
+.notReadyByte:
 	cmp #VALUE_AX
 	beq .narrow
 	cmp #VALUE_LITERAL
@@ -263,7 +265,7 @@ materialize_expression_byte:
 	jmp mark_expression_a
 .literal:
 	jsr resident_spill_and_forget
-	bcc .failed
+	bcc .middleFailed
 	ldx #<exprLdaImm
 	ldy #>exprLdaImm
 	jsr emit_string
@@ -276,15 +278,15 @@ materialize_expression_byte:
 	jmp mark_expression_a_truth
 .scalar:
 	jsr resident_spill_and_forget
-	bcc .failed
+	bcc .middleFailed
 	ldx #<exprLdaSpace
 	ldy #>exprLdaSpace
 	jsr emit_string
-	bcc .failed
+	bcc .middleFailed
 	jsr emit_expression_scalar_name
-	bcc .failed
+	bcc .middleFailed
 	jsr emit_newline
-	bcc .failed
+	bcc .middleFailed
 	jmp mark_expression_a_truth
 .stackByte:
 	jsr resident_spill_and_forget
@@ -322,7 +324,7 @@ materialize_expression_word:
 	ldx #<exprLdxZero
 	ldy #>exprLdxZero
 	jsr emit_string
-	bcc .failed
+	bcc .upperFailed
 	jmp mark_expression_ax
 .ordinary:
 	lda expressionValueKind
@@ -374,10 +376,13 @@ materialize_expression_word:
 	jmp .failed
 .conditionDone:
 	jmp .extend
+.upperFailed:
+	clc
+	rts
 
 .extend:
 	jsr resident_spill_and_forget
-	bcc .failed
+	bcc .middleFailed
 	ldx #<exprLdxZero
 	ldy #>exprLdxZero
 	jsr emit_string
@@ -412,12 +417,15 @@ materialize_expression_word:
 	ldx #<exprLdxSpace
 	ldy #>exprLdxSpace
 	jsr emit_string
-	bcc .failed
+	bcc .middleFailed
 	jsr emit_expression_scalar_name
-	bcc .failed
+	bcc .middleFailed
 	jsr emit_plus_one_newline
-	bcc .failed
+	bcc .middleFailed
 	jmp mark_expression_ax
+.middleFailed:
+	clc
+	rts
 
 .string:
 	jsr resident_spill_and_forget
