@@ -1,3 +1,5 @@
+char byte_slot[1];
+
 char byte_return_sub(char value)
 {
     return value - 32;
@@ -57,8 +59,6 @@ char byte_argument_nested_word(char value)
 {
     return take_byte((value * 3) >> 8);
 }
-
-char byte_slot[1];
 
 char byte_indexed_mul3(char value)
 {
