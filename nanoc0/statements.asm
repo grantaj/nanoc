@@ -49,6 +49,10 @@ parse_function_statements:
 	jsr reset_statement_function_state
 
 .loop:
+	;;; Each statement starts with no result-width promise. The statement form
+	;;; that owns an expression sets this only when its final consumer is known.
+	lda #$00
+	sta statementConsumerType
 	lda currentTokenKind
 	cmp #TOKEN_EOF
 	bne .notEof
@@ -595,6 +599,8 @@ parse_scalar_assignment:
 	lda #PARSE_BAD_ASSIGNMENT
 	jmp parser_fail
 .targetOk:
+	lda statementTargetType
+	sta statementConsumerType
 	;;; expression.asm may narrow this marker to the exact `x = x +/- 1` form.
 	lda #STATEMENT_SCALAR_ASSIGNMENT
 	sta statementTargetKind
@@ -722,6 +728,9 @@ parse_indexed_assignment:
 	lda #PARSE_BAD_ASSIGNMENT
 	jmp parser_fail
 .equals:
+	;;; The indexed element, not the base pointer/array, consumes the RHS.
+	lda statementElementType
+	sta statementConsumerType
 	jsr parser_next
 	bcc .failed
 	jsr parse_expression
@@ -809,5 +818,6 @@ statementTargetArea:	byte SYMBOL_AREA_NONE
 statementTargetKind:	byte 0
 statementTargetType:	byte TYPE_INT
 statementElementType:	byte TYPE_CHAR
+statementConsumerType:	byte 0
 
 	include "statement_codegen.asm"
