@@ -522,6 +522,8 @@ emit_push_saved_operand:
 .word:
 	jsr materialize_saved_word
 	bcc .failed
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprPushWord
 	ldy #>exprPushWord
 	jmp emit_string
