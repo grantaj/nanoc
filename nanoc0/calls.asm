@@ -175,6 +175,33 @@ call_delimiter_belongs_to_call:
 	clc
 	rts
 
+;;; current_call_parameter_type
+;;; The expression reducer may ask what the active call delimiter will consume.
+;;; This is a pure lookup: it does not validate or materialise the current value.
+;;; Carry set returns A=TYPE_* for the current argument.
+current_call_parameter_type:
+	lda callDepth
+	beq .none
+	sec
+	sbc #$01
+	tax
+	lda callArgumentIndex,x
+	tay
+	lda callCallee,x
+	tax
+	tya
+	cmp persistentParamCount,x
+	bcs .none
+	clc
+	adc persistentParamStart,x
+	tax
+	lda parameterType,x
+	sec
+	rts
+.none:
+	clc
+	rts
+
 ;;; finish_call_separator
 ;;; currentToken is ','. Finish and preserve the current argument, then advance to
 ;;; the first token of the next one.
