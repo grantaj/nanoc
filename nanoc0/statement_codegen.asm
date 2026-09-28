@@ -284,7 +284,7 @@ emit_statement_false_jump:
 	;;; GT requires both non-equality and carry-set. Each long test jumps to the
 	;;; same false destination when its required flag is absent. Commit a resident
 	;;; scalar after CMP; STA/STX leave those flags intact.
-	jsr resident_spill_and_forget
+	jsr resident_commit
 	bcs .gtResidentDone
 	rts
 .gtResidentDone:
@@ -300,7 +300,7 @@ emit_statement_false_jump:
 .notGt:
 	cmp #VALUE_COND_LE
 	bne .notLe
-	jsr resident_spill_and_forget
+	jsr resident_commit
 	bcs .leResidentDone
 	rts
 .leResidentDone:
@@ -336,31 +336,31 @@ emit_statement_false_jump:
 	jsr emit_string
 	bcc .failed
 .bne:
-	jsr resident_spill_and_forget
+	jsr resident_commit
 	bcc .failed
 	ldx #<exprBne
 	ldy #>exprBne
 	jmp emit_long_conditional_jump
 .eq:
-	jsr resident_spill_and_forget
+	jsr resident_commit
 	bcc .failed
 	ldx #<exprBeq
 	ldy #>exprBeq
 	jmp emit_long_conditional_jump
 .ne:
-	jsr resident_spill_and_forget
+	jsr resident_commit
 	bcc .failed
 	ldx #<exprBne
 	ldy #>exprBne
 	jmp emit_long_conditional_jump
 .lt:
-	jsr resident_spill_and_forget
+	jsr resident_commit
 	bcc .failed
 	ldx #<exprBcc
 	ldy #>exprBcc
 	jmp emit_long_conditional_jump
 .ge:
-	jsr resident_spill_and_forget
+	jsr resident_commit
 	bcc .failed
 	ldx #<exprBcs
 	ldy #>exprBcs
