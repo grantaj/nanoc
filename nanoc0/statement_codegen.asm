@@ -262,13 +262,21 @@ emit_indexed_current_pointer_store:
 emit_statement_false_jump:
 	lda expressionValueKind
 	cmp #VALUE_COND_EQ
-	beq .eq
+	bne .notEq
+	jmp .eq
+.notEq:
 	cmp #VALUE_COND_NE
-	beq .ne
+	bne .notNe
+	jmp .ne
+.notNe:
 	cmp #VALUE_COND_LT
-	beq .lt
+	bne .notLt
+	jmp .lt
+.notLt:
 	cmp #VALUE_COND_GE
-	beq .ge
+	bne .notGe
+	jmp .ge
+.notGe:
 	cmp #VALUE_COND_GT
 	bne .notGt
 	;;; GT requires both non-equality and carry-set. Each long test jumps to the
