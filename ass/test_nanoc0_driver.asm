@@ -77,9 +77,13 @@ main:
 	lda #>ASSEMBLER_SYMBOL_HIDDEN_END
 	sta symbolHiddenLimit+1
 
-	lda #<ASSEMBLER_STAGING
+	;;; This driver and ass itself live below $4000. While assembling nanoc0,
+	;;; the final target window is therefore also the largest natural staging
+	;;; window: $4000-$9fff. Forward references are patched in place and the
+	;;; final representation copy is source==destination.
+	lda #<NANOC0_IMAGE
 	sta stagingStart
-	lda #>ASSEMBLER_STAGING
+	lda #>NANOC0_IMAGE
 	sta stagingStart+1
 	lda #<ASSEMBLER_STAGING_END
 	sta stagingLimit

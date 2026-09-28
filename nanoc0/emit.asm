@@ -21,16 +21,14 @@
 ;;;
 ;;;   global/function       __c_<source-name>
 ;;;   parameter/local       __c_<function-name>__vNN
-;;;   expression spill      __c_<function-name>__sNN
-;;;   transient expression  NC_PTR
+;;;   machine scratch       NC_TMP / NC_PTR
 ;;;   deferred string       __nc_stringNN
 ;;;   generic local label   .LNN
 ;;;   if labels             .ifFNN, .ifENN
 ;;;   while labels          .wtNN, .weNN
-;;;   comparison label      .cdNN
 ;;;   branch trampoline     .nNN
 ;;;
-;;; Generated control/comparison labels are local to the C function's assembler
+;;; Generated control labels are local to the C function's assembler
 ;;; scope. That scope is already their namespace. The short role mnemonics are
 ;;; deliberate 6502-era economy: `.wt` still says "while top", while spelling
 ;;; `while_top` hundreds of times would only consume scarce local-symbol RAM.
@@ -53,7 +51,6 @@
 
 EMIT_PTR             = $fc
 EMIT_OUTPUT_LFN      = 3
-EMIT_TRANSIENT_SPILL = $ff
 
 ;;; Four bytes preserve the compiler's two zero-page scratch pairs across KERNAL
 ;;; output. They are mutable compiler work RAM immediately after the statement
@@ -66,7 +63,6 @@ EMIT_LABEL_IF_END    = 2
 EMIT_LABEL_WHILE_TOP = 3
 EMIT_LABEL_WHILE_END = 4
 EMIT_LABEL_NEAR      = 5
-EMIT_LABEL_CMP_DONE  = 8
 
 ;;; emit_output_byte
 ;;; A=byte. Carry set success. X/Y and $fc-$ff preserved.
@@ -248,7 +244,7 @@ emit_pool_name:
 	rts
 
 ;;; X=persistent symbol index. Emit only its source spelling, with no generated
-;;; namespace prefix. Current/spill names use this as their function component.
+;;; namespace prefix. Current names use this as their function component.
 emit_persistent_source_name:
 	lda persistentNameOffsetLo,x
 	sta nameCompareOffset
@@ -297,32 +293,6 @@ emit_current_name:
 	clc
 	rts
 
-;;; A=spill depth -> static spill name, or NC_PTR for the transient sentinel.
-emit_spill_name:
-	sta emitSavedValue
-	cmp #EMIT_TRANSIENT_SPILL
-	bne .static
-	ldx #<emitTransientSpill
-	ldy #>emitTransientSpill
-	jmp emit_string
-.static:
-	ldx #<emitCPrefix
-	ldy #>emitCPrefix
-	jsr emit_string
-	bcc .failed
-	ldx currentFunctionIndex
-	jsr emit_persistent_source_name
-	bcc .failed
-	ldx #<emitSpillSuffix
-	ldy #>emitSpillSuffix
-	jsr emit_string
-	bcc .failed
-	lda emitSavedValue
-	jmp emit_hex_byte
-.failed:
-	clc
-	rts
-
 ;;; A=literal index -> __nc_stringNN.
 emit_literal_name:
 	sta emitSavedValue
@@ -352,8 +322,6 @@ emit_generated_label_name:
 	beq .whileEnd
 	cmp #EMIT_LABEL_NEAR
 	beq .near
-	cmp #EMIT_LABEL_CMP_DONE
-	beq .cmpDone
 	ldx #<emitLabelPrefix
 	ldy #>emitLabelPrefix
 	jmp .prefix
@@ -377,9 +345,6 @@ emit_generated_label_name:
 	ldx #<emitNearPrefix
 	ldy #>emitNearPrefix
 	jmp .prefix
-.cmpDone:
-	ldx #<emitCmpDonePrefix
-	ldy #>emitCmpDonePrefix
 .prefix:
 	jsr emit_string
 	bcc .failed
@@ -429,8 +394,6 @@ reset_generated_labels:
 emitCPrefix:		byte '_','_','c','_',0
 emitCPrefixEnd = emitCPrefix+4
 emitValueSuffix:	byte '_','_','v',0
-emitSpillSuffix:	byte '_','_','s',0
-emitTransientSpill:	byte 'N','C','_','P','T','R',0
 emitStringPrefix:	byte '_','_','n','c','_','s','t','r','i','n','g',0
 emitLabelPrefix:	byte '.','L',0
 emitIfFalsePrefix:	byte '.','i','f','F',0
@@ -438,7 +401,6 @@ emitIfEndPrefix:	byte '.','i','f','E',0
 emitWhileTopPrefix:	byte '.','w','t',0
 emitWhileEndPrefix:	byte '.','w','e',0
 emitNearPrefix:	byte '.','n',0
-emitCmpDonePrefix:	byte '.','c','d',0
 
 emitOutputEnabled:	byte 0
 emitOutputByte:		byte 0

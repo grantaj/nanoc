@@ -234,9 +234,11 @@ parse_top_level_declaration:
 	jmp parse_global_declaration
 
 .function:
+	;;; Phase 1 functions may return a byte or a word. Pointer/unsigned returns
+	;;; are not needed by the bootstrap; keep this extension deliberately narrow.
 	lda declType
-	cmp #TYPE_INT
-	beq .functionTypeOk
+	cmp #TYPE_UNSIGNED
+	bcc .functionTypeOk
 	lda #PARSE_BAD_FUNCTION
 	jmp parser_fail
 .functionTypeOk:
@@ -726,8 +728,7 @@ parse_function_definition:
 	stx currentFunctionIndex
 	lda #SYMBOL_FUNCTION
 	sta persistentKind,x
-	lda #TYPE_INT
-	sta persistentType,x
+	;;; persistentType already holds the parsed return type from the declarator.
 	lda parameterMetaCount
 	sta persistentParamStart,x
 	lda #$00
@@ -933,6 +934,11 @@ compile_local_initializer:
 	lda #PARSE_BAD_INITIALIZER
 	jmp parser_fail
 .expression:
+	;;; The local being constructed is the final consumer of this initializer.
+	;;; Keep C promotion in expressionValueType; expose only the destination width.
+	ldx currentCount
+	lda currentType,x
+	sta statementConsumerType
 	jsr parse_expression
 	bcc .expressionFail
 	lda currentTokenKind

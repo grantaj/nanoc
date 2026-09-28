@@ -28,6 +28,7 @@ runtimeStaTmp:		byte $09,'s','t','a',' ','N','C','_','T','M','P',0
 runtimeStaTmpHigh:	byte $09,'s','t','a',' ','N','C','_','T','M','P','+','1',0
 runtimeIncludePrefix:	byte $09,'i','n','c','l','u','d','e',' ','"','.','.','/','n','a','n','o','c','0','/','t','a','r','g','e','t','/',0
 runtimeIncludeSuffix:	byte '.','a','s','m','"',$0a,0
+runtimeMul8Path:	byte 'm','u','l','8',0
 runtimeMulPath:		byte 'm','u','l','1','6',0
 runtimeComparePath:	byte 'c','o','m','p','a','r','e','1','6',0
 runtimeIndexPath:	byte 'i','n','d','e','x','1','6',0
@@ -123,11 +124,23 @@ emit_runtime_support:
 .initReady:
 
 	lda multiplyUsed
+	and #$02
+	beq .mul16Check
+	ldx #<runtimeMul8Path
+	ldy #>runtimeMul8Path
+	jsr emit_runtime_include
+	bcs .mul16Check
+	rts
+
+.mul16Check:
+	lda multiplyUsed
+	and #$01
 	beq .compareCheck
 	ldx #<runtimeMulPath
 	ldy #>runtimeMulPath
 	jsr emit_runtime_include
-	bcc .failed
+	bcs .compareCheck
+	rts
 
 .compareCheck:
 	lda compareUsed

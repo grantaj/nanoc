@@ -23,7 +23,7 @@ int main()
     int r10 = 1 << 2 + 1;
     int r11 = 1 & 2 == 2;
     int r12 = 3855 & 255 | 4096;
-    int r13 = -5 + 2;
+    int r13 = byte_value - 255 - 3;
     int r14 = 1 << 0;
     int r15 = 1 << 15;
     unsigned r16 = 65535 >> 15;

@@ -49,6 +49,10 @@ parse_function_statements:
 	jsr reset_statement_function_state
 
 .loop:
+	;;; Each statement starts with no result-width promise. The statement form
+	;;; that owns an expression sets this only when its final consumer is known.
+	lda #$00
+	sta statementConsumerType
 	lda currentTokenKind
 	cmp #TOKEN_EOF
 	bne .notEof
@@ -120,7 +124,6 @@ parse_function_statements:
 reset_statement_function_state:
 	lda #$00
 	sta controlDepth
-	sta statementAddressAllocated
 	rts
 
 ;;; ---------------------------------------------------------------------------
@@ -476,6 +479,12 @@ parse_return_statement:
 	lda #PARSE_BAD_RETURN
 	jmp parser_fail
 .expression:
+	;;; The return type is the final consumer. C promotion inside the expression
+	;;; remains semantic; this byte records only what survives the final semicolon.
+	ldx currentFunctionIndex
+	lda persistentType,x
+	sta statementTargetType
+	sta statementConsumerType
 	jsr parse_expression
 	bcs .parsed
 	jmp statement_expression_failed
@@ -586,6 +595,8 @@ parse_scalar_assignment:
 	lda #PARSE_BAD_ASSIGNMENT
 	jmp parser_fail
 .targetOk:
+	lda statementTargetType
+	sta statementConsumerType
 	;;; expression.asm may narrow this marker to the exact `x = x +/- 1` form.
 	lda #STATEMENT_SCALAR_ASSIGNMENT
 	sta statementTargetKind
@@ -677,9 +688,8 @@ parse_indexed_assignment:
 	lda statementElementType
 	cmp #TYPE_CHAR
 	bne .fullAddress
-	lda expressionValueType
-	cmp #TYPE_CHAR
-	bne .fullAddress
+	jsr expression_index_is_byte_domain
+	bcc .fullAddress
 	lda statementTargetKind
 	cmp #SYMBOL_ARRAY
 	beq .directArray
@@ -692,8 +702,6 @@ parse_indexed_assignment:
 	lda #STATEMENT_INDEX_ARRAY
 .saveIndex:
 	sta statementTargetKind
-	jsr ensure_statement_address_slot
-	bcc .failed
 	jsr emit_save_statement_index
 	bcc .emitFail
 	jmp .addressDone
@@ -705,8 +713,6 @@ parse_indexed_assignment:
 .fullAddress:
 	jsr emit_statement_index_address
 	bcc .emitFail
-	jsr ensure_statement_address_slot
-	bcc .failed
 	jsr emit_save_statement_address
 	bcc .emitFail
 .addressDone:
@@ -718,6 +724,9 @@ parse_indexed_assignment:
 	lda #PARSE_BAD_ASSIGNMENT
 	jmp parser_fail
 .equals:
+	;;; The indexed element, not the base pointer/array, consumes the RHS.
+	lda statementElementType
+	sta statementConsumerType
 	jsr parser_next
 	bcc .failed
 	jsr parse_expression
@@ -780,33 +789,6 @@ validate_indexed_target:
 	clc
 	rts
 
-;;; One two-byte saved effective address is enough for every indexed assignment
-;;; in a function: it is live only while that statement's RHS is evaluated.
-ensure_statement_address_slot:
-	lda statementAddressAllocated
-	beq .allocate
-	sec
-	rts
-.allocate:
-	lda #$02
-	sta allocSize
-	lda #$00
-	sta allocSize+1
-	jsr allocate_bss
-	bcs .allocated
-	lda #PARSE_BSS_OVERFLOW
-	jmp parser_fail
-.allocated:
-	jsr emit_statement_address_definition
-	bcs .emitted
-	lda #PARSE_EMIT_ERROR
-	jmp parser_fail
-.emitted:
-	lda #$01
-	sta statementAddressAllocated
-	sec
-	rts
-
 ;;; Expression failures retain their precise expressionError. Scanner failure is
 ;;; already layered through parserError/scannerError and must not be relabelled.
 statement_expression_failed:
@@ -832,6 +814,6 @@ statementTargetArea:	byte SYMBOL_AREA_NONE
 statementTargetKind:	byte 0
 statementTargetType:	byte TYPE_INT
 statementElementType:	byte TYPE_CHAR
-statementAddressAllocated:	byte 0
+statementConsumerType:	byte 0
 
 	include "statement_codegen.asm"
