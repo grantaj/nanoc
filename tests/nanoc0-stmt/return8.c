@@ -24,6 +24,16 @@ int word_mul3(char value)
     return value * 3;
 }
 
+char byte_variable_mul(char left, char right)
+{
+    return left * right;
+}
+
+int word_variable_mul(char left, char right)
+{
+    return left * right;
+}
+
 char nested_word_mul3(char value)
 {
     return (value * 3) >> 8;
@@ -96,26 +106,32 @@ int main()
     if (nested_word_mul3(value) != 2) {
         return 5;
     }
-    if (byte_initializer_mul3(value) != 88) {
+    if (byte_variable_mul(20, 13) != 4) {
         return 6;
     }
-    if (byte_argument_mul3(value) != 88) {
+    if (word_variable_mul(20, 13) != 260) {
         return 7;
     }
-    if (word_argument_mul3(value) != 600) {
+    if (byte_initializer_mul3(value) != 88) {
         return 8;
     }
-    if (byte_argument_nested_word(value) != 2) {
+    if (byte_argument_mul3(value) != 88) {
         return 9;
     }
-    if (byte_shift8(4660) != 18) {
+    if (word_argument_mul3(value) != 600) {
         return 10;
     }
-    if (word_shift8(4660) != 18) {
+    if (byte_argument_nested_word(value) != 2) {
         return 11;
     }
-    if (byte_indexed_mul3(value) != 88) {
+    if (byte_shift8(4660) != 18) {
         return 12;
+    }
+    if (word_shift8(4660) != 18) {
+        return 13;
+    }
+    if (byte_indexed_mul3(value) != 88) {
+        return 14;
     }
 
     return 'Z';
