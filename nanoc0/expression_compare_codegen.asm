@@ -240,6 +240,10 @@ emit_compare_helper_call:
 	jmp emit_compare_call
 
 emit_compare_call:
+	;;; The helper consumes A/X and returns a new value. If the left operand is
+	;;; still the resident scalar, commit it while those registers still name it.
+	jsr resident_spill_and_forget
+	bcc .failed
 	jsr emit_string
 	bcc .failed
 	jsr emit_newline
