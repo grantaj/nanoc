@@ -60,6 +60,16 @@ char byte_argument_nested_word(char value)
     return take_byte((value * 3) >> 8);
 }
 
+char byte_shift8(int value)
+{
+    return value >> 8;
+}
+
+int word_shift8(int value)
+{
+    return value >> 8;
+}
+
 char byte_indexed_mul3(char value)
 {
     byte_slot[0] = value * 3;
@@ -98,8 +108,14 @@ int main()
     if (byte_argument_nested_word(value) != 2) {
         return 9;
     }
-    if (byte_indexed_mul3(value) != 88) {
+    if (byte_shift8(4660) != 18) {
         return 10;
+    }
+    if (word_shift8(4660) != 18) {
+        return 11;
+    }
+    if (byte_indexed_mul3(value) != 88) {
+        return 12;
     }
 
     return 'Z';
