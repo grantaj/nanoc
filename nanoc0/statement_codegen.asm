@@ -46,6 +46,10 @@ load_statement_target_base:
 ;;; stay on the ordinary immediate arithmetic path, which already carries or
 ;;; borrows explicitly across A/X.
 emit_direct_scalar_update:
+	;;; INC/DEC reads backing memory, so a stale resident target must be committed
+	;;; before this deliberately memory-native self-update.
+	jsr resident_spill_and_forget
+	bcc .failed
 	lda pendingOperator
 	cmp #OP_SUB
 	beq .subtract
@@ -87,9 +91,33 @@ emit_return_value:
 	bcs .emit
 	rts
 .emit:
+	;;; Function exit is an ownership boundary. Locals/parameters may simply be
+	;;; forgotten; a resident global is committed by resident_finish_function.
+	jsr resident_finish_function
+	bcc .failed
 	ldx #<statementRts
 	ldy #>statementRts
 	jmp emit_string
+.failed:
+	clc
+	rts
+
+;;; Bind a completed scalar assignment to the one straight-line A/A-X owner.
+;;; Backing memory remains the safety net and is written only at a real barrier.
+emit_bind_scalar_value:
+	lda statementTargetType
+	cmp #TYPE_CHAR
+	bne .word
+	jsr materialize_expression_byte
+	jmp .prepared
+.word:
+	jsr materialize_expression_word
+.prepared:
+	bcc .failed
+	jmp resident_bind_statement_target
+.failed:
+	clc
+	rts
 
 emit_store_persistent_value:
 	lda statementTargetType
@@ -244,7 +272,10 @@ emit_statement_false_jump:
 	cmp #VALUE_COND_GT
 	bne .notGt
 	;;; GT requires both non-equality and carry-set. Each long test jumps to the
-	;;; same false destination when its required flag is absent.
+	;;; same false destination when its required flag is absent. Commit a resident
+	;;; scalar after CMP; STA/STX leave those flags intact.
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprBne
 	ldy #>exprBne
 	jsr emit_long_conditional_jump
@@ -255,6 +286,8 @@ emit_statement_false_jump:
 .notGt:
 	cmp #VALUE_COND_LE
 	bne .notLe
+	jsr resident_spill_and_forget
+	bcc .failed
 	jmp emit_statement_le_false_jump
 .notLe:
 
@@ -279,27 +312,40 @@ emit_statement_false_jump:
 .word:
 	jsr materialize_expression_word
 	bcc .failed
+	;;; ORA below changes A from the resident word's low byte into the truth test.
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<statementTruthTest
 	ldy #>statementTruthTest
 	jsr emit_string
 	bcc .failed
 .bne:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprBne
 	ldy #>exprBne
 	jmp emit_long_conditional_jump
 .eq:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprBeq
 	ldy #>exprBeq
 	jmp emit_long_conditional_jump
 .ne:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprBne
 	ldy #>exprBne
 	jmp emit_long_conditional_jump
 .lt:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprBcc
 	ldy #>exprBcc
 	jmp emit_long_conditional_jump
 .ge:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprBcs
 	ldy #>exprBcs
 	jmp emit_long_conditional_jump
