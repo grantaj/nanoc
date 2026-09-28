@@ -262,6 +262,11 @@ handle_postfix_index:
 	sec
 	rts
 .index:
+	;;; Indexing is an explicit #98 ownership barrier. The base/index machinery
+	;;; may reuse A/X/NC_PTR in several concrete ways, so canonicalize the one
+	;;; straight-line scalar owner rather than inventing alias/liveness analysis.
+	jsr resident_spill_and_forget
+	bcc .failed
 	lda expressionIndexable
 	bne .allowed
 	lda expressionValueType
@@ -344,6 +349,8 @@ prepare_current_operand_for_stack:
 	sec
 	rts
 .pushWord:
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprPushWord
 	ldy #>exprPushWord
 	jsr emit_string
@@ -424,6 +431,8 @@ preserve_pending_machine_value:
 	;;; descriptor before emit_string avoids extra bookkeeping just for failure.
 	lda #VALUE_STACK_WORD
 	sta operatorValueKind,x
+	jsr resident_spill_and_forget
+	bcc .failed
 	ldx #<exprPushWord
 	ldy #>exprPushWord
 	jmp emit_string
