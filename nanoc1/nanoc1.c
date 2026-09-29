@@ -113,7 +113,8 @@
  * 683  __v
  * 687  byte $
  */
-char fixed_text[694] = {
+/* compact templates appended at offsets: push_ax=694, pop_ax=710, binary_prelude=726, add16=778, sub16=830, and16=882, or16=929, neg16=976, keyword_table=1072, two_char_operator_table=1090 */
+char fixed_text[1111] = {
     84,69,83,84,83,47,78,65,78,79,67,49,47,78,49,83,
     82,67,46,67,0,78,49,79,85,84,46,65,83,77,0,99,
     104,97,114,0,105,110,116,0,117,110,115,105,103,110,101,100,
@@ -157,7 +158,33 @@ char fixed_text[694] = {
     48,0,95,95,99,95,105,111,95,114,101,97,100,95,95,118,
     48,0,95,95,99,95,105,111,95,119,114,105,116,101,95,95,
     118,48,0,95,95,102,0,95,95,103,0,95,95,118,0,98,
-    121,116,101,32,36,0
+    121,116,101,32,36,0,9,112,104,97,10,9,116,120,97,10,
+    9,112,104,97,10,0,9,112,108,97,10,9,116,97,120,10,
+    9,112,108,97,10,0,9,112,108,97,10,9,115,116,97,32,
+    78,67,95,84,77,80,43,49,10,9,112,108,97,10,9,115,
+    116,97,32,78,67,95,84,77,80,10,9,112,108,97,10,9,
+    116,97,120,10,9,112,108,97,10,0,9,99,108,99,10,9,
+    97,100,99,32,78,67,95,84,77,80,10,9,116,97,121,10,
+    9,116,120,97,10,9,97,100,99,32,78,67,95,84,77,80,
+    43,49,10,9,116,97,120,10,9,116,121,97,10,0,9,115,
+    101,99,10,9,115,98,99,32,78,67,95,84,77,80,10,9,
+    116,97,121,10,9,116,120,97,10,9,115,98,99,32,78,67,
+    95,84,77,80,43,49,10,9,116,97,120,10,9,116,121,97,
+    10,0,9,97,110,100,32,78,67,95,84,77,80,10,9,116,
+    97,121,10,9,116,120,97,10,9,97,110,100,32,78,67,95,
+    84,77,80,43,49,10,9,116,97,120,10,9,116,121,97,10,
+    0,9,111,114,97,32,78,67,95,84,77,80,10,9,116,97,
+    121,10,9,116,120,97,10,9,111,114,97,32,78,67,95,84,
+    77,80,43,49,10,9,116,97,120,10,9,116,121,97,10,0,
+    9,112,108,97,10,9,116,97,120,10,9,112,108,97,10,9,
+    101,111,114,32,35,36,102,102,10,9,99,108,99,10,9,97,
+    100,99,32,35,36,48,49,10,9,116,97,121,10,9,116,120,
+    97,10,9,101,111,114,32,35,36,102,102,10,9,97,100,99,
+    32,35,36,48,48,10,9,116,97,120,10,9,116,121,97,10,
+    9,112,104,97,10,9,116,120,97,10,9,112,104,97,10,0,
+    31,4,36,3,40,8,49,2,52,4,57,5,63,5,69,6,
+    0,0,61,61,142,33,61,143,60,61,144,62,61,145,60,60,
+    146,62,62,147,0,0,0
 };
 
 /*
@@ -624,29 +651,18 @@ int token_equals(char *word, int length)
 
 int classify_identifier()
 {
-    if (token_equals((fixed_text + 31), 4) != 0) {
-        return 134;
-    }
-    if (token_equals((fixed_text + 36), 3) != 0) {
-        return 135;
-    }
-    if (token_equals((fixed_text + 40), 8) != 0) {
-        return 136;
-    }
-    if (token_equals((fixed_text + 49), 2) != 0) {
-        return 137;
-    }
-    if (token_equals((fixed_text + 52), 4) != 0) {
-        return 138;
-    }
-    if (token_equals((fixed_text + 57), 5) != 0) {
-        return 139;
-    }
-    if (token_equals((fixed_text + 63), 5) != 0) {
-        return 140;
-    }
-    if (token_equals((fixed_text + 69), 6) != 0) {
-        return 141;
+    int i;
+    int text_offset;
+    int length;
+
+    i = 1072;
+    while (fixed_text[i + 1] != 0) {
+        text_offset = fixed_text[i];
+        length = fixed_text[i + 1];
+        if (token_equals((fixed_text + text_offset), length) != 0) {
+            return 134 + ((i - 1072) >> 1);
+        }
+        i = i + 2;
     }
     return 130;
 }
@@ -1320,24 +1336,12 @@ int emit_param_store(int function_id, int argument, int type)
 
 int emit_push_ax()
 {
-    if (emit_zero((fixed_text + 451)) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 459)) == 0) {
-        return 0;
-    }
-    return emit_zero((fixed_text + 451));
+    return write_text((fixed_text + 694));
 }
 
 int emit_pop_ax()
 {
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 463)) == 0) {
-        return 0;
-    }
-    return emit_zero((fixed_text + 455));
+    return write_text((fixed_text + 710));
 }
 
 int emit_load_symbol(int area, int symbol, int type)
@@ -1550,92 +1554,23 @@ int push_value_type(int type)
 
 int emit_binary_prelude()
 {
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 443), (fixed_text + 198), 1) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 443), (fixed_text + 198), 0) == 0) {
-        return 0;
-    }
-    return emit_pop_ax();
+    return write_text((fixed_text + 726));
 }
 
 int emit_add_sub(int op)
 {
     if (op == '+') {
-        if (emit_zero((fixed_text + 475)) == 0) {
-            return 0;
-        }
-        if (emit_scratch((fixed_text + 483), (fixed_text + 198), 0) == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 467)) == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 459)) == 0) {
-            return 0;
-        }
-        if (emit_scratch((fixed_text + 483), (fixed_text + 198), 1) == 0) {
-            return 0;
-        }
-    } else {
-        if (emit_zero((fixed_text + 479)) == 0) {
-            return 0;
-        }
-        if (emit_scratch((fixed_text + 487), (fixed_text + 198), 0) == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 467)) == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 459)) == 0) {
-            return 0;
-        }
-        if (emit_scratch((fixed_text + 487), (fixed_text + 198), 1) == 0) {
-            return 0;
-        }
+        return write_text((fixed_text + 778));
     }
-    if (emit_zero((fixed_text + 463)) == 0) {
-        return 0;
-    }
-    return emit_zero((fixed_text + 471));
+    return write_text((fixed_text + 830));
 }
 
 int emit_bitwise(int op)
 {
     if (op == '&') {
-        if (emit_scratch((fixed_text + 491), (fixed_text + 198), 0) == 0) {
-            return 0;
-        }
-    } else {
-        if (emit_scratch((fixed_text + 495), (fixed_text + 198), 0) == 0) {
-            return 0;
-        }
+        return write_text((fixed_text + 882));
     }
-    if (emit_zero((fixed_text + 467)) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 459)) == 0) {
-        return 0;
-    }
-    if (op == '&') {
-        if (emit_scratch((fixed_text + 491), (fixed_text + 198), 1) == 0) {
-            return 0;
-        }
-    } else {
-        if (emit_scratch((fixed_text + 495), (fixed_text + 198), 1) == 0) {
-            return 0;
-        }
-    }
-    if (emit_zero((fixed_text + 463)) == 0) {
-        return 0;
-    }
-    return emit_zero((fixed_text + 471));
+    return write_text((fixed_text + 929));
 }
 
 int emit_shift(int op)
@@ -1762,37 +1697,7 @@ int reduce_unary()
         compiler_error = 5;
         return 0;
     }
-    if (emit_pop_ax() == 0) {
-        return 0;
-    }
-    if (emit_immediate((fixed_text + 543), 255) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 475)) == 0) {
-        return 0;
-    }
-    if (emit_immediate((fixed_text + 483), 1) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 467)) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 459)) == 0) {
-        return 0;
-    }
-    if (emit_immediate((fixed_text + 543), 255) == 0) {
-        return 0;
-    }
-    if (emit_immediate((fixed_text + 483), 0) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 463)) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 471)) == 0) {
-        return 0;
-    }
-    if (emit_push_ax() == 0) {
+    if (write_text((fixed_text + 976)) == 0) {
         return 0;
     }
     if (type == 1) {
