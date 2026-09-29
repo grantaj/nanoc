@@ -8,7 +8,19 @@
 __nc_io_mode   = $ce00
 __nc_io_eof    = $ce06
 __nc_io_handle = $ce0c
-__nc_io_name   = $ce10
+__nc_io_name   = $ce10             ; 256-byte create-name buffer
+
+;;; Runtime calls use the same static, nonrecursive parameter convention as
+;;; C-defined Phase 1 functions. Keep these slots in runtime-private RAM rather
+;;; than consuming C-visible NC_BSS. The filename buffer ends at $cf0f.
+__c_io_open__v00   = $cf10         ; char *name
+__c_io_open__v01   = $cf12         ; int length
+__c_io_read__v00   = $cf14         ; int handle
+__c_io_create__v00 = $cf16         ; char *name
+__c_io_create__v01 = $cf18         ; int length
+__c_io_write__v00  = $cf1a         ; int handle
+__c_io_write__v01  = $cf1c         ; int value
+__c_io_close__v00  = $cf1e         ; int handle
 
 __nc_init:
 	cld
