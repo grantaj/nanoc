@@ -983,68 +983,60 @@ char save_token_name()
     return 1;
 }
 
-char global_name_equal(char symbol)
-{
-    char i;
-    int base;
-
-    if (global_name_len[symbol] != token_length) {
-        return 0;
-    }
-    base = symbol * 32;
-    i = 0;
-    while (i < token_length) {
-        if (global_name[base + i] != token_text[i]) {
-            return 0;
-        }
-        i = i + 1;
-    }
-    return 1;
-}
-
-char current_name_equal(char symbol)
-{
-    char i;
-    int base;
-
-    if (local_name_len[symbol] != token_length) {
-        return 0;
-    }
-    base = symbol * 32;
-    i = 0;
-    while (i < token_length) {
-        if (local_name[base + i] != token_text[i]) {
-            return 0;
-        }
-        i = i + 1;
-    }
-    return 1;
-}
-
 int find_global()
 {
+    char symbol;
     char i;
+    int base;
+    char match;
 
-    i = 0;
-    while (i < global_count) {
-        if (global_name_equal(i) != 0) {
-            return i;
+    symbol = 0;
+    while (symbol < global_count) {
+        if (global_name_len[symbol] == token_length) {
+            base = symbol * 32;
+            i = 0;
+            match = 1;
+            while (i < token_length) {
+                if (global_name[base + i] != token_text[i]) {
+                    match = 0;
+                    break;
+                }
+                i = i + 1;
+            }
+            if (match != 0) {
+                return symbol;
+            }
         }
-        i = i + 1;
+        symbol = symbol + 1;
     }
     return -1;
 }
 
 int find_current()
 {
+    char symbol;
     char i;
+    int base;
+    char match;
 
-    i = 0;
-    while (i < local_count) {
-        if (current_name_equal(i) != 0) {
-            return i;
+    symbol = 0;
+    while (symbol < local_count) {
+        if (local_name_len[symbol] == token_length) {
+            base = symbol * 32;
+            i = 0;
+            match = 1;
+            while (i < token_length) {
+                if (local_name[base + i] != token_text[i]) {
+                    match = 0;
+                    break;
+                }
+                i = i + 1;
+            }
+            if (match != 0) {
+                return symbol;
+            }
         }
-        i = i + 1;
+        symbol = symbol + 1;
     }
     return -1;
 }
