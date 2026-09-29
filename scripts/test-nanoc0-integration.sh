@@ -12,7 +12,8 @@ ASS_FROM_C_RESULT="$BUILD_DIR/ass-from-c.result"
 mkdir -p "$OUT_DIR"
 rm -f \
     "$OUT_DIR/NCOUT.ASM" "$OUT_DIR/ncout.asm" "$OUT_DIR/ncout.prg" \
-    "$OUT_DIR/ASSFROMC.ASM" "$OUT_DIR/assfromc.asm" "$OUT_DIR/assfromc.prg"
+    "$OUT_DIR/ASSFROMC.ASM" "$OUT_DIR/assfromc.asm" "$OUT_DIR/assfromc.prg" \
+    "$OUT_DIR/NANOC1.ASM" "$OUT_DIR/nanoc1.asm" "$OUT_DIR/nanoc1.prg"
 
 nanoc_status_name() {
     case "$1" in
@@ -64,6 +65,9 @@ report_driver_mailbox() {
             ;;
         3)
             echo "native bootstrap stage=compile-ass.c status=$(nanoc_status_name "$status")($status) line=$line detail=$detail bss=$bss" >&2
+            ;;
+        4)
+            echo "native bootstrap stage=compile-nanoc1.c status=$(nanoc_status_name "$status")($status) line=$line detail=$detail bss=$bss" >&2
             ;;
         *)
             echo "native bootstrap stage=$stage status=$status line=$line detail=$detail bss=$bss" >&2
@@ -118,6 +122,26 @@ report_driver_mailbox
 set -- $(od -An -tu1 -N9 "$DRIVER_RESULT")
 ASS_C_BSS=$(($7 + 256 * $8))
 echo "bootstrap ass.c BSS: $ASS_C_BSS bytes"
+
+if [ -f "$OUT_DIR/NANOC1.ASM" ]; then
+    NANOC1_GENERATED="$OUT_DIR/NANOC1.ASM"
+elif [ -f "$OUT_DIR/nanoc1.asm" ]; then
+    NANOC1_GENERATED="$OUT_DIR/nanoc1.asm"
+else
+    echo "FAIL nanoc0-driver: generated NANOC1.ASM is missing" >&2
+    exit 1
+fi
+
+NANOC1_SOURCE_BYTES=$(wc -c < "$NANOC1_GENERATED")
+echo "nanoc1 generated ass source: $NANOC1_SOURCE_BYTES bytes"
+"$VASM" -I"$ROOT/ass" -Fbin -cbm-prg -o "$OUT_DIR/nanoc1.prg" "$NANOC1_GENERATED"
+bytes=$(wc -c < "$OUT_DIR/nanoc1.prg")
+NANOC1_LOADED=$((bytes - 2))
+echo "nanoc1 generated loaded image: $NANOC1_LOADED bytes"
+if [ "$NANOC1_LOADED" -gt 16384 ]; then
+    echo "FAIL nanoc1 bootstrap: generated compiler crosses the fixed \$0800-\$47ff loaded-code window" >&2
+    exit 1
+fi
 
 if [ -f "$OUT_DIR/NCOUT.ASM" ]; then
     GENERATED="$OUT_DIR/NCOUT.ASM"
