@@ -7,6 +7,8 @@ FAIL_BUILD_NANOC0  = $10
 FAIL_COMPILE_SOURCE = $20
 FAIL_COMPILE_ASS    = $30
 FAIL_COMPILE_NANOC1 = $40
+FAIL_ASSEMBLE_NANOC1 = $50
+FAIL_RUN_NANOC1      = $60
 
 ;;; Small integration mailbox saved by tests/run-test.sh along with TEST_RESULT.
 ;;; It is diagnostic/reporting state only; the result byte remains authoritative.
@@ -22,6 +24,8 @@ STAGE_BUILD_NANOC0  = 1
 STAGE_COMPILE_SOURCE = 2
 STAGE_COMPILE_ASS    = 3
 STAGE_COMPILE_NANOC1 = 4
+STAGE_ASSEMBLE_NANOC1 = 5
+STAGE_RUN_NANOC1      = 6
 
 	* = $0800
 
@@ -37,6 +41,7 @@ main:
 	sta INTEGRATION_EXTRA
 	sta INTEGRATION_HIDDEN
 	sta INTEGRATION_HIDDEN+1
+	sta NANOC_COMMAND_LAYOUT
 
 	;;; Use the production assembler machinery at low memory to assemble the
 	;;; production nanoc0 source tree into $4000. assemblerEntry itself fixes its
@@ -192,6 +197,8 @@ main:
 	sta NANOC_COMMAND_OUTPUT+1
 	lda #nanoc1OutputNameEnd-nanoc1OutputName
 	sta NANOC_COMMAND_OUTPUT_LENGTH
+	lda #NANOC_LAYOUT_COMPILER
+	sta NANOC_COMMAND_LAYOUT
 	lda #STAGE_COMPILE_NANOC1
 	sta INTEGRATION_STAGE
 	jsr NANOC0_IMAGE
@@ -201,6 +208,58 @@ main:
 	ora #FAIL_COMPILE_NANOC1
 	jmp finish
 .nanoc1Ready:
+	;;; The low-resident assembler is still intact below $4000. Reuse the same
+	;;; $4000-$9fff staging/target window that built nanoc0; the first C compiler
+	;;; deliberately replaces the assembly compiler at the handoff.
+	lda #<NANOC0_IMAGE
+	sta stagingStart
+	sta assemblyPtr
+	lda #>NANOC0_IMAGE
+	sta stagingStart+1
+	sta assemblyPtr+1
+	lda #<ASSEMBLER_STAGING_END
+	sta stagingLimit
+	lda #>ASSEMBLER_STAGING_END
+	sta stagingLimit+1
+
+	lda #<nanoc1GeneratedName
+	sta sourceName
+	lda #>nanoc1GeneratedName
+	sta sourceName+1
+	lda #nanoc1GeneratedNameEnd-nanoc1GeneratedName
+	sta sourceNameLength
+	lda #$08
+	sta sourceDevice
+	lda #<assDirectory
+	sta sourceDirectory
+	lda #>assDirectory
+	sta sourceDirectory+1
+	lda #assDirectoryEnd-assDirectory
+	sta sourceDirectoryLength
+
+	lda #STAGE_ASSEMBLE_NANOC1
+	sta INTEGRATION_STAGE
+	jsr assembleFile
+	sta INTEGRATION_STATUS
+	cmp #ASSEMBLE_OK
+	beq .nanoc1Assembled
+	jsr capture_ass_workspace
+	lda INTEGRATION_STATUS
+	ora #FAIL_ASSEMBLE_NANOC1
+	jmp finish
+
+.nanoc1Assembled:
+	;;; header-compiler.asm owns BASIC-ROM visibility and restores the map.
+	lda #STAGE_RUN_NANOC1
+	sta INTEGRATION_STAGE
+	jsr NANOC0_IMAGE
+	sta INTEGRATION_DETAIL
+	stx INTEGRATION_EXTRA
+	ora INTEGRATION_EXTRA
+	beq .nanoc1Ran
+	lda #FAIL_RUN_NANOC1
+	jmp finish
+.nanoc1Ran:
 	lda #TEST_PASS
 finish:
 	sta TEST_RESULT
@@ -297,5 +356,11 @@ nanoc1SourceNameEnd:
 nanoc1OutputName:
 	byte 'N','A','N','O','C','1','.','A','S','M',',','S',',','W'
 nanoc1OutputNameEnd:
+nanoc1GeneratedName:
+	byte 'B','U','I','L','D','/','N','A','N','O','C','0','-','I','N','T','E','G','R','A','T','I','O','N','/','N','A','N','O','C','1','.','A','S','M'
+nanoc1GeneratedNameEnd:
+assDirectory:
+	byte 'A','S','S','/'
+assDirectoryEnd:
 
 	include "ass.asm"
