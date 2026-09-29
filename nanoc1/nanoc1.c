@@ -261,13 +261,13 @@ unsigned source_line;
 char compiler_error;
 
 /* fixed symbol model: flat names keep Phase 1 data structures obvious */
-char global_name[5120];
-char global_name_len[160];
-char global_kind[160];
-char global_type[160];
-unsigned global_array_len[160];
-char global_param_start[160];
-char global_param_count[160];
+char global_name[5632];
+char global_name_len[176];
+char global_kind[176];
+char global_type[176];
+unsigned global_array_len[176];
+char global_param_start[176];
+char global_param_count[176];
 char global_count;
 
 char local_name[1024];
@@ -322,7 +322,7 @@ char const_negative;
 
 char same_bytes(char *a, char a_length, char *b, char b_length)
 {
-    int i;
+    char i;
 
     if (a_length != b_length) {
         return 0;
@@ -351,7 +351,7 @@ char write_char(char value)
 
 char write_text(char *text)
 {
-    int i;
+    char i;
 
     i = 0;
     while (text[i] != 0) {
@@ -373,8 +373,8 @@ char write_hex_digit(char value)
 
 char write_hex_byte(char value)
 {
-    int high;
-    int low;
+    char high;
+    char low;
 
     high = (value >> 4) & 15;
     low = value & 15;
@@ -712,17 +712,10 @@ char classify_identifier()
     return 130;
 }
 
-char scan_token()
+char skip_layout()
 {
-    int value;
-    int digit;
-    int base;
-    int done;
-    int comment_done;
-
-    token_length = 0;
-    token_value = 0;
-    token_type = 0;
+    char done;
+    char comment_done;
 
     done = 0;
     while (done == 0) {
@@ -732,7 +725,9 @@ char scan_token()
                 return 0;
             }
         }
-        if (source_char == '/') {
+        if (source_char != '/') {
+            done = 1;
+        } else {
             if (step_source() == 0) {
                 token_kind = 129;
                 return 0;
@@ -768,159 +763,165 @@ char scan_token()
                     }
                 }
             }
-        } else {
-            done = 1;
         }
     }
+    return 1;
+}
 
-    if (source_char < 0) {
-        token_kind = 128;
-        return 1;
+char scan_identifier_token()
+{
+    while (is_letter(source_char) != 0 | is_digit(source_char) != 0) {
+        if (token_length >= 31) {
+            return scan_error();
+        }
+        token_text[token_length] = source_char;
+        token_length = token_length + 1;
+        if (step_source() == 0) {
+            token_kind = 129;
+            return 0;
+        }
     }
+    token_text[token_length] = 0;
+    token_kind = classify_identifier();
+    return 1;
+}
 
-    if (is_letter(source_char) != 0) {
-        while (is_letter(source_char) != 0 | is_digit(source_char) != 0) {
-            if (token_length >= 31) {
-                return scan_error();
-            }
-            token_text[token_length] = source_char;
-            token_length = token_length + 1;
+char scan_number_token()
+{
+    int value;
+    int digit;
+    char base;
+
+    base = 10;
+    value = 0;
+    if (source_char == '0') {
+        if (step_source() == 0) {
+            token_kind = 129;
+            return 0;
+        }
+        if (source_char == 'x' | source_char == 'X') {
+            base = 16;
             if (step_source() == 0) {
                 token_kind = 129;
                 return 0;
             }
-        }
-        token_text[token_length] = 0;
-        token_kind = classify_identifier();
-        return 1;
-    }
-
-    if (is_digit(source_char) != 0) {
-        base = 10;
-        value = 0;
-        if (source_char == '0') {
-            if (step_source() == 0) {
-                token_kind = 129;
-                return 0;
-            }
-            if (source_char == 'x' | source_char == 'X') {
-                base = 16;
-                if (step_source() == 0) {
-                    token_kind = 129;
-                    return 0;
-                }
-                digit = hex_value(source_char);
-                if (digit < 0) {
-                    return scan_error();
-                }
-            }
-        }
-        if (base == 10) {
-            while (is_digit(source_char) != 0) {
-                digit = source_char - '0';
-                if (value > 6553) {
-                    return scan_error();
-                }
-                if (value == 6553) {
-                    if (digit > 5) {
-                        compiler_error = 2;
-                        token_kind = 129;
-                        return 0;
-                    }
-                }
-                value = value * 10 + digit;
-                if (step_source() == 0) {
-                    token_kind = 129;
-                    return 0;
-                }
-            }
-        } else {
             digit = hex_value(source_char);
-            while (digit >= 0) {
-                if (value > 4095) {
+            if (digit < 0) {
+                return scan_error();
+            }
+        }
+    }
+    if (base == 10) {
+        while (is_digit(source_char) != 0) {
+            digit = source_char - '0';
+            if (value > 6553) {
+                return scan_error();
+            }
+            if (value == 6553) {
+                if (digit > 5) {
                     return scan_error();
                 }
-                value = (value << 4) + digit;
-                if (step_source() == 0) {
-                    token_kind = 129;
-                    return 0;
-                }
-                digit = hex_value(source_char);
             }
-        }
-        token_value = value;
-        if (token_value > 32767) {
-            token_type = 3;
-        } else {
-            token_type = 2;
-        }
-        token_kind = 131;
-        return 1;
-    }
-
-    if (source_char == 39) {
-        if (step_source() == 0) {
-            token_kind = 129;
-            return 0;
-        }
-        if (source_char < 0 | source_char == 39 | source_char == 10) {
-            return scan_error();
-        }
-        token_value = source_char;
-        if (step_source() == 0) {
-            token_kind = 129;
-            return 0;
-        }
-        if (source_char != 39) {
-            return scan_error();
-        }
-        if (step_source() == 0) {
-            token_kind = 129;
-            return 0;
-        }
-        token_type = 2;
-        token_kind = 132;
-        return 1;
-    }
-
-    if (source_char == 34) {
-        if (step_source() == 0) {
-            token_kind = 129;
-            return 0;
-        }
-        while (source_char != 34) {
-            if (source_char < 0 | source_char == 10) {
-                return scan_error();
-            }
-            if (token_length >= 190) {
-                return scan_error();
-            }
-            token_text[token_length] = source_char;
-            token_length = token_length + 1;
+            value = value * 10 + digit;
             if (step_source() == 0) {
                 token_kind = 129;
                 return 0;
             }
         }
-        token_text[token_length] = 0;
+    } else {
+        digit = hex_value(source_char);
+        while (digit >= 0) {
+            if (value > 4095) {
+                return scan_error();
+            }
+            value = (value << 4) + digit;
+            if (step_source() == 0) {
+                token_kind = 129;
+                return 0;
+            }
+            digit = hex_value(source_char);
+        }
+    }
+    token_value = value;
+    if (token_value > 32767) {
+        token_type = 3;
+    } else {
+        token_type = 2;
+    }
+    token_kind = 131;
+    return 1;
+}
+
+char scan_character_token()
+{
+    if (step_source() == 0) {
+        token_kind = 129;
+        return 0;
+    }
+    if (source_char < 0 | source_char == 39 | source_char == 10) {
+        return scan_error();
+    }
+    token_value = source_char;
+    if (step_source() == 0) {
+        token_kind = 129;
+        return 0;
+    }
+    if (source_char != 39) {
+        return scan_error();
+    }
+    if (step_source() == 0) {
+        token_kind = 129;
+        return 0;
+    }
+    token_type = 2;
+    token_kind = 132;
+    return 1;
+}
+
+char scan_string_token()
+{
+    if (step_source() == 0) {
+        token_kind = 129;
+        return 0;
+    }
+    while (source_char != 34) {
+        if (source_char < 0 | source_char == 10) {
+            return scan_error();
+        }
+        if (token_length >= 190) {
+            return scan_error();
+        }
+        token_text[token_length] = source_char;
+        token_length = token_length + 1;
         if (step_source() == 0) {
             token_kind = 129;
             return 0;
         }
-        token_kind = 133;
-        return 1;
     }
+    token_text[token_length] = 0;
+    if (step_source() == 0) {
+        token_kind = 129;
+        return 0;
+    }
+    token_kind = 133;
+    return 1;
+}
+
+char scan_operator_token()
+{
+    int value;
+    int table;
 
     value = source_char;
     if (step_source() == 0) {
         token_kind = 129;
         return 0;
     }
-    digit = 1090;
-    while (fixed_text[digit] != 0) {
-        if (value == fixed_text[digit]) {
-            if (source_char == fixed_text[digit + 1]) {
-                token_kind = fixed_text[digit + 2];
+    table = 1090;
+    while (fixed_text[table] != 0) {
+        if (value == fixed_text[table]) {
+            if (source_char == fixed_text[table + 1]) {
+                token_kind = fixed_text[table + 2];
                 if (step_source() == 0) {
                     token_kind = 129;
                     return 0;
@@ -928,7 +929,7 @@ char scan_token()
                 return 1;
             }
         }
-        digit = digit + 3;
+        table = table + 3;
     }
     if (value == '!') {
         return scan_error();
@@ -937,9 +938,36 @@ char scan_token()
     return 1;
 }
 
+char scan_token()
+{
+    token_length = 0;
+    token_value = 0;
+    token_type = 0;
+    if (skip_layout() == 0) {
+        return 0;
+    }
+    if (source_char < 0) {
+        token_kind = 128;
+        return 1;
+    }
+    if (is_letter(source_char) != 0) {
+        return scan_identifier_token();
+    }
+    if (is_digit(source_char) != 0) {
+        return scan_number_token();
+    }
+    if (source_char == 39) {
+        return scan_character_token();
+    }
+    if (source_char == 34) {
+        return scan_string_token();
+    }
+    return scan_operator_token();
+}
+
 char save_token_name()
 {
-    int i;
+    char i;
 
     if (token_length > 31) {
         compiler_error = 4;
@@ -957,7 +985,7 @@ char save_token_name()
 
 char global_name_equal(char symbol)
 {
-    int i;
+    char i;
     int base;
 
     if (global_name_len[symbol] != token_length) {
@@ -976,7 +1004,7 @@ char global_name_equal(char symbol)
 
 char current_name_equal(char symbol)
 {
-    int i;
+    char i;
     int base;
 
     if (local_name_len[symbol] != token_length) {
@@ -995,7 +1023,7 @@ char current_name_equal(char symbol)
 
 int find_global()
 {
-    int i;
+    char i;
 
     i = 0;
     while (i < global_count) {
@@ -1009,7 +1037,7 @@ int find_global()
 
 int find_current()
 {
-    int i;
+    char i;
 
     i = 0;
     while (i < local_count) {
@@ -1040,7 +1068,7 @@ int lookup_name()
 
 char copy_pending_global(char symbol)
 {
-    int i;
+    char i;
     int base;
 
     base = symbol * 32;
@@ -1056,7 +1084,7 @@ char copy_pending_global(char symbol)
 
 char copy_pending_local(char symbol)
 {
-    int i;
+    char i;
     int base;
 
     base = symbol * 32;
@@ -1074,7 +1102,7 @@ int add_global_saved(char kind, char type)
 {
     int id;
 
-    if (global_count >= 160) {
+    if (global_count >= 176) {
         compiler_error = 6;
         return -1;
     }
@@ -1106,7 +1134,7 @@ int add_current_saved(char type)
 
 char set_pending_text(char *text, char length)
 {
-    int i;
+    char i;
 
     pending_length = length;
     i = 0;
@@ -1388,7 +1416,7 @@ char emit_string_literal()
 {
     unsigned data_label;
     unsigned skip_label;
-    int i;
+    char i;
 
     data_label = label_counter;
     label_counter = label_counter + 1;
@@ -1639,7 +1667,7 @@ char emit_compare(char op, char unsigned_compare)
 
 char reduce_unary()
 {
-    int type;
+    char type;
 
     if (value_top < 1) {
         compiler_error = 3;
@@ -1661,10 +1689,10 @@ char reduce_unary()
 
 char reduce_binary(char op)
 {
-    int left;
-    int right;
-    int result;
-    int unsigned_compare;
+    char left;
+    char right;
+    char result;
+    char unsigned_compare;
 
     if (value_top < 2) {
         compiler_error = 3;
@@ -1753,7 +1781,7 @@ char reduce_binary(char op)
 
 char reduce_top_operator()
 {
-    int op;
+    char op;
 
     if (op_top == 0) {
         compiler_error = 3;
@@ -1787,12 +1815,12 @@ char reduce_to_marker(char marker)
 
 char emit_call_finish(char marker_index)
 {
-    int function_id;
-    int argc;
-    int base;
-    int i;
-    int expected;
-    int actual;
+    char function_id;
+    char argc;
+    char base;
+    char i;
+    char expected;
+    char actual;
 
     function_id = op_aux[marker_index];
     argc = op_argc[marker_index];
@@ -1888,7 +1916,7 @@ char emit_index_load(char area, char symbol, char kind, char element_type)
 char finish_call_marker()
 {
     int marker;
-    int base;
+    char base;
 
     marker = op_top - 1;
     base = op_base[marker];
@@ -1914,9 +1942,9 @@ char finish_call_marker()
 char expression_value_step()
 {
     int id;
-    int area;
-    int kind;
-    int type;
+    char area;
+    char kind;
+    char type;
 
     if (token_kind == '-') {
         if (push_operator(200, 0, 0, value_top) == 0) {
@@ -2045,14 +2073,14 @@ char expression_value_step()
 
 char expression_operator_step()
 {
-    int precedence;
-    int top_precedence;
+    char precedence;
+    char top_precedence;
     int marker;
-    int found;
+    char found;
     int id;
-    int area;
-    int kind;
-    int type;
+    char area;
+    char kind;
+    char type;
 
     if (is_binary_operator(token_kind) != 0) {
         precedence = operator_precedence(token_kind);
@@ -2292,7 +2320,7 @@ char emit_index_store(char element_type)
 
 int find_break_label()
 {
-    int i;
+    char i;
 
     i = ctrl_top;
     while (i > 0) {
@@ -2317,87 +2345,297 @@ char push_control(char kind, unsigned label0, unsigned label1)
     return 1;
 }
 
-char parse_statements()
+char statement_close()
+{
+    char frame;
+    char kind;
+    unsigned second_label;
+
+    if (ctrl_top == 0) {
+        if (scan_token() == 0) {
+            return 0;
+        }
+        return 2;
+    }
+    frame = ctrl_top - 1;
+    kind = ctrl_kind[frame];
+    if (kind == 1) {
+        ctrl_top = ctrl_top - 1;
+        return scan_token();
+    }
+    if (kind == 4) {
+        if (emit_jump_label((fixed_text + 531), ctrl_label0[frame]) == 0) {
+            return 0;
+        }
+        if (emit_label(ctrl_label1[frame]) == 0) {
+            return 0;
+        }
+        ctrl_top = ctrl_top - 1;
+        return scan_token();
+    }
+    if (kind == 3) {
+        if (emit_label(ctrl_label1[frame]) == 0) {
+            return 0;
+        }
+        ctrl_top = ctrl_top - 1;
+        return scan_token();
+    }
+    if (scan_token() == 0) {
+        return 0;
+    }
+    if (token_kind != 138) {
+        if (emit_label(ctrl_label0[frame]) == 0) {
+            return 0;
+        }
+        ctrl_top = ctrl_top - 1;
+        return 1;
+    }
+    second_label = label_counter;
+    label_counter = label_counter + 1;
+    if (emit_jump_label((fixed_text + 531), second_label) == 0) {
+        return 0;
+    }
+    if (emit_label(ctrl_label0[frame]) == 0) {
+        return 0;
+    }
+    ctrl_kind[frame] = 3;
+    ctrl_label1[frame] = second_label;
+    if (scan_token() == 0) {
+        return 0;
+    }
+    if (token_kind != '{') {
+        compiler_error = 3;
+        return 0;
+    }
+    return scan_token();
+}
+
+char statement_if()
+{
+    unsigned false_label;
+
+    false_label = label_counter;
+    label_counter = label_counter + 1;
+    if (scan_token() == 0) {
+        return 0;
+    }
+    if (token_kind != '(') {
+        compiler_error = 3;
+        return 0;
+    }
+    if (scan_token() == 0) {
+        return 0;
+    }
+    if (compile_expression() == 0) {
+        return 0;
+    }
+    if (token_kind != ')') {
+        compiler_error = 3;
+        return 0;
+    }
+    if (emit_false_jump(false_label) == 0) {
+        return 0;
+    }
+    if (scan_token() == 0) {
+        return 0;
+    }
+    if (token_kind != '{') {
+        compiler_error = 3;
+        return 0;
+    }
+    if (push_control(2, false_label, 0) == 0) {
+        return 0;
+    }
+    return scan_token();
+}
+
+char statement_while()
+{
+    unsigned loop_label;
+    unsigned done_label;
+
+    loop_label = label_counter;
+    label_counter = label_counter + 1;
+    done_label = label_counter;
+    label_counter = label_counter + 1;
+    if (emit_label(loop_label) == 0) {
+        return 0;
+    }
+    if (scan_token() == 0) {
+        return 0;
+    }
+    if (token_kind != '(') {
+        compiler_error = 3;
+        return 0;
+    }
+    if (scan_token() == 0) {
+        return 0;
+    }
+    if (compile_expression() == 0) {
+        return 0;
+    }
+    if (token_kind != ')') {
+        compiler_error = 3;
+        return 0;
+    }
+    if (emit_false_jump(done_label) == 0) {
+        return 0;
+    }
+    if (scan_token() == 0) {
+        return 0;
+    }
+    if (token_kind != '{') {
+        compiler_error = 3;
+        return 0;
+    }
+    if (push_control(4, loop_label, done_label) == 0) {
+        return 0;
+    }
+    return scan_token();
+}
+
+char statement_identifier()
 {
     int id;
-    int area;
-    int kind;
-    int type;
-    int frame;
+    char area;
+    char kind;
+    char type;
+
+    id = lookup_name();
+    if (id < 0) {
+        compiler_error = 4;
+        return 0;
+    }
+    area = saved_area;
+    if (area == 2) {
+        kind = 1;
+        type = local_type[id];
+    } else {
+        kind = global_kind[id];
+        type = global_type[id];
+    }
+    if (scan_token() == 0) {
+        return 0;
+    }
+    if (token_kind == '=') {
+        if (kind != 1) {
+            compiler_error = 5;
+            return 0;
+        }
+        if (scan_token() == 0) {
+            return 0;
+        }
+        if (compile_expression() == 0) {
+            return 0;
+        }
+        if (type == 4) {
+            if (expr_type != 4) {
+                compiler_error = 5;
+                return 0;
+            }
+        } else {
+            if (is_numeric_type(expr_type) == 0) {
+                compiler_error = 5;
+                return 0;
+            }
+        }
+        if (token_kind != ';') {
+            compiler_error = 3;
+            return 0;
+        }
+        if (emit_scalar_store(area, id, type) == 0) {
+            return 0;
+        }
+        return scan_token();
+    }
+    if (token_kind == '[') {
+        if (kind != 2 & type != 4) {
+            compiler_error = 5;
+            return 0;
+        }
+        if (kind != 2) {
+            type = 1;
+        }
+        if (scan_token() == 0) {
+            return 0;
+        }
+        if (compile_expression() == 0) {
+            return 0;
+        }
+        if (token_kind != ']') {
+            compiler_error = 3;
+            return 0;
+        }
+        if (emit_index_address(area, id, kind, type) == 0) {
+            return 0;
+        }
+        if (emit_scratch((fixed_text + 431), (fixed_text + 205), 0) == 0) {
+            return 0;
+        }
+        if (emit_scratch((fixed_text + 435), (fixed_text + 205), 1) == 0) {
+            return 0;
+        }
+        if (emit_push_ax() == 0) {
+            return 0;
+        }
+        if (scan_token() == 0) {
+            return 0;
+        }
+        if (token_kind != '=') {
+            compiler_error = 3;
+            return 0;
+        }
+        if (scan_token() == 0) {
+            return 0;
+        }
+        if (compile_expression() == 0) {
+            return 0;
+        }
+        if (token_kind != ';') {
+            compiler_error = 3;
+            return 0;
+        }
+        if (emit_index_store(type) == 0) {
+            return 0;
+        }
+        return scan_token();
+    }
+    if (token_kind == '(') {
+        if (area != 1) {
+            compiler_error = 5;
+            return 0;
+        }
+        if (kind != 3 & kind != 4) {
+            compiler_error = 5;
+            return 0;
+        }
+        if (compile_call_stmt(id) == 0) {
+            return 0;
+        }
+        if (token_kind != ';') {
+            compiler_error = 3;
+            return 0;
+        }
+        return scan_token();
+    }
+    compiler_error = 3;
+    return 0;
+}
+
+char parse_statements()
+{
     int break_label;
-    unsigned first_label;
-    unsigned second_label;
+    char closed;
 
     ctrl_top = 0;
     while (1) {
         if (token_kind == '}') {
-            if (ctrl_top == 0) {
-                if (scan_token() == 0) {
-                    return 0;
-                }
-                return 1;
+            closed = statement_close();
+            if (closed == 0) {
+                return 0;
             }
-            frame = ctrl_top - 1;
-            kind = ctrl_kind[frame];
-            if (kind == 1) {
-                ctrl_top = ctrl_top - 1;
-                if (scan_token() == 0) {
-                    return 0;
-                }
-            } else {
-                if (kind == 4) {
-                    if (emit_jump_label((fixed_text + 531), ctrl_label0[frame]) == 0) {
-                        return 0;
-                    }
-                    if (emit_label(ctrl_label1[frame]) == 0) {
-                        return 0;
-                    }
-                    ctrl_top = ctrl_top - 1;
-                    if (scan_token() == 0) {
-                        return 0;
-                    }
-                } else {
-                    if (kind == 3) {
-                        if (emit_label(ctrl_label1[frame]) == 0) {
-                            return 0;
-                        }
-                        ctrl_top = ctrl_top - 1;
-                        if (scan_token() == 0) {
-                            return 0;
-                        }
-                    } else {
-                        if (scan_token() == 0) {
-                            return 0;
-                        }
-                        if (token_kind == 138) {
-                            second_label = label_counter;
-                            label_counter = label_counter + 1;
-                            if (emit_jump_label((fixed_text + 531), second_label) == 0) {
-                                return 0;
-                            }
-                            if (emit_label(ctrl_label0[frame]) == 0) {
-                                return 0;
-                            }
-                            ctrl_kind[frame] = 3;
-                            ctrl_label1[frame] = second_label;
-                            if (scan_token() == 0) {
-                                return 0;
-                            }
-                            if (token_kind != '{') {
-                                compiler_error = 3;
-                                return 0;
-                            }
-                            if (scan_token() == 0) {
-                                return 0;
-                            }
-                        } else {
-                            if (emit_label(ctrl_label0[frame]) == 0) {
-                                return 0;
-                            }
-                            ctrl_top = ctrl_top - 1;
-                        }
-                    }
-                }
+            if (closed == 2) {
+                return 1;
             }
         } else {
             if (token_kind == '{') {
@@ -2409,81 +2647,12 @@ char parse_statements()
                 }
             } else {
                 if (token_kind == 137) {
-                    first_label = label_counter;
-                    label_counter = label_counter + 1;
-                    if (scan_token() == 0) {
-                        return 0;
-                    }
-                    if (token_kind != '(') {
-                        compiler_error = 3;
-                        return 0;
-                    }
-                    if (scan_token() == 0) {
-                        return 0;
-                    }
-                    if (compile_expression() == 0) {
-                        return 0;
-                    }
-                    if (token_kind != ')') {
-                        compiler_error = 3;
-                        return 0;
-                    }
-                    if (emit_false_jump(first_label) == 0) {
-                        return 0;
-                    }
-                    if (scan_token() == 0) {
-                        return 0;
-                    }
-                    if (token_kind != '{') {
-                        compiler_error = 3;
-                        return 0;
-                    }
-                    if (push_control(2, first_label, 0) == 0) {
-                        return 0;
-                    }
-                    if (scan_token() == 0) {
+                    if (statement_if() == 0) {
                         return 0;
                     }
                 } else {
                     if (token_kind == 139) {
-                        first_label = label_counter;
-                        label_counter = label_counter + 1;
-                        second_label = label_counter;
-                        label_counter = label_counter + 1;
-                        if (emit_label(first_label) == 0) {
-                            return 0;
-                        }
-                        if (scan_token() == 0) {
-                            return 0;
-                        }
-                        if (token_kind != '(') {
-                            compiler_error = 3;
-                            return 0;
-                        }
-                        if (scan_token() == 0) {
-                            return 0;
-                        }
-                        if (compile_expression() == 0) {
-                            return 0;
-                        }
-                        if (token_kind != ')') {
-                            compiler_error = 3;
-                            return 0;
-                        }
-                        if (emit_false_jump(second_label) == 0) {
-                            return 0;
-                        }
-                        if (scan_token() == 0) {
-                            return 0;
-                        }
-                        if (token_kind != '{') {
-                            compiler_error = 3;
-                            return 0;
-                        }
-                        if (push_control(4, first_label, second_label) == 0) {
-                            return 0;
-                        }
-                        if (scan_token() == 0) {
+                        if (statement_while() == 0) {
                             return 0;
                         }
                     } else {
@@ -2536,133 +2705,8 @@ char parse_statements()
                                     compiler_error = 3;
                                     return 0;
                                 }
-                                id = lookup_name();
-                                if (id < 0) {
-                                    compiler_error = 4;
+                                if (statement_identifier() == 0) {
                                     return 0;
-                                }
-                                area = saved_area;
-                                if (area == 2) {
-                                    kind = 1;
-                                    type = local_type[id];
-                                } else {
-                                    kind = global_kind[id];
-                                    type = global_type[id];
-                                }
-                                if (scan_token() == 0) {
-                                    return 0;
-                                }
-                                if (token_kind == '=') {
-                                    if (kind != 1) {
-                                        compiler_error = 5;
-                                        return 0;
-                                    }
-                                    if (scan_token() == 0) {
-                                        return 0;
-                                    }
-                                    if (compile_expression() == 0) {
-                                        return 0;
-                                    }
-                                    if (type == 4) {
-                                        if (expr_type != 4) {
-                                            compiler_error = 5;
-                                            return 0;
-                                        }
-                                    } else {
-                                        if (is_numeric_type(expr_type) == 0) {
-                                            compiler_error = 5;
-                                            return 0;
-                                        }
-                                    }
-                                    if (token_kind != ';') {
-                                        compiler_error = 3;
-                                        return 0;
-                                    }
-                                    if (emit_scalar_store(area, id, type) == 0) {
-                                        return 0;
-                                    }
-                                    if (scan_token() == 0) {
-                                        return 0;
-                                    }
-                                } else {
-                                    if (token_kind == '[') {
-                                        if (kind != 2 & type != 4) {
-                                            compiler_error = 5;
-                                            return 0;
-                                        }
-                                        if (kind != 2) {
-                                            type = 1;
-                                        }
-                                        if (scan_token() == 0) {
-                                            return 0;
-                                        }
-                                        if (compile_expression() == 0) {
-                                            return 0;
-                                        }
-                                        if (token_kind != ']') {
-                                            compiler_error = 3;
-                                            return 0;
-                                        }
-                                        if (emit_index_address(area, id, kind, type) == 0) {
-                                            return 0;
-                                        }
-                                        if (emit_scratch((fixed_text + 431), (fixed_text + 205), 0) == 0) {
-                                            return 0;
-                                        }
-                                        if (emit_scratch((fixed_text + 435), (fixed_text + 205), 1) == 0) {
-                                            return 0;
-                                        }
-                                        if (emit_push_ax() == 0) {
-                                            return 0;
-                                        }
-                                        if (scan_token() == 0) {
-                                            return 0;
-                                        }
-                                        if (token_kind != '=') {
-                                            compiler_error = 3;
-                                            return 0;
-                                        }
-                                        if (scan_token() == 0) {
-                                            return 0;
-                                        }
-                                        if (compile_expression() == 0) {
-                                            return 0;
-                                        }
-                                        if (token_kind != ';') {
-                                            compiler_error = 3;
-                                            return 0;
-                                        }
-                                        if (emit_index_store(type) == 0) {
-                                            return 0;
-                                        }
-                                        if (scan_token() == 0) {
-                                            return 0;
-                                        }
-                                    } else {
-                                        if (token_kind == '(') {
-                                            if (area != 1) {
-                                                compiler_error = 5;
-                                                return 0;
-                                            }
-                                            if (kind != 3 & kind != 4) {
-                                                compiler_error = 5;
-                                                return 0;
-                                            }
-                                            if (compile_call_stmt(id) == 0) {
-                                                return 0;
-                                            }
-                                            if (token_kind != ';') {
-                                                compiler_error = 3;
-                                                return 0;
-                                            }
-                                            if (scan_token() == 0) {
-                                                return 0;
-                                            }
-                                        } else {
-                                            compiler_error = 3;
-                                            return 0;
-                                        }
-                                    }
                                 }
                             }
                         }
@@ -2675,7 +2719,7 @@ char parse_statements()
 
 char parse_type()
 {
-    int type;
+    char type;
 
     type = 0;
     if (token_kind == 134) {
@@ -2711,7 +2755,7 @@ char parse_type()
 
 char parse_constant()
 {
-    int negative;
+    char negative;
 
     negative = 0;
     if (token_kind == '-') {
@@ -2791,7 +2835,7 @@ char parse_global_array(char symbol, char element_type)
 {
     unsigned length;
     unsigned emitted;
-    int width;
+    char width;
 
     if (scan_token() == 0) {
         return 0;
@@ -2951,7 +2995,7 @@ char parse_global_scalar(char symbol, char type)
 
 char parse_local()
 {
-    int type;
+    char type;
     int slot;
 
     type = parse_type();
@@ -3015,9 +3059,9 @@ char parse_local()
 
 char parse_function(char function_id)
 {
-    int type;
+    char type;
     int slot;
-    int param_start;
+    char param_start;
 
     current_func = function_id;
     local_count = 0;
@@ -3105,9 +3149,9 @@ char parse_function(char function_id)
 
 char parse_unit()
 {
-    int type;
+    char type;
     int symbol;
-    int functions_started;
+    char functions_started;
 
     functions_started = 0;
     while (token_kind != 128) {
