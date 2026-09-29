@@ -269,23 +269,39 @@ main:
 	stx INTEGRATION_EXTRA
 	ora INTEGRATION_EXTRA
 	beq .nanoc1Ran
-	;;; Capture exactly what the first local-name lookup sees.
+	;;; Capture exactly what the first local-name lookup sees. DETAIL is zero
+	;;; when every byte matches; otherwise it is the 1-based mismatch position,
+	;;; with BSS low/high holding stored/token bytes at that position.
 	lda N1_TOKEN_LENGTH
 	sta INTEGRATION_LINE
 	lda N1_LOCAL_COUNT
 	sta INTEGRATION_LINE+1
-	lda N1_LOCAL_NAME_LEN
-	sta INTEGRATION_DETAIL
-	lda N1_LOCAL_NAME
-	sta INTEGRATION_BSS
-	lda N1_TOKEN_TEXT
-	sta INTEGRATION_BSS+1
 	lda N1_PENDING_LENGTH
 	sta INTEGRATION_EXTRA
-	lda N1_PENDING_NAME
+	lda N1_LOCAL_NAME_LEN
 	sta INTEGRATION_HIDDEN
 	lda #$00
 	sta INTEGRATION_HIDDEN+1
+	sta INTEGRATION_DETAIL
+	ldx #$00
+.lookupProbe:
+	cpx N1_TOKEN_LENGTH
+	beq .lookupProbeDone
+	lda N1_LOCAL_NAME,x
+	cmp N1_TOKEN_TEXT,x
+	bne .lookupProbeMismatch
+	inx
+	jmp .lookupProbe
+.lookupProbeMismatch:
+	txa
+	clc
+	adc #$01
+	sta INTEGRATION_DETAIL
+	lda N1_LOCAL_NAME,x
+	sta INTEGRATION_BSS
+	lda N1_TOKEN_TEXT,x
+	sta INTEGRATION_BSS+1
+.lookupProbeDone:
 	lda #FAIL_RUN_NANOC1
 	jmp finish
 .nanoc1Ran:
