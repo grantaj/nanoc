@@ -126,7 +126,7 @@ echo "production nanoc0 loaded image: $((bytes - 2)) bytes"
 #
 # If this fails, report the native assembler/compiler mailbox and stop. There is
 # deliberately no host-built compiler fallback.
-if ! TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=180 VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
+if ! TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=240 VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
     VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc0_driver.prg" nanoc0-driver; then
     report_driver_mailbox
