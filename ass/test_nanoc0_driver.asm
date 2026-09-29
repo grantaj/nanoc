@@ -27,6 +27,18 @@ STAGE_COMPILE_NANOC1 = 4
 STAGE_ASSEMBLE_NANOC1 = 5
 STAGE_RUN_NANOC1      = 6
 
+;;; Temporary #100 bring-up probes for the current nanoc1 BSS layout. These
+;;; diagnose the first native symbol-lookup failure and will be removed once the
+;;; semantic handoff is green.
+N1_BSS              = $a000
+N1_TOKEN_TEXT       = N1_BSS+$0000
+N1_TOKEN_LENGTH     = N1_BSS+$00c2
+N1_LOCAL_NAME       = N1_BSS+$1ba2
+N1_LOCAL_NAME_LEN   = N1_BSS+$1fa2
+N1_LOCAL_COUNT      = N1_BSS+$1fe2
+N1_PENDING_NAME     = N1_BSS+$2065
+N1_PENDING_LENGTH   = N1_BSS+$2085
+
 	* = $0800
 
 main:
@@ -253,10 +265,27 @@ main:
 	lda #STAGE_RUN_NANOC1
 	sta INTEGRATION_STAGE
 	jsr NANOC0_IMAGE
-	sta INTEGRATION_DETAIL
+	sta INTEGRATION_STATUS
 	stx INTEGRATION_EXTRA
 	ora INTEGRATION_EXTRA
 	beq .nanoc1Ran
+	;;; Capture exactly what the first local-name lookup sees.
+	lda N1_TOKEN_LENGTH
+	sta INTEGRATION_LINE
+	lda N1_LOCAL_COUNT
+	sta INTEGRATION_LINE+1
+	lda N1_LOCAL_NAME_LEN
+	sta INTEGRATION_DETAIL
+	lda N1_LOCAL_NAME
+	sta INTEGRATION_BSS
+	lda N1_TOKEN_TEXT
+	sta INTEGRATION_BSS+1
+	lda N1_PENDING_LENGTH
+	sta INTEGRATION_EXTRA
+	lda N1_PENDING_NAME
+	sta INTEGRATION_HIDDEN
+	lda #$00
+	sta INTEGRATION_HIDDEN+1
 	lda #FAIL_RUN_NANOC1
 	jmp finish
 .nanoc1Ran:
