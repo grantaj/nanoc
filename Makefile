@@ -23,7 +23,7 @@ all: $(BUILD_DIR)/dis.prg $(BUILD_DIR)/hexdump.prg $(BUILD_DIR)/test_modes.prg \
 	$(BUILD_DIR)/border-demo.prg $(BUILD_DIR)/border-c.prg
 	@bytes=$$(wc -c < $(BUILD_DIR)/nanoc0-core.prg); \
 	resident=$$((bytes - 2)); \
-	symbols=3488; token=192; control=81; calls=13; \
+	symbols=3840; token=192; control=81; calls=13; \
 	code=$$((resident - symbols - token - control - calls)); \
 	printf '%-31s %5d bytes\n' 'nanoc0 resident core:' $$resident; \
 	printf '  %-29s %5d bytes\n' 'symbol/name workspace:' $$symbols; \
