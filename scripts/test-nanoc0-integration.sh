@@ -81,7 +81,7 @@ report_driver_mailbox() {
             fi
             ;;
         6)
-            echo "native bootstrap stage=run-nanoc1 return=$status token-length=$line mismatch=$detail mismatch-bytes=$bss pending-length=$extra local-name-length=$hidden" >&2
+            map=$((hidden / 256)); name_len=$((hidden % 256)); echo "native bootstrap stage=run-nanoc1 return=$status token-length=$line mismatch=$detail mismatch-bytes=$bss pending-length=$extra local-name-length=$name_len map=$map" >&2
             ;;
         *)
             echo "native bootstrap stage=$stage status=$status line=$line detail=$detail bss=$bss" >&2
