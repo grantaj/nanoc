@@ -308,6 +308,10 @@ main:
 	lda N1_TOKEN_TEXT,x
 	sta INTEGRATION_BSS+1
 .lookupProbeDone:
+	;;; Keep the live map captured by header-compiler.asm in the high diagnostic
+	;;; byte before restoring the driver's map.
+	lda $0d
+	sta INTEGRATION_HIDDEN+1
 	pla
 	sta $01
 	lda #FAIL_RUN_NANOC1
