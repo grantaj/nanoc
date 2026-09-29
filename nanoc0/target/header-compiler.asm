@@ -17,6 +17,10 @@ __nc_start:
 	jsr __nc_entry
 	sta NC_TMP
 	stx NC_TMP+1
+	;;; Temporary #100 bring-up probe: record the live memory map before the
+	;;; bootstrap wrapper restores its caller's mapping.
+	lda $01
+	sta $0d
 	pla
 	sta $01
 	lda NC_TMP
