@@ -303,6 +303,21 @@ select_saved_operand:
 	sta expressionValueType
 	rts
 
+;;; Restore the reduction's RHS descriptor after code generation has temporarily
+;;; selected/materialised the saved left operand. This is needed by operations
+;;; such as shifts where a direct RHS can safely be deferred until the live left
+;;; machine value has been saved.
+select_right_operand:
+	lda reduceRightKind
+	sta expressionValueKind
+	lda reduceRightLow
+	sta expressionValueLow
+	lda reduceRightHigh
+	sta expressionValueHigh
+	lda reduceRightType
+	sta expressionValueType
+	rts
+
 materialize_saved_byte:
 	jsr select_saved_operand
 	jmp materialize_expression_byte
