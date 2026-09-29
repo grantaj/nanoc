@@ -13,7 +13,8 @@ mkdir -p "$OUT_DIR"
 rm -f \
     "$OUT_DIR/NCOUT.ASM" "$OUT_DIR/ncout.asm" "$OUT_DIR/ncout.prg" \
     "$OUT_DIR/ASSFROMC.ASM" "$OUT_DIR/assfromc.asm" "$OUT_DIR/assfromc.prg" \
-    "$OUT_DIR/NANOC1.ASM" "$OUT_DIR/nanoc1.asm" "$OUT_DIR/nanoc1.prg"
+    "$OUT_DIR/NANOC1.ASM" "$OUT_DIR/nanoc1.asm" "$OUT_DIR/nanoc1.prg" \
+    "$OUT_DIR/N1OUT.ASM" "$OUT_DIR/n1out.asm"
 
 nanoc_status_name() {
     case "$1" in
