@@ -6,6 +6,7 @@ NANOC0_IMAGE = $4000
 FAIL_BUILD_NANOC0  = $10
 FAIL_COMPILE_SOURCE = $20
 FAIL_COMPILE_ASS    = $30
+FAIL_COMPILE_NANOC1 = $40
 
 ;;; Small integration mailbox saved by tests/run-test.sh along with TEST_RESULT.
 ;;; It is diagnostic/reporting state only; the result byte remains authoritative.
@@ -20,6 +21,7 @@ INTEGRATION_HIDDEN = $0b
 STAGE_BUILD_NANOC0  = 1
 STAGE_COMPILE_SOURCE = 2
 STAGE_COMPILE_ASS    = 3
+STAGE_COMPILE_NANOC1 = 4
 
 	* = $0800
 
@@ -176,6 +178,29 @@ main:
 	ora #FAIL_COMPILE_ASS
 	jmp finish
 .pass:
+	;;; #100 semantic-first handoff: compile the exact committed C-written
+	;;; compiler with the real assembly bootstrap before attempting to run it.
+	lda #<nanoc1SourceName
+	sta NANOC_COMMAND_SOURCE
+	lda #>nanoc1SourceName
+	sta NANOC_COMMAND_SOURCE+1
+	lda #nanoc1SourceNameEnd-nanoc1SourceName
+	sta NANOC_COMMAND_SOURCE_LENGTH
+	lda #<nanoc1OutputName
+	sta NANOC_COMMAND_OUTPUT
+	lda #>nanoc1OutputName
+	sta NANOC_COMMAND_OUTPUT+1
+	lda #nanoc1OutputNameEnd-nanoc1OutputName
+	sta NANOC_COMMAND_OUTPUT_LENGTH
+	lda #STAGE_COMPILE_NANOC1
+	sta INTEGRATION_STAGE
+	jsr NANOC0_IMAGE
+	jsr capture_nanoc_result
+	lda NANOC_COMMAND_STATUS
+	beq .nanoc1Ready
+	ora #FAIL_COMPILE_NANOC1
+	jmp finish
+.nanoc1Ready:
 	lda #TEST_PASS
 finish:
 	sta TEST_RESULT
@@ -266,5 +291,11 @@ assSourceNameEnd:
 assOutputName:
 	byte 'A','S','S','F','R','O','M','C','.','A','S','M',',','S',',','W'
 assOutputNameEnd:
+nanoc1SourceName:
+	byte 'N','A','N','O','C','1','/','N','A','N','O','C','1','.','C'
+nanoc1SourceNameEnd:
+nanoc1OutputName:
+	byte 'N','A','N','O','C','1','.','A','S','M',',','S',',','W'
+nanoc1OutputNameEnd:
 
 	include "ass.asm"
