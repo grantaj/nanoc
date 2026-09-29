@@ -42,4 +42,6 @@ jobs:
             build/nanoc0-integration/assfromc.asm
             build/nanoc0-integration/NCOUT.ASM
             build/nanoc0-integration/ncout.asm
+            build/nanoc0-integration/NANOC1.ASM
+            build/nanoc0-integration/nanoc1.asm
           if-no-files-found: ignore
