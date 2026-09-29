@@ -997,6 +997,7 @@ int current_name_equal(int symbol)
 int find_global()
 {
     int i;
+
     i = 0;
     while (i < global_count) {
         if (global_name_equal(i) != 0) {
@@ -1996,7 +1997,8 @@ int emit_index_address(int area, int symbol, int kind, int element_type)
             }
             if (emit_zero((fixed_text + 463)) == 0) {
                 return 0;
-            }            if (emit_scratch((fixed_text + 431), (fixed_text + 198), 0) == 0) {
+            }
+            if (emit_scratch((fixed_text + 431), (fixed_text + 198), 0) == 0) {
                 return 0;
             }
         }
@@ -2995,7 +2997,8 @@ int parse_constant()
     const_magnitude = token_value;
     const_negative = negative;
     const_value = token_value;
-    if (negative != 0) {        const_value = 0 - const_value;
+    if (negative != 0) {
+        const_value = 0 - const_value;
     }
     return scan_token();
 }
