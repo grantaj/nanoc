@@ -114,7 +114,8 @@
  * 687  byte $
  */
 /* compact templates appended at offsets: push_ax=694, pop_ax=710, binary_prelude=726, add16=778, sub16=830, and16=882, or16=929, neg16=976, keyword_table=1072, two_char_operator_table=1090 */
-char fixed_text[1111] = {
+/* more compact templates: shift_prefix=1111, shift_left=1124, shift_right=1173, shift_dec=1222, index_load_char=1228, index_load_word=1280, index_store_char=1372, index_store_word=1483, scale_index=1629, array_add_lo=1674, array_mid=1687, array_end=1713, ptr_add_lo=1729, ptr_mid=1740, ptr_high_suffix=1764 */
+char fixed_text[1782] = {
     84,69,83,84,83,47,78,65,78,79,67,49,47,78,49,83,
     82,67,46,67,0,78,49,79,85,84,46,65,83,77,0,99,
     104,97,114,0,105,110,116,0,117,110,115,105,103,110,101,100,
@@ -184,7 +185,49 @@ char fixed_text[1111] = {
     9,112,104,97,10,9,116,120,97,10,9,112,104,97,10,0,
     31,4,36,3,40,8,49,2,52,4,57,5,63,5,69,6,
     0,0,61,61,142,33,61,143,60,61,144,62,61,145,60,60,
-    146,62,62,147,0,0,0
+    146,62,62,147,0,0,0,9,108,100,121,32,78,67,95,84,
+    77,80,10,0,9,97,115,108,10,9,115,116,97,32,78,67,
+    95,84,77,80,43,49,10,9,116,120,97,10,9,114,111,108,
+    10,9,116,97,120,10,9,108,100,97,32,78,67,95,84,77,
+    80,43,49,10,0,9,115,116,97,32,78,67,95,84,77,80,
+    43,49,10,9,116,120,97,10,9,108,115,114,10,9,116,97,
+    120,10,9,108,100,97,32,78,67,95,84,77,80,43,49,10,
+    9,114,111,114,10,0,9,100,101,121,10,0,9,108,100,121,
+    32,35,36,48,48,10,9,108,100,97,32,40,78,67,95,80,
+    84,82,41,44,121,10,9,108,100,120,32,35,36,48,48,10,
+    9,112,104,97,10,9,116,120,97,10,9,112,104,97,10,0,
+    9,108,100,121,32,35,36,48,48,10,9,108,100,97,32,40,
+    78,67,95,80,84,82,41,44,121,10,9,115,116,97,32,78,
+    67,95,84,77,80,10,9,105,110,121,10,9,108,100,97,32,
+    40,78,67,95,80,84,82,41,44,121,10,9,116,97,120,10,
+    9,108,100,97,32,78,67,95,84,77,80,10,9,112,104,97,
+    10,9,116,120,97,10,9,112,104,97,10,0,9,112,108,97,
+    10,9,115,116,97,32,78,67,95,84,77,80,43,49,10,9,
+    112,108,97,10,9,115,116,97,32,78,67,95,84,77,80,10,
+    9,112,108,97,10,9,115,116,97,32,78,67,95,80,84,82,
+    43,49,10,9,112,108,97,10,9,115,116,97,32,78,67,95,
+    80,84,82,10,9,108,100,121,32,35,36,48,48,10,9,108,
+    100,97,32,78,67,95,84,77,80,10,9,115,116,97,32,40,
+    78,67,95,80,84,82,41,44,121,10,0,9,112,108,97,10,
+    9,115,116,97,32,78,67,95,84,77,80,43,49,10,9,112,
+    108,97,10,9,115,116,97,32,78,67,95,84,77,80,10,9,
+    112,108,97,10,9,115,116,97,32,78,67,95,80,84,82,43,
+    49,10,9,112,108,97,10,9,115,116,97,32,78,67,95,80,
+    84,82,10,9,108,100,121,32,35,36,48,48,10,9,108,100,
+    97,32,78,67,95,84,77,80,10,9,115,116,97,32,40,78,
+    67,95,80,84,82,41,44,121,10,9,105,110,121,10,9,108,
+    100,97,32,78,67,95,84,77,80,43,49,10,9,115,116,97,
+    32,40,78,67,95,80,84,82,41,44,121,10,0,9,97,115,
+    108,10,9,115,116,97,32,78,67,95,84,77,80,10,9,116,
+    120,97,10,9,114,111,108,10,9,116,97,120,10,9,108,100,
+    97,32,78,67,95,84,77,80,10,0,9,99,108,99,10,9,
+    97,100,99,32,35,60,0,10,9,115,116,97,32,78,67,95,
+    80,84,82,10,9,116,120,97,10,9,97,100,99,32,35,62,
+    0,10,9,115,116,97,32,78,67,95,80,84,82,43,49,10,
+    0,9,99,108,99,10,9,97,100,99,32,0,10,9,115,116,
+    97,32,78,67,95,80,84,82,10,9,116,120,97,10,9,97,
+    100,99,32,0,43,49,10,9,115,116,97,32,78,67,95,80,
+    84,82,43,49,10,0
 };
 
 /*
@@ -277,7 +320,7 @@ char const_negative;
 
 /* 6502 mnemonics used by the intentionally plain emitter */
 
-int same_bytes(char *a, int a_length, char *b, int b_length)
+char same_bytes(char *a, char a_length, char *b, char b_length)
 {
     int i;
 
@@ -294,7 +337,7 @@ int same_bytes(char *a, int a_length, char *b, int b_length)
     return 1;
 }
 
-int write_char(int value)
+char write_char(char value)
 {
     if (compiler_error != 0) {
         return 0;
@@ -306,7 +349,7 @@ int write_char(int value)
     return 1;
 }
 
-int write_text(char *text)
+char write_text(char *text)
 {
     int i;
 
@@ -320,7 +363,7 @@ int write_text(char *text)
     return 1;
 }
 
-int write_hex_digit(int value)
+char write_hex_digit(char value)
 {
     if (value < 10) {
         return write_char('0' + value);
@@ -328,7 +371,7 @@ int write_hex_digit(int value)
     return write_char('a' + value - 10);
 }
 
-int write_hex_byte(int value)
+char write_hex_byte(char value)
 {
     int high;
     int low;
@@ -341,7 +384,7 @@ int write_hex_byte(int value)
     return write_hex_digit(low);
 }
 
-int write_hex_word(unsigned value)
+char write_hex_word(unsigned value)
 {
     if (write_hex_byte((value >> 8) & 255) == 0) {
         return 0;
@@ -349,12 +392,12 @@ int write_hex_word(unsigned value)
     return write_hex_byte(value & 255);
 }
 
-int write_newline()
+char write_newline()
 {
     return write_char(10);
 }
 
-int emit_instruction(char *op)
+char emit_instruction(char *op)
 {
     if (write_char(9) == 0) {
         return 0;
@@ -362,7 +405,7 @@ int emit_instruction(char *op)
     return write_text(op);
 }
 
-int emit_zero(char *op)
+char emit_zero(char *op)
 {
     if (emit_instruction(op) == 0) {
         return 0;
@@ -370,7 +413,7 @@ int emit_zero(char *op)
     return write_newline();
 }
 
-int emit_immediate(char *op, int value)
+char emit_immediate(char *op, char value)
 {
     if (emit_instruction(op) == 0) {
         return 0;
@@ -390,7 +433,7 @@ int emit_immediate(char *op, int value)
     return write_newline();
 }
 
-int emit_scratch(char *op, char *name, int high)
+char emit_scratch(char *op, char *name, char high)
 {
     if (emit_instruction(op) == 0) {
         return 0;
@@ -409,7 +452,7 @@ int emit_scratch(char *op, char *name, int high)
     return write_newline();
 }
 
-int emit_global_name(int symbol)
+char emit_global_name(char symbol)
 {
     if (write_text((fixed_text + 679)) == 0) {
         return 0;
@@ -417,7 +460,7 @@ int emit_global_name(int symbol)
     return write_hex_byte(symbol);
 }
 
-int emit_function_name(int symbol)
+char emit_function_name(char symbol)
 {
     if (write_text((fixed_text + 675)) == 0) {
         return 0;
@@ -425,7 +468,7 @@ int emit_function_name(int symbol)
     return write_hex_byte(symbol);
 }
 
-int emit_current_name(int function_id, int slot)
+char emit_current_name(char function_id, char slot)
 {
     if (write_text((fixed_text + 683)) == 0) {
         return 0;
@@ -439,7 +482,7 @@ int emit_current_name(int function_id, int slot)
     return write_hex_byte(slot);
 }
 
-int emit_symbol_name(int area, int symbol)
+char emit_symbol_name(char area, char symbol)
 {
     if (area == 2) {
         return emit_current_name(current_func, symbol);
@@ -447,7 +490,7 @@ int emit_symbol_name(int area, int symbol)
     return emit_global_name(symbol);
 }
 
-int emit_symbol_operand(char *op, int area, int symbol, int high)
+char emit_symbol_operand(char *op, char area, char symbol, char high)
 {
     if (emit_instruction(op) == 0) {
         return 0;
@@ -466,7 +509,7 @@ int emit_symbol_operand(char *op, int area, int symbol, int high)
     return write_newline();
 }
 
-int emit_label_name(unsigned label)
+char emit_label_name(unsigned label)
 {
     if (write_text((fixed_text + 587)) == 0) {
         return 0;
@@ -474,7 +517,7 @@ int emit_label_name(unsigned label)
     return write_hex_word(label);
 }
 
-int emit_label(unsigned label)
+char emit_label(unsigned label)
 {
     if (emit_label_name(label) == 0) {
         return 0;
@@ -485,7 +528,7 @@ int emit_label(unsigned label)
     return write_newline();
 }
 
-int emit_jump_label(char *op, unsigned label)
+char emit_jump_label(char *op, unsigned label)
 {
     if (emit_instruction(op) == 0) {
         return 0;
@@ -499,7 +542,7 @@ int emit_jump_label(char *op, unsigned label)
     return write_newline();
 }
 
-int emit_text_operand(char *op, char *text)
+char emit_text_operand(char *op, char *text)
 {
     if (emit_instruction(op) == 0) {
         return 0;
@@ -513,7 +556,7 @@ int emit_text_operand(char *op, char *text)
     return write_newline();
 }
 
-int emit_include(char *path)
+char emit_include(char *path)
 {
     if (write_char(9) == 0) {
         return 0;
@@ -533,7 +576,7 @@ int emit_include(char *path)
     return write_newline();
 }
 
-int emit_byte_data(int value)
+char emit_byte_data(char value)
 {
     if (write_char(9) == 0) {
         return 0;
@@ -547,7 +590,7 @@ int emit_byte_data(int value)
     return write_newline();
 }
 
-int next_source_char()
+char next_source_char()
 {
     int value;
     int next;
@@ -587,7 +630,7 @@ int next_source_char()
     return 1;
 }
 
-int step_source()
+char step_source()
 {
     if (source_char == 10) {
         source_line = source_line + 1;
@@ -595,7 +638,7 @@ int step_source()
     return next_source_char();
 }
 
-int is_letter(int c)
+char is_letter(int c)
 {
     if (c >= 'a') {
         if (c <= 'z') {
@@ -613,7 +656,7 @@ int is_letter(int c)
     return 0;
 }
 
-int is_digit(int c)
+char is_digit(int c)
 {
     if (c < '0') {
         return 0;
@@ -644,12 +687,14 @@ int hex_value(int c)
     return -1;
 }
 
-int token_equals(char *word, int length)
+char scan_error()
 {
-    return same_bytes(token_text, token_length, word, length);
+    compiler_error = 2;
+    token_kind = 129;
+    return 0;
 }
 
-int classify_identifier()
+char classify_identifier()
 {
     int i;
     int text_offset;
@@ -659,7 +704,7 @@ int classify_identifier()
     while (fixed_text[i + 1] != 0) {
         text_offset = fixed_text[i];
         length = fixed_text[i + 1];
-        if (token_equals((fixed_text + text_offset), length) != 0) {
+        if (same_bytes(token_text, token_length, (fixed_text + text_offset), length) != 0) {
             return 134 + ((i - 1072) >> 1);
         }
         i = i + 2;
@@ -667,7 +712,7 @@ int classify_identifier()
     return 130;
 }
 
-int scan_token()
+char scan_token()
 {
     int value;
     int digit;
@@ -693,9 +738,7 @@ int scan_token()
                 return 0;
             }
             if (source_char != '*') {
-                compiler_error = 2;
-                token_kind = 129;
-                return 0;
+                return scan_error();
             }
             if (step_source() == 0) {
                 token_kind = 129;
@@ -704,9 +747,7 @@ int scan_token()
             comment_done = 0;
             while (comment_done == 0) {
                 if (source_char < 0) {
-                    compiler_error = 2;
-                    token_kind = 129;
-                    return 0;
+                    return scan_error();
                 }
                 if (source_char == '*') {
                     if (step_source() == 0) {
@@ -740,9 +781,7 @@ int scan_token()
     if (is_letter(source_char) != 0) {
         while (is_letter(source_char) != 0 | is_digit(source_char) != 0) {
             if (token_length >= 31) {
-                compiler_error = 2;
-                token_kind = 129;
-                return 0;
+                return scan_error();
             }
             token_text[token_length] = source_char;
             token_length = token_length + 1;
@@ -772,9 +811,7 @@ int scan_token()
                 }
                 digit = hex_value(source_char);
                 if (digit < 0) {
-                    compiler_error = 2;
-                    token_kind = 129;
-                    return 0;
+                    return scan_error();
                 }
             }
         }
@@ -782,9 +819,7 @@ int scan_token()
             while (is_digit(source_char) != 0) {
                 digit = source_char - '0';
                 if (value > 6553) {
-                    compiler_error = 2;
-                    token_kind = 129;
-                    return 0;
+                    return scan_error();
                 }
                 if (value == 6553) {
                     if (digit > 5) {
@@ -803,9 +838,7 @@ int scan_token()
             digit = hex_value(source_char);
             while (digit >= 0) {
                 if (value > 4095) {
-                    compiler_error = 2;
-                    token_kind = 129;
-                    return 0;
+                    return scan_error();
                 }
                 value = (value << 4) + digit;
                 if (step_source() == 0) {
@@ -831,9 +864,7 @@ int scan_token()
             return 0;
         }
         if (source_char < 0 | source_char == 39 | source_char == 10) {
-            compiler_error = 2;
-            token_kind = 129;
-            return 0;
+            return scan_error();
         }
         token_value = source_char;
         if (step_source() == 0) {
@@ -841,9 +872,7 @@ int scan_token()
             return 0;
         }
         if (source_char != 39) {
-            compiler_error = 2;
-            token_kind = 129;
-            return 0;
+            return scan_error();
         }
         if (step_source() == 0) {
             token_kind = 129;
@@ -861,14 +890,10 @@ int scan_token()
         }
         while (source_char != 34) {
             if (source_char < 0 | source_char == 10) {
-                compiler_error = 2;
-                token_kind = 129;
-                return 0;
+                return scan_error();
             }
             if (token_length >= 190) {
-                compiler_error = 2;
-                token_kind = 129;
-                return 0;
+                return scan_error();
             }
             token_text[token_length] = source_char;
             token_length = token_length + 1;
@@ -891,70 +916,28 @@ int scan_token()
         token_kind = 129;
         return 0;
     }
-    if (value == '=') {
-        if (source_char == '=') {
-            if (step_source() == 0) {
-                token_kind = 129;
-                return 0;
+    digit = 1090;
+    while (fixed_text[digit] != 0) {
+        if (value == fixed_text[digit]) {
+            if (source_char == fixed_text[digit + 1]) {
+                token_kind = fixed_text[digit + 2];
+                if (step_source() == 0) {
+                    token_kind = 129;
+                    return 0;
+                }
+                return 1;
             }
-            token_kind = 142;
-            return 1;
         }
+        digit = digit + 3;
     }
     if (value == '!') {
-        if (source_char == '=') {
-            if (step_source() == 0) {
-                token_kind = 129;
-                return 0;
-            }
-            token_kind = 143;
-            return 1;
-        }
-        compiler_error = 2;
-        token_kind = 129;
-        return 0;
-    }
-    if (value == '<') {
-        if (source_char == '=') {
-            if (step_source() == 0) {
-                token_kind = 129;
-                return 0;
-            }
-            token_kind = 144;
-            return 1;
-        }
-        if (source_char == '<') {
-            if (step_source() == 0) {
-                token_kind = 129;
-                return 0;
-            }
-            token_kind = 146;
-            return 1;
-        }
-    }
-    if (value == '>') {
-        if (source_char == '=') {
-            if (step_source() == 0) {
-                token_kind = 129;
-                return 0;
-            }
-            token_kind = 145;
-            return 1;
-        }
-        if (source_char == '>') {
-            if (step_source() == 0) {
-                token_kind = 129;
-                return 0;
-            }
-            token_kind = 147;
-            return 1;
-        }
+        return scan_error();
     }
     token_kind = value;
     return 1;
 }
 
-int save_token_name()
+char save_token_name()
 {
     int i;
 
@@ -972,7 +955,7 @@ int save_token_name()
     return 1;
 }
 
-int global_name_equal(int symbol)
+char global_name_equal(char symbol)
 {
     int i;
     int base;
@@ -991,7 +974,7 @@ int global_name_equal(int symbol)
     return 1;
 }
 
-int current_name_equal(int symbol)
+char current_name_equal(char symbol)
 {
     int i;
     int base;
@@ -1055,7 +1038,7 @@ int lookup_name()
     return -1;
 }
 
-int copy_pending_global(int symbol)
+char copy_pending_global(char symbol)
 {
     int i;
     int base;
@@ -1071,7 +1054,7 @@ int copy_pending_global(int symbol)
     return 1;
 }
 
-int copy_pending_local(int symbol)
+char copy_pending_local(char symbol)
 {
     int i;
     int base;
@@ -1087,7 +1070,7 @@ int copy_pending_local(int symbol)
     return 1;
 }
 
-int add_global_saved(int kind, int type)
+int add_global_saved(char kind, char type)
 {
     int id;
 
@@ -1106,7 +1089,7 @@ int add_global_saved(int kind, int type)
     return id;
 }
 
-int add_current_saved(int type)
+int add_current_saved(char type)
 {
     int id;
 
@@ -1121,7 +1104,7 @@ int add_current_saved(int type)
     return id;
 }
 
-int set_pending_text(char *text, int length)
+char set_pending_text(char *text, char length)
 {
     int i;
 
@@ -1135,7 +1118,7 @@ int set_pending_text(char *text, int length)
     return 1;
 }
 
-int add_builtin(char *name, int length, int count, int type0, int type1)
+char add_builtin(char *name, char length, char count, char type0, char type1)
 {
     int id;
 
@@ -1157,7 +1140,7 @@ int add_builtin(char *name, int length, int count, int type0, int type1)
     return 1;
 }
 
-int init_symbols()
+char init_symbols()
 {
     global_count = 0;
     local_count = 0;
@@ -1180,7 +1163,7 @@ int init_symbols()
     return 1;
 }
 
-int type_size(int type)
+char type_size(char type)
 {
     if (type == 1) {
         return 1;
@@ -1188,7 +1171,7 @@ int type_size(int type)
     return 2;
 }
 
-int emit_bss_assignment(int area, int symbol, int size)
+char emit_bss_assignment(char area, char symbol, unsigned size)
 {
     unsigned new_end;
 
@@ -1219,7 +1202,7 @@ int emit_bss_assignment(int area, int symbol, int size)
     return 1;
 }
 
-int runtime_param_name(int function_id, int argument)
+char runtime_param_name(char function_id, char argument)
 {
     if (function_id == 0) {
         if (write_text((fixed_text + 626)) == 0) {
@@ -1251,7 +1234,7 @@ int runtime_param_name(int function_id, int argument)
     return write_hex_digit(argument);
 }
 
-int callee_name(int function_id)
+char callee_name(char function_id)
 {
     if (global_kind[function_id] == 4) {
         if (function_id == 0) {
@@ -1271,7 +1254,7 @@ int callee_name(int function_id)
     return emit_function_name(function_id);
 }
 
-int emit_callee_call(int function_id)
+char emit_callee_call(char function_id)
 {
     if (emit_instruction((fixed_text + 535)) == 0) {
         return 0;
@@ -1285,7 +1268,7 @@ int emit_callee_call(int function_id)
     return write_newline();
 }
 
-int emit_param_store(int function_id, int argument, int type)
+char emit_param_store(char function_id, char argument, char type)
 {
     if (emit_zero((fixed_text + 455)) == 0) {
         return 0;
@@ -1334,17 +1317,17 @@ int emit_param_store(int function_id, int argument, int type)
     return write_newline();
 }
 
-int emit_push_ax()
+char emit_push_ax()
 {
     return write_text((fixed_text + 694));
 }
 
-int emit_pop_ax()
+char emit_pop_ax()
 {
     return write_text((fixed_text + 710));
 }
 
-int emit_load_symbol(int area, int symbol, int type)
+char emit_load_symbol(char area, char symbol, char type)
 {
     if (emit_symbol_operand((fixed_text + 431), area, symbol, 0) == 0) {
         return 0;
@@ -1361,7 +1344,7 @@ int emit_load_symbol(int area, int symbol, int type)
     return emit_push_ax();
 }
 
-int emit_array_address(int symbol)
+char emit_array_address(char symbol)
 {
     if (emit_instruction((fixed_text + 431)) == 0) {
         return 0;
@@ -1390,7 +1373,7 @@ int emit_array_address(int symbol)
     return emit_push_ax();
 }
 
-int emit_literal_value(unsigned value)
+char emit_literal_value(unsigned value)
 {
     if (emit_immediate((fixed_text + 431), value & 255) == 0) {
         return 0;
@@ -1401,7 +1384,7 @@ int emit_literal_value(unsigned value)
     return emit_push_ax();
 }
 
-int emit_string_literal()
+char emit_string_literal()
 {
     unsigned data_label;
     unsigned skip_label;
@@ -1457,7 +1440,7 @@ int emit_string_literal()
     return emit_push_ax();
 }
 
-int is_numeric_type(int type)
+char is_numeric_type(char type)
 {
     if (type == 1) {
         return 1;
@@ -1471,7 +1454,7 @@ int is_numeric_type(int type)
     return 0;
 }
 
-int compatible_type(int actual, int expected)
+char compatible_type(char actual, char expected)
 {
     if (expected == 4) {
         if (actual == 4) {
@@ -1487,7 +1470,7 @@ int compatible_type(int actual, int expected)
     return 0;
 }
 
-int operator_precedence(int op)
+char operator_precedence(char op)
 {
     if (op == '|') {
         return 1;
@@ -1526,7 +1509,7 @@ int is_binary_operator(int op)
     return 0;
 }
 
-int push_operator(int code, int aux, int area, int base)
+char push_operator(char code, char aux, char area, char base)
 {
     if (op_top >= 32) {
         compiler_error = 6;
@@ -1541,7 +1524,7 @@ int push_operator(int code, int aux, int area, int base)
     return 1;
 }
 
-int push_value_type(int type)
+char push_value_type(char type)
 {
     if (value_top >= 32) {
         compiler_error = 6;
@@ -1552,12 +1535,12 @@ int push_value_type(int type)
     return 1;
 }
 
-int emit_binary_prelude()
+char emit_binary_prelude()
 {
     return write_text((fixed_text + 726));
 }
 
-int emit_add_sub(int op)
+char emit_add_sub(char op)
 {
     if (op == '+') {
         return write_text((fixed_text + 778));
@@ -1565,7 +1548,7 @@ int emit_add_sub(int op)
     return write_text((fixed_text + 830));
 }
 
-int emit_bitwise(int op)
+char emit_bitwise(char op)
 {
     if (op == '&') {
         return write_text((fixed_text + 882));
@@ -1573,7 +1556,7 @@ int emit_bitwise(int op)
     return write_text((fixed_text + 929));
 }
 
-int emit_shift(int op)
+char emit_shift(char op)
 {
     unsigned loop_label;
     unsigned done_label;
@@ -1582,7 +1565,7 @@ int emit_shift(int op)
     label_counter = label_counter + 1;
     done_label = label_counter;
     label_counter = label_counter + 1;
-    if (emit_scratch((fixed_text + 439), (fixed_text + 198), 0) == 0) {
+    if (write_text((fixed_text + 1111)) == 0) {
         return 0;
     }
     if (emit_jump_label((fixed_text + 523), done_label) == 0) {
@@ -1592,45 +1575,15 @@ int emit_shift(int op)
         return 0;
     }
     if (op == 146) {
-        if (emit_zero((fixed_text + 499)) == 0) {
-            return 0;
-        }
-        if (emit_scratch((fixed_text + 443), (fixed_text + 198), 1) == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 459)) == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 503)) == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 463)) == 0) {
-            return 0;
-        }
-        if (emit_scratch((fixed_text + 431), (fixed_text + 198), 1) == 0) {
+        if (write_text((fixed_text + 1124)) == 0) {
             return 0;
         }
     } else {
-        if (emit_scratch((fixed_text + 443), (fixed_text + 198), 1) == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 459)) == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 507)) == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 463)) == 0) {
-            return 0;
-        }
-        if (emit_scratch((fixed_text + 431), (fixed_text + 198), 1) == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 511)) == 0) {
+        if (write_text((fixed_text + 1173)) == 0) {
             return 0;
         }
     }
-    if (emit_zero((fixed_text + 519)) == 0) {
+    if (write_text((fixed_text + 1222)) == 0) {
         return 0;
     }
     if (emit_jump_label((fixed_text + 527), loop_label) == 0) {
@@ -1639,7 +1592,7 @@ int emit_shift(int op)
     return emit_label(done_label);
 }
 
-int emit_compare(int op, int unsigned_compare)
+char emit_compare(char op, char unsigned_compare)
 {
     char *helper;
 
@@ -1684,7 +1637,7 @@ int emit_compare(int op, int unsigned_compare)
     return emit_text_operand((fixed_text + 535), helper);
 }
 
-int reduce_unary()
+char reduce_unary()
 {
     int type;
 
@@ -1706,7 +1659,7 @@ int reduce_unary()
     return 1;
 }
 
-int reduce_binary(int op)
+char reduce_binary(char op)
 {
     int left;
     int right;
@@ -1798,7 +1751,7 @@ int reduce_binary(int op)
     return 1;
 }
 
-int reduce_top_operator()
+char reduce_top_operator()
 {
     int op;
 
@@ -1814,7 +1767,7 @@ int reduce_top_operator()
     return reduce_binary(op);
 }
 
-int reduce_to_marker(int marker)
+char reduce_to_marker(char marker)
 {
     while (op_top > 0) {
         if (op_code[op_top - 1] == marker) {
@@ -1832,7 +1785,7 @@ int reduce_to_marker(int marker)
     return 0;
 }
 
-int emit_call_finish(int marker_index)
+char emit_call_finish(char marker_index)
 {
     int function_id;
     int argc;
@@ -1881,133 +1834,58 @@ int emit_call_finish(int marker_index)
     return push_value_type(global_type[function_id]);
 }
 
-int emit_index_address(int area, int symbol, int kind, int element_type)
+char emit_index_address(char area, char symbol, char kind, char element_type)
 {
     if (emit_pop_ax() == 0) {
         return 0;
     }
     if (kind == 2) {
         if (element_type != 1) {
-            if (emit_zero((fixed_text + 499)) == 0) {
-                return 0;
-            }
-            if (emit_scratch((fixed_text + 443), (fixed_text + 198), 0) == 0) {
-                return 0;
-            }
-            if (emit_zero((fixed_text + 459)) == 0) {
-                return 0;
-            }
-            if (emit_zero((fixed_text + 503)) == 0) {
-                return 0;
-            }
-            if (emit_zero((fixed_text + 463)) == 0) {
-                return 0;
-            }
-            if (emit_scratch((fixed_text + 431), (fixed_text + 198), 0) == 0) {
+            if (write_text((fixed_text + 1629)) == 0) {
                 return 0;
             }
         }
-        if (emit_zero((fixed_text + 475)) == 0) {
-            return 0;
-        }
-        if (emit_instruction((fixed_text + 483)) == 0) {
-            return 0;
-        }
-        if (write_text((fixed_text + 547)) == 0) {
+        if (write_text((fixed_text + 1674)) == 0) {
             return 0;
         }
         if (emit_global_name(symbol) == 0) {
             return 0;
         }
-        if (write_newline() == 0) {
-            return 0;
-        }
-        if (emit_scratch((fixed_text + 443), (fixed_text + 205), 0) == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 459)) == 0) {
-            return 0;
-        }
-        if (emit_instruction((fixed_text + 483)) == 0) {
-            return 0;
-        }
-        if (write_text((fixed_text + 551)) == 0) {
+        if (write_text((fixed_text + 1687)) == 0) {
             return 0;
         }
         if (emit_global_name(symbol) == 0) {
             return 0;
         }
-        if (write_newline() == 0) {
-            return 0;
-        }
-        return emit_scratch((fixed_text + 443), (fixed_text + 205), 1);
+        return write_text((fixed_text + 1713));
     }
-    if (emit_zero((fixed_text + 475)) == 0) {
+    if (write_text((fixed_text + 1729)) == 0) {
         return 0;
     }
-    if (emit_symbol_operand((fixed_text + 483), area, symbol, 0) == 0) {
+    if (emit_symbol_name(area, symbol) == 0) {
         return 0;
     }
-    if (emit_scratch((fixed_text + 443), (fixed_text + 205), 0) == 0) {
+    if (write_text((fixed_text + 1740)) == 0) {
         return 0;
     }
-    if (emit_zero((fixed_text + 459)) == 0) {
+    if (emit_symbol_name(area, symbol) == 0) {
         return 0;
     }
-    if (emit_symbol_operand((fixed_text + 483), area, symbol, 1) == 0) {
-        return 0;
-    }
-    return emit_scratch((fixed_text + 443), (fixed_text + 205), 1);
+    return write_text((fixed_text + 1764));
 }
 
-int emit_index_load(int area, int symbol, int kind, int element_type)
+char emit_index_load(char area, char symbol, char kind, char element_type)
 {
     if (emit_index_address(area, symbol, kind, element_type) == 0) {
         return 0;
     }
-    if (emit_immediate((fixed_text + 439), 0) == 0) {
-        return 0;
-    }
-    if (emit_instruction((fixed_text + 431)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 555)) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
     if (element_type == 1) {
-        if (emit_immediate((fixed_text + 435), 0) == 0) {
-            return 0;
-        }
-    } else {
-        if (emit_scratch((fixed_text + 443), (fixed_text + 198), 0) == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 515)) == 0) {
-            return 0;
-        }
-        if (emit_instruction((fixed_text + 431)) == 0) {
-            return 0;
-        }
-        if (write_text((fixed_text + 555)) == 0) {
-            return 0;
-        }
-        if (write_newline() == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 463)) == 0) {
-            return 0;
-        }
-        if (emit_scratch((fixed_text + 431), (fixed_text + 198), 0) == 0) {
-            return 0;
-        }
+        return write_text((fixed_text + 1228));
     }
-    return emit_push_ax();
+    return write_text((fixed_text + 1280));
 }
 
-int finish_call_marker()
+char finish_call_marker()
 {
     int marker;
     int base;
@@ -2033,7 +1911,7 @@ int finish_call_marker()
     return 1;
 }
 
-int expression_value_step()
+char expression_value_step()
 {
     int id;
     int area;
@@ -2165,7 +2043,7 @@ int expression_value_step()
     return 0;
 }
 
-int expression_operator_step()
+char expression_operator_step()
 {
     int precedence;
     int top_precedence;
@@ -2296,7 +2174,7 @@ int expression_operator_step()
     return 1;
 }
 
-int expression_loop()
+char expression_loop()
 {
     expr_expect = 1;
     expr_done = 0;
@@ -2335,14 +2213,14 @@ int expression_loop()
     return 1;
 }
 
-int compile_expression()
+char compile_expression()
 {
     op_top = 0;
     value_top = 0;
     return expression_loop();
 }
 
-int compile_call_stmt(int function_id)
+char compile_call_stmt(char function_id)
 {
     op_top = 0;
     value_top = 0;
@@ -2361,7 +2239,7 @@ int compile_call_stmt(int function_id)
     return emit_zero((fixed_text + 455));
 }
 
-int emit_false_jump(unsigned target)
+char emit_false_jump(unsigned target)
 {
     unsigned skip;
 
@@ -2388,7 +2266,7 @@ int emit_false_jump(unsigned target)
     return emit_label(skip);
 }
 
-int emit_scalar_store(int area, int symbol, int type)
+char emit_scalar_store(char area, char symbol, char type)
 {
     if (emit_pop_ax() == 0) {
         return 0;
@@ -2404,65 +2282,12 @@ int emit_scalar_store(int area, int symbol, int type)
     return 1;
 }
 
-int emit_index_store(int element_type)
+char emit_index_store(char element_type)
 {
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
+    if (element_type == 1) {
+        return write_text((fixed_text + 1372));
     }
-    if (emit_scratch((fixed_text + 443), (fixed_text + 198), 1) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 443), (fixed_text + 198), 0) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 443), (fixed_text + 205), 1) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 443), (fixed_text + 205), 0) == 0) {
-        return 0;
-    }
-    if (emit_immediate((fixed_text + 439), 0) == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 431), (fixed_text + 198), 0) == 0) {
-        return 0;
-    }
-    if (emit_instruction((fixed_text + 443)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 555)) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
-    if (element_type != 1) {
-        if (emit_zero((fixed_text + 515)) == 0) {
-            return 0;
-        }
-        if (emit_scratch((fixed_text + 431), (fixed_text + 198), 1) == 0) {
-            return 0;
-        }
-        if (emit_instruction((fixed_text + 443)) == 0) {
-            return 0;
-        }
-        if (write_text((fixed_text + 555)) == 0) {
-            return 0;
-        }
-        if (write_newline() == 0) {
-            return 0;
-        }
-    }
-    return 1;
+    return write_text((fixed_text + 1483));
 }
 
 int find_break_label()
@@ -2479,7 +2304,7 @@ int find_break_label()
     return -1;
 }
 
-int push_control(int kind, unsigned label0, unsigned label1)
+char push_control(char kind, unsigned label0, unsigned label1)
 {
     if (ctrl_top >= 16) {
         compiler_error = 6;
@@ -2492,7 +2317,7 @@ int push_control(int kind, unsigned label0, unsigned label1)
     return 1;
 }
 
-int parse_statements()
+char parse_statements()
 {
     int id;
     int area;
@@ -2848,7 +2673,7 @@ int parse_statements()
     }
 }
 
-int parse_type()
+char parse_type()
 {
     int type;
 
@@ -2884,7 +2709,7 @@ int parse_type()
     return type;
 }
 
-int parse_constant()
+char parse_constant()
 {
     int negative;
 
@@ -2908,7 +2733,7 @@ int parse_constant()
     return scan_token();
 }
 
-int constant_fits_type(int type)
+char constant_fits_type(char type)
 {
     if (type == 1) {
         if (const_negative != 0) {
@@ -2940,7 +2765,7 @@ int constant_fits_type(int type)
     return 0;
 }
 
-int emit_global_label(int symbol)
+char emit_global_label(char symbol)
 {
     if (emit_global_name(symbol) == 0) {
         return 0;
@@ -2951,7 +2776,7 @@ int emit_global_label(int symbol)
     return write_newline();
 }
 
-int emit_typed_const(int type, unsigned value)
+char emit_typed_const(char type, unsigned value)
 {
     if (type == 1) {
         return emit_byte_data(value & 255);
@@ -2962,7 +2787,7 @@ int emit_typed_const(int type, unsigned value)
     return emit_byte_data((value >> 8) & 255);
 }
 
-int parse_global_array(int symbol, int element_type)
+char parse_global_array(char symbol, char element_type)
 {
     unsigned length;
     unsigned emitted;
@@ -3085,7 +2910,7 @@ int parse_global_array(int symbol, int element_type)
     return scan_token();
 }
 
-int parse_global_scalar(int symbol, int type)
+char parse_global_scalar(char symbol, char type)
 {
     if (token_kind == ';') {
         if (emit_bss_assignment(1, symbol, type_size(type)) == 0) {
@@ -3124,7 +2949,7 @@ int parse_global_scalar(int symbol, int type)
     return scan_token();
 }
 
-int parse_local()
+char parse_local()
 {
     int type;
     int slot;
@@ -3188,7 +3013,7 @@ int parse_local()
     return scan_token();
 }
 
-int parse_function(int function_id)
+char parse_function(char function_id)
 {
     int type;
     int slot;
@@ -3278,7 +3103,7 @@ int parse_function(int function_id)
     return 1;
 }
 
-int parse_unit()
+char parse_unit()
 {
     int type;
     int symbol;
@@ -3351,7 +3176,7 @@ int parse_unit()
     return 1;
 }
 
-int emit_finish_program()
+char emit_finish_program()
 {
     if (write_text((fixed_text + 212)) == 0) {
         return 0;
@@ -3405,7 +3230,7 @@ int emit_finish_program()
     return emit_zero((fixed_text + 539));
 }
 
-int compile_file(char *source_name, int source_length, char *output_name, int output_length)
+char compile_file(char *source_name, char source_length, char *output_name, char output_length)
 {
     compiler_error = 0;
     hold_valid = 0;
