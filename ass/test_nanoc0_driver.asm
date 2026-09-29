@@ -269,9 +269,15 @@ main:
 	stx INTEGRATION_EXTRA
 	ora INTEGRATION_EXTRA
 	beq .nanoc1Ran
-	;;; Capture exactly what the first local-name lookup sees. DETAIL is zero
-	;;; when every byte matches; otherwise it is the 1-based mismatch position,
-	;;; with BSS low/high holding stored/token bytes at that position.
+	;;; Capture exactly what the first local-name lookup sees. The public
+	;;; compiler entry has already restored the caller's map, so expose the RAM
+	;;; under BASIC while sampling nanoc1 BSS, then restore it before returning.
+	;;; DETAIL is zero when every byte matches; otherwise it is the 1-based
+	;;; mismatch position, with BSS low/high holding stored/token bytes there.
+	lda $01
+	pha
+	lda #$36
+	sta $01
 	lda N1_TOKEN_LENGTH
 	sta INTEGRATION_LINE
 	lda N1_LOCAL_COUNT
@@ -302,6 +308,8 @@ main:
 	lda N1_TOKEN_TEXT,x
 	sta INTEGRATION_BSS+1
 .lookupProbeDone:
+	pla
+	sta $01
 	lda #FAIL_RUN_NANOC1
 	jmp finish
 .nanoc1Ran:
