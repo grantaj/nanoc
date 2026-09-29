@@ -3306,12 +3306,12 @@ char compile_file(char *source_name, char source_length, char *output_name, char
     main_symbol = -1;
     source_handle = io_open(source_name, source_length);
     if (source_handle < 0) {
-        return 1;
+        return 8;
     }
     output_handle = io_create(output_name, output_length);
     if (output_handle < 0) {
         io_close(source_handle);
-        return 1;
+        return 9;
     }
     if (init_symbols() == 0) {
         io_close(source_handle);
