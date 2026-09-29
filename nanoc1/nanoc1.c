@@ -970,7 +970,7 @@ char save_token_name()
     char i;
 
     if (token_length > 31) {
-        compiler_error = 4;
+        compiler_error = 41;
         return 0;
     }
     pending_length = token_length;
@@ -1940,7 +1940,7 @@ char expression_identifier()
 
     id = lookup_name();
     if (id == 255) {
-        compiler_error = 4;
+        compiler_error = 42;
         return 0;
     }
     area = saved_area;
@@ -2517,7 +2517,7 @@ char statement_identifier()
 
     id = lookup_name();
     if (id == 255) {
-        compiler_error = 4;
+        compiler_error = 43;
         return 0;
     }
     area = saved_area;
@@ -3021,7 +3021,7 @@ char parse_local()
         return 0;
     }
     if (find_current() != 255) {
-        compiler_error = 4;
+        compiler_error = 44;
         return 0;
     }
     if (save_token_name() == 0) {
@@ -3095,7 +3095,7 @@ char parse_function(char function_id)
                 return 0;
             }
             if (find_current() != 255) {
-                compiler_error = 4;
+                compiler_error = 45;
                 return 0;
             }
             if (save_token_name() == 0) {
@@ -3178,7 +3178,7 @@ char parse_unit()
             return 0;
         }
         if (find_global() != 255) {
-            compiler_error = 4;
+            compiler_error = 46;
             return 0;
         }
         if (save_token_name() == 0) {
