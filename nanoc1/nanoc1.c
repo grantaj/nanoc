@@ -983,7 +983,7 @@ char save_token_name()
     return 1;
 }
 
-int find_global()
+char find_global()
 {
     char symbol;
     char i;
@@ -1009,10 +1009,10 @@ int find_global()
         }
         symbol = symbol + 1;
     }
-    return -1;
+    return 255;
 }
 
-int find_current()
+char find_current()
 {
     char symbol;
     char i;
@@ -1038,24 +1038,24 @@ int find_current()
         }
         symbol = symbol + 1;
     }
-    return -1;
+    return 255;
 }
 
-int lookup_name()
+char lookup_name()
 {
-    int id;
+    char id;
 
     id = find_current();
-    if (id >= 0) {
+    if (id != 255) {
         saved_area = 2;
         return id;
     }
     id = find_global();
-    if (id >= 0) {
+    if (id != 255) {
         saved_area = 1;
         return id;
     }
-    return -1;
+    return 255;
 }
 
 char copy_pending_global(char symbol)
@@ -1933,13 +1933,13 @@ char finish_call_marker()
 
 char expression_identifier()
 {
-    int id;
+    char id;
     char area;
     char kind;
     char type;
 
     id = lookup_name();
-    if (id < 0) {
+    if (id == 255) {
         compiler_error = 4;
         return 0;
     }
@@ -2510,13 +2510,13 @@ char statement_while()
 
 char statement_identifier()
 {
-    int id;
+    char id;
     char area;
     char kind;
     char type;
 
     id = lookup_name();
-    if (id < 0) {
+    if (id == 255) {
         compiler_error = 4;
         return 0;
     }
@@ -3020,7 +3020,7 @@ char parse_local()
         compiler_error = 3;
         return 0;
     }
-    if (find_current() >= 0) {
+    if (find_current() != 255) {
         compiler_error = 4;
         return 0;
     }
@@ -3094,7 +3094,7 @@ char parse_function(char function_id)
                 compiler_error = 3;
                 return 0;
             }
-            if (find_current() >= 0) {
+            if (find_current() != 255) {
                 compiler_error = 4;
                 return 0;
             }
@@ -3177,7 +3177,7 @@ char parse_unit()
             compiler_error = 3;
             return 0;
         }
-        if (find_global() >= 0) {
+        if (find_global() != 255) {
             compiler_error = 4;
             return 0;
         }
