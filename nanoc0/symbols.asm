@@ -20,8 +20,8 @@
 ;;; number. At this revision that source requires, including the five runtime
 ;;; functions:
 ;;;
-;;;   persistent symbols       129    capacity 160
-;;;   persistent name bytes   2044    capacity 2304
+;;;   persistent symbols       129    bootstrap capacity 176
+;;;   persistent name bytes   2044    bootstrap capacity 2560
 ;;;   parameter type entries   105    capacity 128
 ;;;   max current symbols       11    capacity 32
 ;;;   max current name bytes    95    uses the unused tail of the name pool
@@ -47,16 +47,16 @@ SYMBOL_AREA_NONE       = 0
 SYMBOL_AREA_CURRENT    = 1
 SYMBOL_AREA_PERSISTENT = 2
 
-PERSISTENT_SYMBOL_CAPACITY = 160
+PERSISTENT_SYMBOL_CAPACITY = 176
 CURRENT_SYMBOL_CAPACITY    = 32
-NAME_POOL_CAPACITY         = 2304
+NAME_POOL_CAPACITY         = 2560
 PARAM_META_CAPACITY        = 128
 
 ;;; The 3488 mutable symbol/name bytes are working RAM, not loaded program data.
 ;;; $c000-$cd9f is ordinary C64 RAM below I/O and safely above every nanoc0 image.
 ;;; Using one explicit map for production and focused tests also keeps the source
 ;;; consumable by ass: no conditional-assembly directive is required.
-SYMBOL_WORKSPACE_BYTES = 3488
+SYMBOL_WORKSPACE_BYTES = 3840
 NANOC_SYMBOL_WORKSPACE = $c000
 
 symbolWorkspaceStart  = NANOC_SYMBOL_WORKSPACE

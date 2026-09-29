@@ -25,6 +25,8 @@ NANOC_TARGET_ORIGIN = $0800
 NANOC_TARGET_BSS    = $4800
 NANOC_TARGET_LIMIT  = $d000
 NANOC_TARGET_BSS_LIMIT = NANOC_TARGET_LIMIT-NANOC_TARGET_BSS
+NANOC_COMPILER_BSS      = $a000
+NANOC_COMPILER_BSS_LIMIT = NANOC_TARGET_LIMIT-NANOC_COMPILER_BSS
 
 	* = $4000
 
@@ -58,6 +60,7 @@ nanoc0Entry:
 ;;; as the runtime helpers. Resident nanoc0 therefore keeps only this short path,
 ;;; not a second text copy of the generated machine map.
 programHeaderPath:	byte 'h','e','a','d','e','r',0
+programCompilerHeaderPath:	byte 'h','e','a','d','e','r','-','c','o','m','p','i','l','e','r',0
 
 programEntryPrefix:
 	string "__nc_entry:"
@@ -85,10 +88,20 @@ compilerMain:
 	sta emitOutputEnabled
 	sta emitOutputStatus
 
+	lda NANOC_COMMAND_LAYOUT
+	cmp #NANOC_LAYOUT_COMPILER
+	bne .ordinaryBss
+	lda #<NANOC_COMPILER_BSS
+	sta bssBase
+	lda #>NANOC_COMPILER_BSS
+	sta bssBase+1
+	jmp .bssReady
+.ordinaryBss:
 	lda #<NANOC_TARGET_BSS
 	sta bssBase
 	lda #>NANOC_TARGET_BSS
 	sta bssBase+1
+.bssReady:
 
 	lda NANOC_COMMAND_SOURCE
 	sta sourceName
@@ -110,8 +123,16 @@ compilerMain:
 	jmp .outputFailed
 .outputOpen:
 
+	lda NANOC_COMMAND_LAYOUT
+	cmp #NANOC_LAYOUT_COMPILER
+	bne .ordinaryHeader
+	ldx #<programCompilerHeaderPath
+	ldy #>programCompilerHeaderPath
+	jmp .emitHeader
+.ordinaryHeader:
 	ldx #<programHeaderPath
 	ldy #>programHeaderPath
+.emitHeader:
 	jsr emit_runtime_include
 	bcs .headerEmitted
 	jmp .emitFailed
@@ -259,9 +280,18 @@ record_bss_bytes:
 ;;; The loaded-image side of the map is independently bounded by ass's 16 KiB
 ;;; representation when the generated source is assembled.
 generated_layout_fits:
-	;;; Compare the offset itself: NC_BSS has exactly this much room before I/O.
+	;;; Compare the offset itself: each explicit target map ends at the $d000
+	;;; I/O window, but the compiler bootstrap starts its BSS at $a000.
+	lda NANOC_COMMAND_LAYOUT
+	cmp #NANOC_LAYOUT_COMPILER
+	bne .ordinaryLimit
+	lda bssOffset+1
+	cmp #>NANOC_COMPILER_BSS_LIMIT
+	jmp .compareHigh
+.ordinaryLimit:
 	lda bssOffset+1
 	cmp #>NANOC_TARGET_BSS_LIMIT
+.compareHigh:
 	bcc .fits
 	bne .failed
 	lda bssOffset

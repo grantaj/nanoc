@@ -363,7 +363,9 @@ Nested calls to different functions are fully supported and must preserve the ca
 
 # 6. Functions
 
-A Phase 1 C-defined function returns `int` and has zero or more typed parameters.
+A Phase 1 C-defined function returns `char` or `int` and has zero or more typed parameters.
+
+`char` return values are the deliberately narrow post-bootstrap extension established by #96: when the caller observes only a byte, the value remains byte-sized in A rather than being forced through an otherwise useless 16-bit return. `unsigned` and pointer return types are still outside Phase 1 because neither bootstrap program requires them.
 
 Examples:
 
@@ -582,7 +584,10 @@ array-type
     := 'char' | 'int' | 'unsigned'
 
 function-definition
-    := 'int' identifier '(' parameter-list? ')' function-body
+    := function-return-type identifier '(' parameter-list? ')' function-body
+
+function-return-type
+    := 'char' | 'int'
 
 parameter-list
     := parameter (',' parameter)*

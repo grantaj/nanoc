@@ -6,6 +6,9 @@ NANOC0_IMAGE = $4000
 FAIL_BUILD_NANOC0  = $10
 FAIL_COMPILE_SOURCE = $20
 FAIL_COMPILE_ASS    = $30
+FAIL_COMPILE_NANOC1 = $40
+FAIL_ASSEMBLE_NANOC1 = $50
+FAIL_RUN_NANOC1      = $60
 
 ;;; Small integration mailbox saved by tests/run-test.sh along with TEST_RESULT.
 ;;; It is diagnostic/reporting state only; the result byte remains authoritative.
@@ -20,6 +23,27 @@ INTEGRATION_HIDDEN = $0b
 STAGE_BUILD_NANOC0  = 1
 STAGE_COMPILE_SOURCE = 2
 STAGE_COMPILE_ASS    = 3
+STAGE_COMPILE_NANOC1 = 4
+STAGE_ASSEMBLE_NANOC1 = 5
+STAGE_RUN_NANOC1      = 6
+
+;;; Temporary #100 bring-up probes for the current nanoc1 BSS layout. These
+;;; diagnose the first native symbol-lookup failure and will be removed once the
+;;; semantic handoff is green.
+N1_BSS              = $a000
+N1_TOKEN_TEXT       = N1_BSS+$0000
+N1_TOKEN_LENGTH     = N1_BSS+$00c2
+N1_LOCAL_NAME       = N1_BSS+$1ba2
+N1_LOCAL_NAME_LEN   = N1_BSS+$1fa2
+N1_LOCAL_COUNT      = N1_BSS+$1fe2
+N1_PENDING_NAME     = N1_BSS+$2065
+N1_PENDING_LENGTH   = N1_BSS+$2085
+N1_FIND_SYMBOL      = N1_BSS+$2206
+N1_FIND_INDEX       = N1_BSS+$2207
+N1_FIND_BASE        = N1_BSS+$2208
+N1_FIND_MATCH       = N1_BSS+$220A
+N1_LOOKUP_ID        = N1_BSS+$220B
+N1_EXPR_ID          = N1_BSS+$2270
 
 	* = $0800
 
@@ -35,6 +59,7 @@ main:
 	sta INTEGRATION_EXTRA
 	sta INTEGRATION_HIDDEN
 	sta INTEGRATION_HIDDEN+1
+	sta NANOC_COMMAND_LAYOUT
 
 	;;; Use the production assembler machinery at low memory to assemble the
 	;;; production nanoc0 source tree into $4000. assemblerEntry itself fixes its
@@ -176,6 +201,108 @@ main:
 	ora #FAIL_COMPILE_ASS
 	jmp finish
 .pass:
+	;;; #100 semantic-first handoff: compile the exact committed C-written
+	;;; compiler with the real assembly bootstrap before attempting to run it.
+	lda #<nanoc1SourceName
+	sta NANOC_COMMAND_SOURCE
+	lda #>nanoc1SourceName
+	sta NANOC_COMMAND_SOURCE+1
+	lda #nanoc1SourceNameEnd-nanoc1SourceName
+	sta NANOC_COMMAND_SOURCE_LENGTH
+	lda #<nanoc1OutputName
+	sta NANOC_COMMAND_OUTPUT
+	lda #>nanoc1OutputName
+	sta NANOC_COMMAND_OUTPUT+1
+	lda #nanoc1OutputNameEnd-nanoc1OutputName
+	sta NANOC_COMMAND_OUTPUT_LENGTH
+	lda #NANOC_LAYOUT_COMPILER
+	sta NANOC_COMMAND_LAYOUT
+	lda #STAGE_COMPILE_NANOC1
+	sta INTEGRATION_STAGE
+	jsr NANOC0_IMAGE
+	jsr capture_nanoc_result
+	lda NANOC_COMMAND_STATUS
+	beq .nanoc1Ready
+	ora #FAIL_COMPILE_NANOC1
+	jmp finish
+.nanoc1Ready:
+	;;; The low-resident assembler is still intact below $4000. Reuse the same
+	;;; $4000-$9fff staging/target window that built nanoc0; the first C compiler
+	;;; deliberately replaces the assembly compiler at the handoff.
+	lda #<NANOC0_IMAGE
+	sta stagingStart
+	sta assemblyPtr
+	lda #>NANOC0_IMAGE
+	sta stagingStart+1
+	sta assemblyPtr+1
+	lda #<ASSEMBLER_STAGING_END
+	sta stagingLimit
+	lda #>ASSEMBLER_STAGING_END
+	sta stagingLimit+1
+
+	lda #<nanoc1GeneratedName
+	sta sourceName
+	lda #>nanoc1GeneratedName
+	sta sourceName+1
+	lda #nanoc1GeneratedNameEnd-nanoc1GeneratedName
+	sta sourceNameLength
+	lda #$08
+	sta sourceDevice
+	lda #<assDirectory
+	sta sourceDirectory
+	lda #>assDirectory
+	sta sourceDirectory+1
+	lda #assDirectoryEnd-assDirectory
+	sta sourceDirectoryLength
+
+	lda #STAGE_ASSEMBLE_NANOC1
+	sta INTEGRATION_STAGE
+	jsr assembleFile
+	sta INTEGRATION_STATUS
+	cmp #ASSEMBLE_OK
+	beq .nanoc1Assembled
+	jsr capture_ass_workspace
+	lda INTEGRATION_STATUS
+	ora #FAIL_ASSEMBLE_NANOC1
+	jmp finish
+
+.nanoc1Assembled:
+	;;; header-compiler.asm owns BASIC-ROM visibility and restores the map.
+	lda #STAGE_RUN_NANOC1
+	sta INTEGRATION_STAGE
+	jsr NANOC0_IMAGE
+	sta INTEGRATION_STATUS
+	stx INTEGRATION_EXTRA
+	ora INTEGRATION_EXTRA
+	beq .nanoc1Ran
+	;;; One final #100 lookup probe. The generated search's own persistent
+	;;; temporaries tell us exactly how it left the loop; no more broad CI
+	;;; instrumentation is needed after this.
+	lda $01
+	pha
+	lda #$36
+	sta $01
+	lda N1_FIND_SYMBOL
+	sta INTEGRATION_LINE
+	lda N1_FIND_INDEX
+	sta INTEGRATION_LINE+1
+	lda N1_FIND_MATCH
+	sta INTEGRATION_DETAIL
+	lda N1_LOOKUP_ID
+	sta INTEGRATION_BSS
+	lda N1_EXPR_ID
+	sta INTEGRATION_BSS+1
+	lda N1_TOKEN_LENGTH
+	sta INTEGRATION_EXTRA
+	lda N1_LOCAL_COUNT
+	sta INTEGRATION_HIDDEN
+	lda $0d
+	sta INTEGRATION_HIDDEN+1
+	pla
+	sta $01
+	lda #FAIL_RUN_NANOC1
+	jmp finish
+.nanoc1Ran:
 	lda #TEST_PASS
 finish:
 	sta TEST_RESULT
@@ -266,5 +393,17 @@ assSourceNameEnd:
 assOutputName:
 	byte 'A','S','S','F','R','O','M','C','.','A','S','M',',','S',',','W'
 assOutputNameEnd:
+nanoc1SourceName:
+	byte 'N','A','N','O','C','1','/','N','A','N','O','C','1','.','C'
+nanoc1SourceNameEnd:
+nanoc1OutputName:
+	byte 'N','A','N','O','C','1','.','A','S','M',',','S',',','W'
+nanoc1OutputNameEnd:
+nanoc1GeneratedName:
+	byte 'B','U','I','L','D','/','N','A','N','O','C','0','-','I','N','T','E','G','R','A','T','I','O','N','/','N','A','N','O','C','1','.','A','S','M'
+nanoc1GeneratedNameEnd:
+assDirectory:
+	byte 'A','S','S','/'
+assDirectoryEnd:
 
 	include "ass.asm"

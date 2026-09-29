@@ -86,6 +86,11 @@ char byte_indexed_mul3(char value)
     return byte_slot[0];
 }
 
+int shifted_difference(int value)
+{
+    return (value - 1072) >> 1;
+}
+
 int main()
 {
     char value;
@@ -132,6 +137,9 @@ int main()
     }
     if (byte_indexed_mul3(value) != 88) {
         return 14;
+    }
+    if (shifted_difference(1086) != 7) {
+        return 15;
     }
 
     return 'Z';

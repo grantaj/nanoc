@@ -18,6 +18,10 @@ NANOC_COMMAND_STATUS        = $3006 ; byte: NANOC_STATUS_*
 NANOC_COMMAND_LINE          = $3007 ; word
 NANOC_COMMAND_DETAIL        = $3009 ; byte: scanner/parser/expression detail
 NANOC_COMMAND_BSS_BYTES     = $300a ; word
+NANOC_COMMAND_LAYOUT        = $300c ; byte: NANOC_LAYOUT_*
+
+NANOC_LAYOUT_NORMAL   = 0
+NANOC_LAYOUT_COMPILER = 1
 
 NANOC_STATUS_OK         = 0
 NANOC_STATUS_SOURCE     = 1

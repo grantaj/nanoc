@@ -12,7 +12,9 @@ ASS_FROM_C_RESULT="$BUILD_DIR/ass-from-c.result"
 mkdir -p "$OUT_DIR"
 rm -f \
     "$OUT_DIR/NCOUT.ASM" "$OUT_DIR/ncout.asm" "$OUT_DIR/ncout.prg" \
-    "$OUT_DIR/ASSFROMC.ASM" "$OUT_DIR/assfromc.asm" "$OUT_DIR/assfromc.prg"
+    "$OUT_DIR/ASSFROMC.ASM" "$OUT_DIR/assfromc.asm" "$OUT_DIR/assfromc.prg" \
+    "$OUT_DIR/NANOC1.ASM" "$OUT_DIR/nanoc1.asm" "$OUT_DIR/nanoc1.prg" \
+    "$OUT_DIR/N1OUT.ASM" "$OUT_DIR/n1out.asm"
 
 nanoc_status_name() {
     case "$1" in
@@ -65,6 +67,22 @@ report_driver_mailbox() {
         3)
             echo "native bootstrap stage=compile-ass.c status=$(nanoc_status_name "$status")($status) line=$line detail=$detail bss=$bss" >&2
             ;;
+        4)
+            echo "native bootstrap stage=compile-nanoc1.c status=$(nanoc_status_name "$status")($status) line=$line detail=$detail bss=$bss" >&2
+            ;;
+        5)
+            if [ "$status" -eq 11 ]; then
+                staged=$((line - 16384))
+                fixups=$((40960 - bss))
+                free_gap=$((bss - line))
+                echo "native bootstrap stage=assemble-nanoc1 assembler-status=$status staged=$staged fixup-bytes=$fixups free-gap=$free_gap" >&2
+            else
+                echo "native bootstrap stage=assemble-nanoc1 assembler-status=$status" >&2
+            fi
+            ;;
+        6)
+map=$((hidden / 256)); locals=$((hidden % 256)); symbol=$((line % 256)); index=$((line / 256)); lookup=$((bss % 256)); expr=$((bss / 256)); echo "native bootstrap stage=run-nanoc1 return=$status find-symbol=$symbol find-index=$index find-match=$detail lookup-id=$lookup expr-id=$expr token-length=$extra locals=$locals map=$map" >&2
+            ;;
         *)
             echo "native bootstrap stage=$stage status=$status line=$line detail=$detail bss=$bss" >&2
             ;;
@@ -97,6 +115,7 @@ echo "production nanoc0 loaded image: $((bytes - 2)) bytes"
     "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_nanoc0_driver.prg" test_nanoc0_driver.asm
     "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_nanoc0_generated.prg" test_nanoc0_generated.asm
     "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_ass_from_c.prg" test_ass_from_c.asm
+    "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_nanoc1_generated.prg" test_nanoc1_generated.asm
 )
 
 # The low-resident integration copy of the native assembler stages nanoc0
@@ -107,7 +126,7 @@ echo "production nanoc0 loaded image: $((bytes - 2)) bytes"
 #
 # If this fails, report the native assembler/compiler mailbox and stop. There is
 # deliberately no host-built compiler fallback.
-if ! TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=180 VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
+if ! TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=240 VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
     VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc0_driver.prg" nanoc0-driver; then
     report_driver_mailbox
@@ -118,6 +137,39 @@ report_driver_mailbox
 set -- $(od -An -tu1 -N9 "$DRIVER_RESULT")
 ASS_C_BSS=$(($7 + 256 * $8))
 echo "bootstrap ass.c BSS: $ASS_C_BSS bytes"
+
+if [ -f "$OUT_DIR/NANOC1.ASM" ]; then
+    NANOC1_GENERATED="$OUT_DIR/NANOC1.ASM"
+elif [ -f "$OUT_DIR/nanoc1.asm" ]; then
+    NANOC1_GENERATED="$OUT_DIR/nanoc1.asm"
+else
+    echo "FAIL nanoc0-driver: generated NANOC1.ASM is missing" >&2
+    exit 1
+fi
+
+NANOC1_SOURCE_BYTES=$(wc -c < "$NANOC1_GENERATED")
+echo "nanoc1 generated ass source: $NANOC1_SOURCE_BYTES bytes"
+"$VASM" -I"$ROOT/ass" -Fbin -cbm-prg -o "$OUT_DIR/nanoc1.prg" "$NANOC1_GENERATED"
+bytes=$(wc -c < "$OUT_DIR/nanoc1.prg")
+NANOC1_LOADED=$((bytes - 2))
+echo "nanoc1 generated loaded image: $NANOC1_LOADED bytes"
+if [ "$NANOC1_LOADED" -gt 24576 ]; then
+    echo "FAIL nanoc1 bootstrap: compiler exceeds the explicit \$4000-\$9fff bootstrap window" >&2
+    exit 1
+fi
+
+if [ -f "$OUT_DIR/N1OUT.ASM" ]; then
+    NANOC1_SMOKE="$OUT_DIR/N1OUT.ASM"
+elif [ -f "$OUT_DIR/n1out.asm" ]; then
+    NANOC1_SMOKE="$OUT_DIR/n1out.asm"
+else
+    echo "FAIL nanoc1 bootstrap: native nanoc1 did not produce N1OUT.ASM" >&2
+    exit 1
+fi
+
+TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=60 VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
+    sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_generated.prg" nanoc1-generated
+echo "native nanoc1 smoke compiled, assembled and returned Z"
 
 if [ -f "$OUT_DIR/NCOUT.ASM" ]; then
     GENERATED="$OUT_DIR/NCOUT.ASM"
