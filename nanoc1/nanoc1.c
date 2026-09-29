@@ -3248,6 +3248,14 @@ char emit_finish_program()
     if (write_newline() == 0) {
         return 0;
     }
+    /*
+     * Runtime code may refer to __nc_bss_bytes, so emit it only after that
+     * constant is known. User code can freely make forward JSR references to
+     * the runtime helpers; ass already resolves those ordinary label fixups.
+     */
+    if (emit_include((fixed_text + 153)) == 0) {
+        return 0;
+    }
     if (write_text((fixed_text + 227)) == 0) {
         return 0;
     }
@@ -3311,11 +3319,6 @@ char compile_file(char *source_name, char source_length, char *output_name, char
         return compiler_error;
     }
     if (emit_include((fixed_text + 125)) == 0) {
-        io_close(source_handle);
-        io_close(output_handle);
-        return compiler_error;
-    }
-    if (emit_include((fixed_text + 153)) == 0) {
         io_close(source_handle);
         io_close(output_handle);
         return compiler_error;
