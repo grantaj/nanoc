@@ -38,6 +38,10 @@ N1_LOCAL_NAME_LEN   = N1_BSS+$1fa2
 N1_LOCAL_COUNT      = N1_BSS+$1fe2
 N1_PENDING_NAME     = N1_BSS+$2065
 N1_PENDING_LENGTH   = N1_BSS+$2085
+N1_FIND_SYMBOL      = N1_BSS+$2206
+N1_FIND_INDEX       = N1_BSS+$2207
+N1_FIND_BASE        = N1_BSS+$2208
+N1_FIND_MATCH       = N1_BSS+$220A
 
 	* = $0800
 
@@ -269,47 +273,27 @@ main:
 	stx INTEGRATION_EXTRA
 	ora INTEGRATION_EXTRA
 	beq .nanoc1Ran
-	;;; Capture exactly what the first local-name lookup sees. The public
-	;;; compiler entry has already restored the caller's map, so expose the RAM
-	;;; under BASIC while sampling nanoc1 BSS, then restore it before returning.
-	;;; DETAIL is zero when every byte matches; otherwise it is the 1-based
-	;;; mismatch position, with BSS low/high holding stored/token bytes there.
+	;;; One final #100 lookup probe. The generated search's own persistent
+	;;; temporaries tell us exactly how it left the loop; no more broad CI
+	;;; instrumentation is needed after this.
 	lda $01
 	pha
 	lda #$36
 	sta $01
-	lda N1_TOKEN_LENGTH
+	lda N1_FIND_SYMBOL
 	sta INTEGRATION_LINE
-	lda N1_LOCAL_COUNT
+	lda N1_FIND_INDEX
 	sta INTEGRATION_LINE+1
-	lda N1_PENDING_LENGTH
-	sta INTEGRATION_EXTRA
-	lda N1_LOCAL_NAME_LEN
-	sta INTEGRATION_HIDDEN
-	lda #$00
-	sta INTEGRATION_HIDDEN+1
+	lda N1_FIND_MATCH
 	sta INTEGRATION_DETAIL
-	ldx #$00
-.lookupProbe:
-	cpx N1_TOKEN_LENGTH
-	beq .lookupProbeDone
-	lda N1_LOCAL_NAME,x
-	cmp N1_TOKEN_TEXT,x
-	bne .lookupProbeMismatch
-	inx
-	jmp .lookupProbe
-.lookupProbeMismatch:
-	txa
-	clc
-	adc #$01
-	sta INTEGRATION_DETAIL
-	lda N1_LOCAL_NAME,x
+	lda N1_FIND_BASE
 	sta INTEGRATION_BSS
-	lda N1_TOKEN_TEXT,x
+	lda N1_FIND_BASE+1
 	sta INTEGRATION_BSS+1
-.lookupProbeDone:
-	;;; Keep the live map captured by header-compiler.asm in the high diagnostic
-	;;; byte before restoring the driver's map.
+	lda N1_TOKEN_LENGTH
+	sta INTEGRATION_EXTRA
+	lda N1_LOCAL_COUNT
+	sta INTEGRATION_HIDDEN
 	lda $0d
 	sta INTEGRATION_HIDDEN+1
 	pla
