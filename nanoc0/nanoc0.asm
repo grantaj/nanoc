@@ -58,6 +58,7 @@ nanoc0Entry:
 ;;; as the runtime helpers. Resident nanoc0 therefore keeps only this short path,
 ;;; not a second text copy of the generated machine map.
 programHeaderPath:	byte 'h','e','a','d','e','r',0
+programCompilerHeaderPath:	byte 'h','e','a','d','e','r','-','c','o','m','p','i','l','e','r',0
 
 programEntryPrefix:
 	string "__nc_entry:"
@@ -110,8 +111,16 @@ compilerMain:
 	jmp .outputFailed
 .outputOpen:
 
+	lda NANOC_COMMAND_LAYOUT
+	cmp #NANOC_LAYOUT_COMPILER
+	bne .ordinaryHeader
+	ldx #<programCompilerHeaderPath
+	ldy #>programCompilerHeaderPath
+	jmp .emitHeader
+.ordinaryHeader:
 	ldx #<programHeaderPath
 	ldy #>programHeaderPath
+.emitHeader:
 	jsr emit_runtime_include
 	bcs .headerEmitted
 	jmp .emitFailed
