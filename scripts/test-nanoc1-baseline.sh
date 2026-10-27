@@ -109,6 +109,7 @@ case_source n1-call-count TESTS/NANOC0-CALL/CNTBAD.C reject none
 case_source n1-call-type TESTS/NANOC0-CALL/TYPBAD.C reject none
 case_source n1-forward-call TESTS/NANOC0-CALL/LATBAD.C reject none
 case_source n1-control-depth TESTS/NANOC0-STMT/DEPTHBAD.C reject none
+case_source n1-operator-depth TESTS/NANOC1/OPERATOR-DEPTH.C reject none
 
 # Whole-program stress: no alternate assembler source and no C rewrite.
 case_source n1-ass BOOTSTRAP/ASS.C accept compile
