@@ -4,7 +4,7 @@ VASM = vasm6502_oldstyle
 VICE = x64sc
 BUILD_DIR = build
 
-.PHONY: all setup doctor clean test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap test-nanoc0-expressions test-nanoc0-statements test-nanoc0-calls test-nanoc0-runtime
+.PHONY: all setup doctor clean test test-skipws test-scanner test-parser test-parser-eof test-instruction test-values test-globals test-locals test-assembler test-data test-strings test-streaming test-selfhost test-nanoc0-scanner test-nanoc0-declarations test-nanoc0-bootstrap test-nanoc0-expressions test-nanoc0-statements test-nanoc0-calls test-nanoc0-runtime test-nanoc1-baseline
 
 all: $(BUILD_DIR)/dis.prg $(BUILD_DIR)/hexdump.prg $(BUILD_DIR)/test_modes.prg \
 	$(BUILD_DIR)/ass.prg $(BUILD_DIR)/parse.prg \
@@ -214,6 +214,12 @@ test-nanoc0-runtime: $(BUILD_DIR)/test_nanoc0_runtime_compile.prg $(BUILD_DIR)/t
 	rm -f tests/nanoc0-runtime/RTOUT.ASM tests/nanoc0-runtime/rtout.asm tests/nanoc0-runtime/SMOKE.ASM tests/nanoc0-runtime/smoke.asm tests/nanoc0-runtime/DTEST tests/nanoc0-runtime/dtest
 	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR) VICE_FS_DIR_9=$(CURDIR)/tests/nanoc0-runtime VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_runtime_compile.prg nanoc0-runtime-compile
 	VICE_TIMEOUT=60 VICE_FS_DIR=$(CURDIR) VICE_FS_DIR_9=$(CURDIR)/tests/nanoc0-runtime VICE=$(VICE) BUILD_DIR=$(BUILD_DIR) sh tests/run-test.sh $(BUILD_DIR)/test_nanoc0_runtime_run.prg nanoc0-runtime
+
+# Exercise the native #100 compiler on the shared Phase 1 corpus and exact ass.c.
+# The bootstrap is intentionally run once; the #101 script reuses its image.
+test-nanoc1-baseline:
+	sh scripts/test-nanoc0-integration.sh
+	sh scripts/test-nanoc1-baseline.sh
 
 clean:
 	rm -rf $(BUILD_DIR)
