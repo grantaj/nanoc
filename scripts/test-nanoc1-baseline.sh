@@ -3,9 +3,9 @@
 # nanoc0 -> nanoc1.c -> ass bootstrap. No host-language compiler model.
 set -eu
 
-VASM=\${VASM:-vasm6502_oldstyle}
-VICE=\${VICE:-x64sc}
-BUILD_DIR=\${BUILD_DIR:-build}
+VASM=${VASM:-vasm6502_oldstyle}
+VICE=${VICE:-x64sc}
+BUILD_DIR=${BUILD_DIR:-build}
 ROOT=$(pwd)
 OUT_DIR="$ROOT/$BUILD_DIR/nanoc0-integration"
 COMPILER="$OUT_DIR/nanoc1.prg"
@@ -21,8 +21,8 @@ case_source() {
     source=$2
     outcome=$3
     execution=$4
-    low=\${5:-0}
-    high=\${6:-0}
+    low=${5:-0}
+    high=${6:-0}
 
     printf '%s' "$source" > "$ROOT/$BUILD_DIR/n1job"
     rm -f "$OUT_DIR/N1OUT.ASM" "$OUT_DIR/n1out.asm"
@@ -33,7 +33,7 @@ case_source() {
 
     set -- $(od -An -tu1 -N3 "$BUILD_DIR/$name-compile.result")
     if [ "$#" -lt 3 ] || [ "$3" -ne 0 ]; then
-        echo "FAIL $name: invalid compiler high status \${3:-missing}" >&2
+        echo "FAIL $name: invalid compiler high status ${3:-missing}" >&2
         exit 1
     fi
     status=$2
