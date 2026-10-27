@@ -641,12 +641,13 @@ char next_source_char()
     int value;
     int next;
 
+    /* Held bytes must pass through the same CR/LF conversion as new input. */
     if (hold_valid != 0) {
-        source_char = source_hold;
+        value = source_hold;
         hold_valid = 0;
-        return 1;
+    } else {
+        value = io_read(source_handle);
     }
-    value = io_read(source_handle);
     if (value == -2) {
         compiler_error = 1;
         source_char = -1;
@@ -1241,11 +1242,12 @@ char emit_bss_assignment(char area, char symbol, unsigned size)
 {
     unsigned new_end;
 
-    new_end = bss_offset + size;
-    if (new_end > 34304) {
+    /* Subtract first: a 16-bit addition can wrap before the limit check. */
+    if (size > 34304 - bss_offset) {
         compiler_error = 6;
         return 0;
     }
+    new_end = bss_offset + size;
     if (area == 2) {
         if (emit_current_name(current_func, symbol) == 0) {
             return 0;
@@ -2922,6 +2924,11 @@ char parse_global_array(char symbol, char element_type)
     }
     width = type_size(element_type);
     if (token_kind == ';') {
+        /* Check element count before 16-bit byte multiplication can wrap. */
+        if (width == 2 & length > 17152) {
+            compiler_error = 6;
+            return 0;
+        }
         if (emit_bss_assignment(1, symbol, length * width) == 0) {
             return 0;
         }
