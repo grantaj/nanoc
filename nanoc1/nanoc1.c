@@ -1660,49 +1660,36 @@ char emit_shift(char op)
     return emit_label(done_label);
 }
 
+/*
+ * The relational helper names are eight consecutive 11-byte strings in
+ * fixed_text: unsigned LT/LE/GT/GE, then signed LT/LE/GT/GE.
+ */
 char emit_compare(char op, char unsigned_compare)
 {
-    char *helper;
+    unsigned offset;
 
-    helper = (fixed_text + 312);
     if (op == 142) {
-        helper = (fixed_text + 312);
+        offset = 312;
     } else {
         if (op == 143) {
-            helper = (fixed_text + 322);
+            offset = 322;
         } else {
-            if (unsigned_compare != 0) {
-                if (op == '<') {
-                    helper = (fixed_text + 332);
-                } else {
-                    if (op == 144) {
-                        helper = (fixed_text + 343);
-                    } else {
-                        if (op == '>') {
-                            helper = (fixed_text + 354);
-                        } else {
-                            helper = (fixed_text + 365);
-                        }
-                    }
-                }
-            } else {
-                if (op == '<') {
-                    helper = (fixed_text + 376);
-                } else {
-                    if (op == 144) {
-                        helper = (fixed_text + 387);
-                    } else {
-                        if (op == '>') {
-                            helper = (fixed_text + 398);
-                        } else {
-                            helper = (fixed_text + 409);
-                        }
-                    }
-                }
+            offset = 332;
+            if (unsigned_compare == 0) {
+                offset = 376;
+            }
+            if (op == 144) {
+                offset = offset + 11;
+            }
+            if (op == '>') {
+                offset = offset + 22;
+            }
+            if (op == 145) {
+                offset = offset + 33;
             }
         }
     }
-    return emit_text_operand((fixed_text + 535), helper);
+    return emit_text_operand((fixed_text + 535), fixed_text + offset);
 }
 
 char reduce_unary()
