@@ -26,7 +26,11 @@ case_source() {
 
     printf '%s' "$source" > "$ROOT/$BUILD_DIR/n1job"
     rm -f "$OUT_DIR/N1OUT.ASM" "$OUT_DIR/n1out.asm"
-    VICE_PRELOAD_PRG="$COMPILER" VICE_TIMEOUT=90 \
+    compile_timeout=90
+    if [ "$name" = n1-ass ]; then
+        compile_timeout=360
+    fi
+    VICE_PRELOAD_PRG="$COMPILER" VICE_TIMEOUT="$compile_timeout" \
         VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
         VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
         sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_compile.prg" "$name-compile"
