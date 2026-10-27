@@ -90,6 +90,7 @@ case_source() {
 case_source n1-decls TESTS/NANOC0-SRC/DECLS.C accept run 0 0
 case_source n1-expressions TESTS/NANOC0-EXPR/EXPRESSIONS.C accept compile
 case_source n1-return8 TESTS/NANOC0-STMT/RETURN8.C accept run 90 0
+case_source n1-pointer-index TESTS/NANOC1/POINTER-INDEX.C accept run 90 0
 case_source n1-statements TESTS/NANOC0-STMT/STATEMENTS.C accept run 52 18
 
 rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
