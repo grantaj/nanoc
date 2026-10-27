@@ -1429,33 +1429,48 @@ char emit_load_symbol(char area, char symbol, char type)
     return hold_ax();
 }
 
-char emit_array_address(char symbol)
+/* Both a global array and a string literal are constant 16-bit addresses. */
+char emit_address_value(char kind, unsigned target)
 {
-    if (emit_instruction((fixed_text + 431)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 547)) == 0) {
-        return 0;
-    }
-    if (emit_global_name(symbol) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
-    if (emit_instruction((fixed_text + 435)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 551)) == 0) {
-        return 0;
-    }
-    if (emit_global_name(symbol) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
+    char high;
+    char *op;
+    char *prefix;
+
+    high = 0;
+    while (high < 2) {
+        if (high == 0) {
+            op = fixed_text + 431;
+            prefix = fixed_text + 547;
+        } else {
+            op = fixed_text + 435;
+            prefix = fixed_text + 551;
+        }
+        if (emit_instruction(op) == 0) {
+            return 0;
+        }
+        if (write_text(prefix) == 0) {
+            return 0;
+        }
+        if (kind == 2) {
+            if (emit_global_name(target) == 0) {
+                return 0;
+            }
+        } else {
+            if (emit_label_name(target) == 0) {
+                return 0;
+            }
+        }
+        if (write_newline() == 0) {
+            return 0;
+        }
+        high = high + 1;
     }
     return hold_ax();
+}
+
+char emit_array_address(char symbol)
+{
+    return emit_address_value(2, symbol);
 }
 
 char emit_literal_value(unsigned value)
@@ -1498,31 +1513,7 @@ char emit_string_literal()
     if (emit_label(skip_label) == 0) {
         return 0;
     }
-    if (emit_instruction((fixed_text + 431)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 547)) == 0) {
-        return 0;
-    }
-    if (emit_label_name(data_label) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
-    if (emit_instruction((fixed_text + 435)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 551)) == 0) {
-        return 0;
-    }
-    if (emit_label_name(data_label) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
-    return hold_ax();
+    return emit_address_value(1, data_label);
 }
 
 char is_numeric_type(char type)
