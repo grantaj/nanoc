@@ -3371,36 +3371,8 @@ char emit_finish_program()
     return emit_zero((fixed_text + 539));
 }
 
-/* The file handles belong to compile_file, not to individual parser stages.
- * A single exit path makes their lifetime clear and avoids repeated cleanup.
- */
-char compile_contents()
-{
-    if (init_symbols() == 0) {
-        return compiler_error;
-    }
-    if (emit_include((fixed_text + 125)) == 0) {
-        return compiler_error;
-    }
-    if (next_source_char() == 0) {
-        return compiler_error;
-    }
-    if (scan_token() == 0) {
-        return compiler_error;
-    }
-    if (parse_unit() == 0) {
-        return compiler_error;
-    }
-    if (emit_finish_program() == 0) {
-        return compiler_error;
-    }
-    return 0;
-}
-
 char compile_file(char *source_name, char source_length, char *output_name, char output_length)
 {
-    char status;
-
     compiler_error = 0;
     hold_valid = 0;
     source_line = 1;
@@ -3416,10 +3388,66 @@ char compile_file(char *source_name, char source_length, char *output_name, char
         io_close(source_handle);
         return 9;
     }
-    status = compile_contents();
+    if (init_symbols() == 0) {
+        io_close(source_handle);
+        io_close(output_handle);
+        return compiler_error;
+    }
+    if (emit_include((fixed_text + 125)) == 0) {
+        io_close(source_handle);
+        io_close(output_handle);
+        return compiler_error;
+    }
+    if (next_source_char() == 0) {
+        io_close(source_handle);
+        io_close(output_handle);
+        return compiler_error;
+    }
+    if (scan_token() == 0) {
+        io_close(source_handle);
+        io_close(output_handle);
+        return compiler_error;
+    }
+    if (parse_unit() == 0) {
+        io_close(source_handle);
+        io_close(output_handle);
+        return compiler_error;
+    }
+    if (emit_finish_program() == 0) {
+        io_close(source_handle);
+        io_close(output_handle);
+        return compiler_error;
+    }
     io_close(source_handle);
     io_close(output_handle);
-    return status;
+    return 0;
 }
 
+/*
+ * Read a source pathname from BUILD/N1JOB on device 8. This small bootstrap
+ * entry point leaves compile_file generic: the test selects a committed input
+ * without making or compiling a private variant of nanoc1.c.
+ * BUILD/N1JOB contains raw filename bytes, without a trailing newline.
+ */
+int main()
+{
+    int job;
+    int value;
+    char length = 0;
 
+    job = io_open((fixed_text + 0), 11);
+    if (job < 0) {
+        return 8;
+    }
+    value = io_read(job);
+    while (value >= 0 & length < 63) {
+        job_source[length] = value;
+        length = length + 1;
+        value = io_read(job);
+    }
+    io_close(job);
+    if (length == 0 | value != -1) {
+        return 8;
+    }
+    return compile_file(job_source, length, (fixed_text + 21), 9);
+}
