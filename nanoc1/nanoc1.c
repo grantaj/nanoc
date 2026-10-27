@@ -1340,37 +1340,9 @@ char emit_callee_call(char function_id)
     return write_newline();
 }
 
-char emit_param_store(char function_id, char argument, char type)
+/* The same target slot may need its low and high bytes stored. */
+char emit_param_byte(char function_id, char argument, char high)
 {
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
-    if (type != 1) {
-        if (emit_instruction((fixed_text + 443)) == 0) {
-            return 0;
-        }
-        if (write_char(' ') == 0) {
-            return 0;
-        }
-        if (global_kind[function_id] == 4) {
-            if (runtime_param_name(function_id, argument) == 0) {
-                return 0;
-            }
-        } else {
-            if (emit_current_name(function_id, argument) == 0) {
-                return 0;
-            }
-        }
-        if (write_text((fixed_text + 584)) == 0) {
-            return 0;
-        }
-        if (write_newline() == 0) {
-            return 0;
-        }
-    }
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
     if (emit_instruction((fixed_text + 443)) == 0) {
         return 0;
     }
@@ -1386,7 +1358,28 @@ char emit_param_store(char function_id, char argument, char type)
             return 0;
         }
     }
+    if (high != 0) {
+        if (write_text((fixed_text + 584)) == 0) {
+            return 0;
+        }
+    }
     return write_newline();
+}
+
+char emit_param_store(char function_id, char argument, char type)
+{
+    if (emit_zero((fixed_text + 455)) == 0) {
+        return 0;
+    }
+    if (type != 1) {
+        if (emit_param_byte(function_id, argument, 1) == 0) {
+            return 0;
+        }
+    }
+    if (emit_zero((fixed_text + 455)) == 0) {
+        return 0;
+    }
+    return emit_param_byte(function_id, argument, 0);
 }
 
 char emit_push_ax()
@@ -1534,13 +1527,7 @@ char emit_string_literal()
 
 char is_numeric_type(char type)
 {
-    if (type == 1) {
-        return 1;
-    }
-    if (type == 2) {
-        return 1;
-    }
-    if (type == 3) {
+    if (type >= 1 & type <= 3) {
         return 1;
     }
     return 0;
@@ -1554,10 +1541,8 @@ char compatible_type(char actual, char expected)
         }
         return 0;
     }
-    if (is_numeric_type(actual) != 0) {
-        if (is_numeric_type(expected) != 0) {
-            return 1;
-        }
+    if (is_numeric_type(actual) != 0 & is_numeric_type(expected) != 0) {
+        return 1;
     }
     return 0;
 }
