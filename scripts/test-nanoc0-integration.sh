@@ -18,7 +18,8 @@ if [ -z "$NANOC1_SOURCE" ] || [ "${#NANOC1_SOURCE}" -gt 63 ]; then
     echo "FAIL nanoc1: source pathname must be 1..63 bytes" >&2
     exit 1
 fi
-printf '%s' "$NANOC1_SOURCE" > "$ROOT/$BUILD_DIR/N1JOB"
+# VICE's device-8 host filesystem maps C64 uppercase names to lowercase.
+printf '%s' "$NANOC1_SOURCE" > "$ROOT/$BUILD_DIR/n1job"
 rm -f \
     "$OUT_DIR/NCOUT.ASM" "$OUT_DIR/ncout.asm" "$OUT_DIR/ncout.prg" \
     "$OUT_DIR/ASSFROMC.ASM" "$OUT_DIR/assfromc.asm" "$OUT_DIR/assfromc.prg" \
