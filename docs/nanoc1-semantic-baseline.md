@@ -50,7 +50,7 @@ The issue #100 main-branch run (commit
   `$4000-$9fff` bootstrap window.
 
 Each #101 run writes `build/nanoc0-integration/nanoc1-baseline.txt`
-containing the **last source-touching commit for `nanoc1.c`**, exact
+containing the **repository commit and exact Git blob of `nanoc1.c`**, exact
 current compiler image sizes, exact `bootstrap/ass.c` generated assembly
 and image sizes, and two representative counts of `PHA`/`PLA`
 materialisation operations.
