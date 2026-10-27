@@ -120,9 +120,11 @@ compiler_source=$(wc -c < "$compiler_asm")
 compiler_loaded=$(($(wc -c < "$COMPILER") - 2))
 ass_source=$(wc -c < "$OUT_DIR/n1-ass.asm")
 ass_loaded=$(($(wc -c < "$OUT_DIR/n1-ass.prg") - 2))
-compiler_version=$(git log -1 --format=%H -- nanoc1/nanoc1.c)
+compiler_version=$(git rev-parse HEAD)
+compiler_blob=$(git rev-parse HEAD:nanoc1/nanoc1.c)
 {
-    printf 'nanoc1-source-commit=%s\n' "$compiler_version"
+    printf 'nanoc1-repository-commit=%s\n' "$compiler_version"
+    printf 'nanoc1-source-blob=%s\n' "$compiler_blob"
     printf 'nanoc1-generated-assembly-bytes=%s\n' "$compiler_source"
     printf 'nanoc1-loaded-bytes=%s\n' "$compiler_loaded"
     printf 'ass.c-generated-assembly-bytes=%s\n' "$ass_source"
