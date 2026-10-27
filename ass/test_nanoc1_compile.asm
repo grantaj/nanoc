@@ -2,7 +2,7 @@
 
 ;;; Exercise a preloaded, production-generated nanoc1 at $4000. The harness
 ;;; observes A/X only; it does not duplicate scanner, parser or emitter logic.
-	* = ASSEMBLER_TEST_ENTRY
+	* = $0800             ; small caller below the compiler at $4000
 
 main:
 	jsr $4000
