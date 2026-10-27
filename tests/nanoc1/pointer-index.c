@@ -1,8 +1,7 @@
-char *text = "ABC";
-
 int main()
 {
     char *p = "WXYZ";
+    char *text = "ABC";
     if ("ABC"[1] != 'B') {
         return 1;
     }
