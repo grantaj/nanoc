@@ -10,6 +10,15 @@ DRIVER_RESULT="$BUILD_DIR/nanoc0-driver.result"
 ASS_FROM_C_RESULT="$BUILD_DIR/ass-from-c.result"
 
 mkdir -p "$OUT_DIR"
+
+# The exact committed nanoc1.c reads a source filename from BUILD/N1JOB.
+# Select any Phase 1 fixture without changing (or copying) compiler source.
+NANOC1_SOURCE=${NANOC1_SOURCE:-TESTS/NANOC1/N1SRC.C}
+if [ -z "$NANOC1_SOURCE" ] || [ "${#NANOC1_SOURCE}" -gt 63 ]; then
+    echo "FAIL nanoc1: source pathname must be 1..63 bytes" >&2
+    exit 1
+fi
+printf '%s' "$NANOC1_SOURCE" > "$ROOT/$BUILD_DIR/N1JOB"
 rm -f \
     "$OUT_DIR/NCOUT.ASM" "$OUT_DIR/ncout.asm" "$OUT_DIR/ncout.prg" \
     "$OUT_DIR/ASSFROMC.ASM" "$OUT_DIR/assfromc.asm" "$OUT_DIR/assfromc.prg" \
@@ -81,7 +90,7 @@ report_driver_mailbox() {
             fi
             ;;
         6)
-map=$((hidden / 256)); locals=$((hidden % 256)); symbol=$((line % 256)); index=$((line / 256)); lookup=$((bss % 256)); expr=$((bss / 256)); echo "native bootstrap stage=run-nanoc1 return=$status find-symbol=$symbol find-index=$index find-match=$detail lookup-id=$lookup expr-id=$expr token-length=$extra locals=$locals map=$map" >&2
+            echo "native bootstrap stage=run-nanoc1 return-low=$status return-high=$extra" >&2
             ;;
         *)
             echo "native bootstrap stage=$stage status=$status line=$line detail=$detail bss=$bss" >&2
@@ -167,9 +176,16 @@ else
     exit 1
 fi
 
-TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=60 VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
-    sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_generated.prg" nanoc1-generated
-echo "native nanoc1 smoke compiled, assembled and returned Z"
+if [ "${NANOC1_COMPILE_ONLY:-0}" = 1 ]; then
+    # Arbitrary programs need not return Z. Native nanoc1 still does the
+    # compilation; host vasm checks syntax/size for non-Z fixture outputs.
+    "$VASM" -I"$ROOT/ass" -Fbin -cbm-prg -o "$OUT_DIR/n1out.prg" "$NANOC1_SMOKE"
+    echo "native nanoc1 compiled $NANOC1_SOURCE (compile-only fixture)"
+else
+    TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=60 VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
+        sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_generated.prg" nanoc1-generated
+    echo "native nanoc1 smoke compiled, assembled and returned Z"
+fi
 
 if [ -f "$OUT_DIR/NCOUT.ASM" ]; then
     GENERATED="$OUT_DIR/NCOUT.ASM"

@@ -27,24 +27,6 @@ STAGE_COMPILE_NANOC1 = 4
 STAGE_ASSEMBLE_NANOC1 = 5
 STAGE_RUN_NANOC1      = 6
 
-;;; Temporary #100 bring-up probes for the current nanoc1 BSS layout. These
-;;; diagnose the first native symbol-lookup failure and will be removed once the
-;;; semantic handoff is green.
-N1_BSS              = $a000
-N1_TOKEN_TEXT       = N1_BSS+$0000
-N1_TOKEN_LENGTH     = N1_BSS+$00c2
-N1_LOCAL_NAME       = N1_BSS+$1ba2
-N1_LOCAL_NAME_LEN   = N1_BSS+$1fa2
-N1_LOCAL_COUNT      = N1_BSS+$1fe2
-N1_PENDING_NAME     = N1_BSS+$2065
-N1_PENDING_LENGTH   = N1_BSS+$2085
-N1_FIND_SYMBOL      = N1_BSS+$2206
-N1_FIND_INDEX       = N1_BSS+$2207
-N1_FIND_BASE        = N1_BSS+$2208
-N1_FIND_MATCH       = N1_BSS+$220A
-N1_LOOKUP_ID        = N1_BSS+$220B
-N1_EXPR_ID          = N1_BSS+$2270
-
 	* = $0800
 
 main:
@@ -275,31 +257,6 @@ main:
 	stx INTEGRATION_EXTRA
 	ora INTEGRATION_EXTRA
 	beq .nanoc1Ran
-	;;; One final #100 lookup probe. The generated search's own persistent
-	;;; temporaries tell us exactly how it left the loop; no more broad CI
-	;;; instrumentation is needed after this.
-	lda $01
-	pha
-	lda #$36
-	sta $01
-	lda N1_FIND_SYMBOL
-	sta INTEGRATION_LINE
-	lda N1_FIND_INDEX
-	sta INTEGRATION_LINE+1
-	lda N1_FIND_MATCH
-	sta INTEGRATION_DETAIL
-	lda N1_LOOKUP_ID
-	sta INTEGRATION_BSS
-	lda N1_EXPR_ID
-	sta INTEGRATION_BSS+1
-	lda N1_TOKEN_LENGTH
-	sta INTEGRATION_EXTRA
-	lda N1_LOCAL_COUNT
-	sta INTEGRATION_HIDDEN
-	lda $0d
-	sta INTEGRATION_HIDDEN+1
-	pla
-	sta $01
 	lda #FAIL_RUN_NANOC1
 	jmp finish
 .nanoc1Ran:
