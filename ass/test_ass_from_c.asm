@@ -477,59 +477,23 @@ bootstrapSourceDirectory:
 	byte 'A','S','S','/'
 bootstrapSourceDirectoryEnd:
 
-	ifdef N1_ORACLE
-assAssembleName:	byte '_','_','f','8','1'
-	else
 assAssembleName:	byte '_','_','c','_','a','s','s','_','a','s','s','e','m','b','l','e'
-	endif
 assAssembleNameEnd:
-	ifdef N1_ORACLE
-param0Name:	byte '_','_','v','8','1','_','0','0'
-	else
 param0Name:	byte '_','_','c','_','a','s','s','_','a','s','s','e','m','b','l','e','_','_','v','0','0'
-	endif
 param0NameEnd:
-	ifdef N1_ORACLE
-param1Name:	byte '_','_','v','8','1','_','0','1'
-	else
 param1Name:	byte '_','_','c','_','a','s','s','_','a','s','s','e','m','b','l','e','_','_','v','0','1'
-	endif
 param1NameEnd:
-	ifdef N1_ORACLE
-param2Name:	byte '_','_','v','8','1','_','0','2'
-	else
 param2Name:	byte '_','_','c','_','a','s','s','_','a','s','s','e','m','b','l','e','_','_','v','0','2'
-	endif
 param2NameEnd:
-	ifdef N1_ORACLE
-param3Name:	byte '_','_','v','8','1','_','0','3'
-	else
 param3Name:	byte '_','_','c','_','a','s','s','_','a','s','s','e','m','b','l','e','_','_','v','0','3'
-	endif
 param3NameEnd:
-	ifdef N1_ORACLE
-param4Name:	byte '_','_','v','8','1','_','0','4'
-	else
 param4Name:	byte '_','_','c','_','a','s','s','_','a','s','s','e','m','b','l','e','_','_','v','0','4'
-	endif
 param4NameEnd:
-	ifdef N1_ORACLE
-assImageName:	byte '_','_','g','2','4'
-	else
 assImageName:	byte '_','_','c','_','a','s','s','_','i','m','a','g','e'
-	endif
 assImageNameEnd:
-	ifdef N1_ORACLE
-assLengthName:	byte '_','_','g','2','5'
-	else
 assLengthName:	byte '_','_','c','_','a','s','s','_','i','m','a','g','e','_','l','e','n','g','t','h'
-	endif
 assLengthNameEnd:
-	ifdef N1_ORACLE
-assOriginName:	byte '_','_','g','2','6'
-	else
 assOriginName:	byte '_','_','c','_','a','s','s','_','o','r','i','g','i','n'
-	endif
 assOriginNameEnd:
 
 param0:		word 0
