@@ -342,6 +342,8 @@ char value_top;
 char expr_type;
 char expr_expect;
 char expr_done;
+/* One finished expression value may remain in A/X until its consumer is known. */
+char ax_pending;
 
 /* bounded structured-control state */
 char ctrl_kind[16];
@@ -1392,8 +1394,28 @@ char emit_push_ax()
     return write_text((fixed_text + 694));
 }
 
+/* Materialise the last value only when another value needs A/X. */
+char flush_ax()
+{
+    if (ax_pending == 0) {
+        return 1;
+    }
+    ax_pending = 0;
+    return emit_push_ax();
+}
+
+char hold_ax()
+{
+    ax_pending = 1;
+    return 1;
+}
+
 char emit_pop_ax()
 {
+    if (ax_pending != 0) {
+        ax_pending = 0;
+        return 1;
+    }
     return write_text((fixed_text + 710));
 }
 
@@ -1411,7 +1433,7 @@ char emit_load_symbol(char area, char symbol, char type)
             return 0;
         }
     }
-    return emit_push_ax();
+    return hold_ax();
 }
 
 char emit_array_address(char symbol)
@@ -1440,7 +1462,7 @@ char emit_array_address(char symbol)
     if (write_newline() == 0) {
         return 0;
     }
-    return emit_push_ax();
+    return hold_ax();
 }
 
 char emit_literal_value(unsigned value)
@@ -1451,7 +1473,7 @@ char emit_literal_value(unsigned value)
     if (emit_immediate((fixed_text + 435), (value >> 8) & 255) == 0) {
         return 0;
     }
-    return emit_push_ax();
+    return hold_ax();
 }
 
 char emit_string_literal()
@@ -1507,7 +1529,7 @@ char emit_string_literal()
     if (write_newline() == 0) {
         return 0;
     }
-    return emit_push_ax();
+    return hold_ax();
 }
 
 char is_numeric_type(char type)
@@ -1720,6 +1742,9 @@ char reduce_unary()
         compiler_error = 5;
         return 0;
     }
+    if (flush_ax() == 0) {
+        return 0;
+    }
     if (write_text((fixed_text + 976)) == 0) {
         return 0;
     }
@@ -1778,6 +1803,9 @@ char reduce_binary(char op)
             result = 2;
         }
     }
+    if (flush_ax() == 0) {
+        return 0;
+    }
     if (emit_binary_prelude() == 0) {
         return 0;
     }
@@ -1813,7 +1841,7 @@ char reduce_binary(char op)
             }
         }
     }
-    if (emit_push_ax() == 0) {
+    if (hold_ax() == 0) {
         return 0;
     }
     value_top = value_top - 1;
@@ -1881,6 +1909,9 @@ char emit_call_finish(char marker_index)
         }
         i = i + 1;
     }
+    if (flush_ax() == 0) {
+        return 0;
+    }
     i = argc;
     while (i > 0) {
         i = i - 1;
@@ -1898,7 +1929,7 @@ char emit_call_finish(char marker_index)
             return 0;
         }
     }
-    if (emit_push_ax() == 0) {
+    if (hold_ax() == 0) {
         return 0;
     }
     return push_value_type(global_type[function_id]);
@@ -2072,6 +2103,12 @@ char expression_value_step()
         }
         return scan_token();
     }
+    /* A new value may overwrite A/X; the earlier semantic value is live. */
+    if (token_kind == 131 | token_kind == 132 | token_kind == 133 | token_kind == 130) {
+        if (flush_ax() == 0) {
+            return 0;
+        }
+    }
     if (token_kind == 131 | token_kind == 132) {
         type = token_type;
         if (emit_literal_value(token_value) == 0) {
@@ -2199,6 +2236,9 @@ char expression_close_index()
         type = 1;
     }
     if (kind == 5) {
+        if (flush_ax() == 0) {
+            return 0;
+        }
         if (write_text((fixed_text + 1782)) == 0) {
             return 0;
         }
@@ -2329,6 +2369,7 @@ char compile_expression()
 {
     op_top = 0;
     value_top = 0;
+    ax_pending = 0;
     return expression_loop();
 }
 
@@ -2344,6 +2385,10 @@ char compile_call_stmt(char function_id)
     }
     if (expression_loop() == 0) {
         return 0;
+    }
+    if (ax_pending != 0) {
+        ax_pending = 0;
+        return 1;
     }
     if (emit_zero((fixed_text + 455)) == 0) {
         return 0;
@@ -2396,6 +2441,9 @@ char emit_scalar_store(char area, char symbol, char type)
 
 char emit_index_store(char element_type)
 {
+    if (flush_ax() == 0) {
+        return 0;
+    }
     if (element_type == 1) {
         return write_text((fixed_text + 1372));
     }
