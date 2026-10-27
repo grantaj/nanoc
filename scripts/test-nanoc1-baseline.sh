@@ -161,8 +161,13 @@ cp "$OUT_DIR/n1-ass.asm" "$oracle_input"
 
 # The earlier nanoc0 baseline treats a timeout as non-gating; #101 cannot.
 # A missing result byte is an unfinished proof, not a pass.
+(
+    cd ass
+    "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_nanoc1_ass_from_c.prg" \
+        test_nanoc1_ass_from_c.asm
+)
 VICE_TIMEOUT=360 VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
-    sh tests/run-test.sh "$BUILD_DIR/test_ass_from_c.prg" nanoc1-ass-oracle
+    sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_ass_from_c.prg" nanoc1-ass-oracle
 restore_oracle_input
 trap - EXIT
 echo "PASS #101: native ass bootstrap/oracle matched for nanoc1-generated ass.c"
