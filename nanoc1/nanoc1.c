@@ -1276,32 +1276,27 @@ char emit_bss_assignment(char area, char symbol, unsigned size)
 
 char runtime_param_name(char function_id, char argument)
 {
+    char *name;
+
     if (function_id == 0) {
-        if (write_text((fixed_text + 626)) == 0) {
-            return 0;
-        }
+        name = fixed_text + 626;
     } else {
         if (function_id == 1) {
-            if (write_text((fixed_text + 642)) == 0) {
-                return 0;
-            }
+            name = fixed_text + 642;
         } else {
             if (function_id == 2) {
-                if (write_text((fixed_text + 608)) == 0) {
-                    return 0;
-                }
+                name = fixed_text + 608;
             } else {
                 if (function_id == 3) {
-                    if (write_text((fixed_text + 658)) == 0) {
-                        return 0;
-                    }
+                    name = fixed_text + 658;
                 } else {
-                    if (write_text((fixed_text + 591)) == 0) {
-                        return 0;
-                    }
+                    name = fixed_text + 591;
                 }
             }
         }
+    }
+    if (write_text(name) == 0) {
+        return 0;
     }
     return write_hex_digit(argument);
 }
