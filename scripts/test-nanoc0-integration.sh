@@ -141,6 +141,18 @@ if ! TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=240 VICE_FS_DIR="$ROOT" VICE_FS_DIR_9
     VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc0_driver.prg" nanoc0-driver; then
     report_driver_mailbox
+    # On bootstrap staging overflow, host vasm reports the candidate's actual
+    # image size. This is diagnostic, not a replacement for native ass.
+    for candidate in "$OUT_DIR/NANOC1.ASM" "$OUT_DIR/nanoc1.asm"; do
+        if [ -f "$candidate" ]; then
+            if "$VASM" -I"$ROOT/ass" -Fbin -cbm-prg \
+                -o "$OUT_DIR/nanoc1-size-probe.prg" "$candidate"; then
+                bytes=$(wc -c < "$OUT_DIR/nanoc1-size-probe.prg")
+                echo "failed bootstrap candidate image: $((bytes - 2)) bytes (limit 24576)" >&2
+            fi
+            break
+        fi
+    done
     exit 1
 fi
 
