@@ -21,6 +21,15 @@ ENTRY=$(printf '%02x%02x' "$2" "$1")
 
 cat > "$MONITOR_FILE" <<EOF
 load "$PRG" 0
+EOF
+
+# Optional production binary preload for native integration tests. The harness
+# itself remains at $0800; the compiler image is loaded at its own $4000 origin.
+if [ -n "${VICE_PRELOAD_PRG:-}" ]; then
+    printf 'load "%s" 0\n' "$VICE_PRELOAD_PRG" >> "$MONITOR_FILE"
+fi
+
+cat >> "$MONITOR_FILE" <<EOF
 > 0001 36
 watch store 0002
 g $ENTRY

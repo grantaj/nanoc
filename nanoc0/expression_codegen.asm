@@ -474,15 +474,44 @@ emit_shift_reduction:
 	jmp mark_expression_a
 
 .general:
+	;;; A direct RHS has not emitted any code yet. Save/materialise the left value
+	;;; first so a live A/A-X left operand cannot be destroyed merely to load the
+	;;; shift count. Then reselect the RHS and materialise its byte.
+	jsr right_operand_is_direct
+	bcc .computedRight
+	jsr materialize_saved_word
+	bcc .earlyFailed
+	jsr emit_save_right_tmp
+	bcc .earlyFailed
+	jsr select_right_operand
 	jsr materialize_expression_byte
 	bcc .earlyFailed
 	ldx #<exprTay
 	ldy #>exprTay
 	jsr emit_string
 	bcc .earlyFailed
+	jmp .labels
+
+.computedRight:
+	;;; A computed RHS may already exist only in A/A-X. Preserve its low-byte
+	;;; count on the hardware stack while the saved left operand is recovered.
+	jsr materialize_expression_byte
+	bcc .earlyFailed
+	ldx #<exprPha
+	ldy #>exprPha
+	jsr emit_string
+	bcc .earlyFailed
 	jsr materialize_saved_word
 	bcc .earlyFailed
 	jsr emit_save_right_tmp
+	bcc .earlyFailed
+	ldx #<exprPla
+	ldy #>exprPla
+	jsr emit_string
+	bcc .earlyFailed
+	ldx #<exprTay
+	ldy #>exprTay
+	jsr emit_string
 	bcc .earlyFailed
 	jmp .labels
 .earlyFailed:

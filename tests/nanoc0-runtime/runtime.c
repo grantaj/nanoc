@@ -117,6 +117,33 @@ int main()
         return 7;
     }
 
+    /* Keep both runtime directions live: nanoc1 reads source while emitting ass. */
+    handle = io_open("TESTS/NANOC0-RUNTIME/RUNTIME.IN", 31);
+    if (handle < 0) {
+        return 17;
+    }
+    write_handle = io_create("DTEST", 5);
+    if (write_handle < 0) {
+        return 18;
+    }
+    value = io_read(handle);
+    if (value != 'A') {
+        return 19;
+    }
+    if (io_write(write_handle, 'Q') != 0) {
+        return 20;
+    }
+    value = io_read(handle);
+    if (value != 'B') {
+        return 21;
+    }
+    if (io_close(handle) != 0) {
+        return 22;
+    }
+    if (io_close(write_handle) != 0) {
+        return 23;
+    }
+
     u = 0;
     if (u * 4660 != 0) {
         return 8;

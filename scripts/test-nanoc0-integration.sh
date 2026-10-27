@@ -10,9 +10,21 @@ DRIVER_RESULT="$BUILD_DIR/nanoc0-driver.result"
 ASS_FROM_C_RESULT="$BUILD_DIR/ass-from-c.result"
 
 mkdir -p "$OUT_DIR"
+
+# The exact committed nanoc1.c reads a source filename from BUILD/N1JOB.
+# Select any Phase 1 fixture without changing (or copying) compiler source.
+NANOC1_SOURCE=${NANOC1_SOURCE:-TESTS/NANOC1/N1SRC.C}
+if [ -z "$NANOC1_SOURCE" ] || [ "${#NANOC1_SOURCE}" -gt 63 ]; then
+    echo "FAIL nanoc1: source pathname must be 1..63 bytes" >&2
+    exit 1
+fi
+# VICE's device-8 host filesystem maps C64 uppercase names to lowercase.
+printf '%s' "$NANOC1_SOURCE" > "$ROOT/$BUILD_DIR/n1job"
 rm -f \
     "$OUT_DIR/NCOUT.ASM" "$OUT_DIR/ncout.asm" "$OUT_DIR/ncout.prg" \
-    "$OUT_DIR/ASSFROMC.ASM" "$OUT_DIR/assfromc.asm" "$OUT_DIR/assfromc.prg"
+    "$OUT_DIR/ASSFROMC.ASM" "$OUT_DIR/assfromc.asm" "$OUT_DIR/assfromc.prg" \
+    "$OUT_DIR/NANOC1.ASM" "$OUT_DIR/nanoc1.asm" "$OUT_DIR/nanoc1.prg" \
+    "$OUT_DIR/N1OUT.ASM" "$OUT_DIR/n1out.asm"
 
 nanoc_status_name() {
     case "$1" in
@@ -65,6 +77,22 @@ report_driver_mailbox() {
         3)
             echo "native bootstrap stage=compile-ass.c status=$(nanoc_status_name "$status")($status) line=$line detail=$detail bss=$bss" >&2
             ;;
+        4)
+            echo "native bootstrap stage=compile-nanoc1.c status=$(nanoc_status_name "$status")($status) line=$line detail=$detail bss=$bss" >&2
+            ;;
+        5)
+            if [ "$status" -eq 11 ]; then
+                staged=$((line - 16384))
+                fixups=$((40960 - bss))
+                free_gap=$((bss - line))
+                echo "native bootstrap stage=assemble-nanoc1 assembler-status=$status staged=$staged fixup-bytes=$fixups free-gap=$free_gap" >&2
+            else
+                echo "native bootstrap stage=assemble-nanoc1 assembler-status=$status" >&2
+            fi
+            ;;
+        6)
+            echo "native bootstrap stage=run-nanoc1 return-low=$status return-high=$extra" >&2
+            ;;
         *)
             echo "native bootstrap stage=$stage status=$status line=$line detail=$detail bss=$bss" >&2
             ;;
@@ -97,6 +125,8 @@ echo "production nanoc0 loaded image: $((bytes - 2)) bytes"
     "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_nanoc0_driver.prg" test_nanoc0_driver.asm
     "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_nanoc0_generated.prg" test_nanoc0_generated.asm
     "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_ass_from_c.prg" test_ass_from_c.asm
+    "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_nanoc1_generated.prg" test_nanoc1_generated.asm
+    "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_nanoc1_compile.prg" test_nanoc1_compile.asm
 )
 
 # The low-resident integration copy of the native assembler stages nanoc0
@@ -107,7 +137,7 @@ echo "production nanoc0 loaded image: $((bytes - 2)) bytes"
 #
 # If this fails, report the native assembler/compiler mailbox and stop. There is
 # deliberately no host-built compiler fallback.
-if ! TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=180 VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
+if ! TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=240 VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
     VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc0_driver.prg" nanoc0-driver; then
     report_driver_mailbox
@@ -118,6 +148,93 @@ report_driver_mailbox
 set -- $(od -An -tu1 -N9 "$DRIVER_RESULT")
 ASS_C_BSS=$(($7 + 256 * $8))
 echo "bootstrap ass.c BSS: $ASS_C_BSS bytes"
+
+if [ -f "$OUT_DIR/NANOC1.ASM" ]; then
+    NANOC1_GENERATED="$OUT_DIR/NANOC1.ASM"
+elif [ -f "$OUT_DIR/nanoc1.asm" ]; then
+    NANOC1_GENERATED="$OUT_DIR/nanoc1.asm"
+else
+    echo "FAIL nanoc0-driver: generated NANOC1.ASM is missing" >&2
+    exit 1
+fi
+
+NANOC1_SOURCE_BYTES=$(wc -c < "$NANOC1_GENERATED")
+echo "nanoc1 generated ass source: $NANOC1_SOURCE_BYTES bytes"
+"$VASM" -I"$ROOT/ass" -Fbin -cbm-prg -o "$OUT_DIR/nanoc1.prg" "$NANOC1_GENERATED"
+bytes=$(wc -c < "$OUT_DIR/nanoc1.prg")
+NANOC1_LOADED=$((bytes - 2))
+echo "nanoc1 generated loaded image: $NANOC1_LOADED bytes"
+if [ "$NANOC1_LOADED" -gt 24576 ]; then
+    echo "FAIL nanoc1 bootstrap: compiler exceeds the explicit \$4000-\$9fff bootstrap window" >&2
+    exit 1
+fi
+
+if [ -f "$OUT_DIR/N1OUT.ASM" ]; then
+    NANOC1_SMOKE="$OUT_DIR/N1OUT.ASM"
+elif [ -f "$OUT_DIR/n1out.asm" ]; then
+    NANOC1_SMOKE="$OUT_DIR/n1out.asm"
+else
+    echo "FAIL nanoc1 bootstrap: native nanoc1 did not produce N1OUT.ASM" >&2
+    exit 1
+fi
+
+if [ "${NANOC1_COMPILE_ONLY:-0}" = 1 ]; then
+    # Arbitrary programs need not return Z. Native nanoc1 still does the
+    # compilation; host vasm checks syntax/size for non-Z fixture outputs.
+    "$VASM" -I"$ROOT/ass" -Fbin -cbm-prg -o "$OUT_DIR/n1out.prg" "$NANOC1_SMOKE"
+    echo "native nanoc1 compiled $NANOC1_SOURCE (compile-only fixture)"
+else
+    TEST_DEBUG_SOURCE_LINE=1 VICE_TIMEOUT=60 VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
+        sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_generated.prg" nanoc1-generated
+    echo "native nanoc1 smoke compiled, assembled and returned Z"
+fi
+
+# Run focused regressions against the *same* nanoc1 machine image just
+# generated by nanoc0 and assembled above. A tiny 6502 harness invokes $4000,
+# records its A/X return in the result mailbox, and checks expected rejection.
+# No host C compiler or private Nano C implementation participates.
+mkdir -p "$BUILD_DIR/nanoc1-fixtures"
+printf 'int main()\n{\n\n    return 0;\n}\n' > "$BUILD_DIR/nanoc1-fixtures/lf.c"
+printf 'int main()\r\n{\r\n\r\n    return 0;\r\n}\r\n' > "$BUILD_DIR/nanoc1-fixtures/crlf.c"
+printf 'int main()\r{\r\r    return 0;\r}\r' > "$BUILD_DIR/nanoc1-fixtures/cr.c"
+printf 'char first[34000];\nchar second[34000];\nint main()\n{\n    return 0;\n}\n' > "$BUILD_DIR/nanoc1-fixtures/bsswrap.c"
+printf 'int oversized[32768];\nint main()\n{\n    return 0;\n}\n' > "$BUILD_DIR/nanoc1-fixtures/arraywrap.c"
+
+native_nanoc1_case() {
+    case_name=$1
+    source_path=$2
+    expected=$3
+    printf '%s' "$source_path" > "$ROOT/$BUILD_DIR/n1job"
+    rm -f "$OUT_DIR/N1OUT.ASM" "$OUT_DIR/n1out.asm"
+    VICE_PRELOAD_PRG="$OUT_DIR/nanoc1.prg" VICE_TIMEOUT=70 \
+        VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
+        VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
+        sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_compile.prg" "$case_name"
+    set -- $(od -An -tu1 -N3 "$BUILD_DIR/$case_name.result")
+    if [ "$#" -lt 3 ] || [ "$2" -ne "$expected" ] || [ "$3" -ne 0 ]; then
+        echo "FAIL $case_name: native nanoc1 returned ${2:-missing}/${3:-missing}, expected $expected/0" >&2
+        exit 1
+    fi
+    if [ "$expected" -eq 0 ]; then
+        if [ -f "$OUT_DIR/N1OUT.ASM" ]; then
+            result_asm="$OUT_DIR/N1OUT.ASM"
+        elif [ -f "$OUT_DIR/n1out.asm" ]; then
+            result_asm="$OUT_DIR/n1out.asm"
+        else
+            echo "FAIL $case_name: native nanoc1 generated no assembly" >&2
+            exit 1
+        fi
+        "$VASM" -I"$ROOT/ass" -Fbin -cbm-prg \
+            -o "$OUT_DIR/$case_name.prg" "$result_asm"
+    fi
+    echo "PASS $case_name: native nanoc1 status $expected"
+}
+
+native_nanoc1_case nanoc1-lf BUILD/NANOC1-FIXTURES/LF.C 0
+native_nanoc1_case nanoc1-crlf BUILD/NANOC1-FIXTURES/CRLF.C 0
+native_nanoc1_case nanoc1-cr BUILD/NANOC1-FIXTURES/CR.C 0
+native_nanoc1_case nanoc1-bsswrap BUILD/NANOC1-FIXTURES/BSSWRAP.C 6
+native_nanoc1_case nanoc1-arraywrap BUILD/NANOC1-FIXTURES/ARRAYWRAP.C 6
 
 if [ -f "$OUT_DIR/NCOUT.ASM" ]; then
     GENERATED="$OUT_DIR/NCOUT.ASM"
