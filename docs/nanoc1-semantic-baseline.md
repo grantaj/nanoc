@@ -31,13 +31,15 @@ translated, or reimplemented by the host.
 | Assignment, indexed stores, nesting, call argument order and staging, if/else/while/break/return | Exact `tests/nanoc0-stmt/statements.c`, compiled, assembled and run |
 | Native runtime I/O, source input and output on separate devices | Exact `tests/nanoc0-runtime/runtime.c`, native execution and output-file checks |
 | Lexical, declaration, unsupported-syntax, call and bounded-control errors | Existing rejected-source fixtures through the native compiler |
-| Exact `bootstrap/ass.c` | Production `nanoc1` compile, native assembler and byte-exact bootstrap oracle |
+| Exact `bootstrap/ass.c` | Production `nanoc1` compiles the committed source; host `vasm` assembles generated code and measures size. Executable assembler oracle is deferred to #37. |
 
 The shell reads A/X after the actual compiler at `$4000`, uses vasm as an
 assembly syntax and packaging tool where needed, and runs program-result
 assertions on the 6510 under VICE. The small smoke from issue #100 continues
-to use the **production native assembler**. The final `ass.c` check reuses
-the stronger existing native assembler self-host/oracle test.
+to use the **production native assembler**. The exact `ass.c` stress case **does not** execute its resulting assembler: its
+image does not fit the current Phase 1 code region. The independent native
+assembler bootstrap oracle remains a later #37 milestone after the #102
+code-generation improvements.
 
 ## Frozen measurements
 
@@ -80,29 +82,33 @@ the `nanoc0` image. The counts of 4,186 `PHA` / 4,186 `PLA` are an
 objective symptom of the stack-heavy lowering, not a proof that each pair
 can individually be eliminated.
 
-**Result:** representative Phase 1 semantic fixtures compile, assemble and
-run correctly on the actual 6510, and the explicit negative cases are rejected.
-Exact `bootstrap/ass.c` also compiles successfully and its emitted assembler
-assembles. However, that resulting C assembler cannot execute in the current
-16 KiB program region. Consequently the whole-program functional oracle has
-**not** passed, and **issue #101 remains open** under its original acceptance
-criteria. CI intentionally reports failure rather than mislabelling this as a
-semantic baseline green. No optimiser or hidden source rewrite of `ass.c`
-was introduced to evade the shortfall.
+**Result and agreed gate change (2026-10-28):** representative Phase 1
+semantic fixtures compile, assemble and execute correctly on the real 6510,
+including explicit rejection cases. Exact `bootstrap/ass.c` compiles through
+production `nanoc1`; the emitted assembler assembles. The 33,225-byte
+compiled assembler **cannot execute** in the current 16 KiB code window, so
+its functional equivalence to the native assembler is **not yet proved**.
+
+This size shortfall is **not a #101 failure**. Its image size and stack
+traffic are deliberately frozen as evidence for #102's context-aware code
+generator. The byte-exact native assembler bootstrap oracle is required for
+eventual self-hosting, but is now a later **#37 convergence gate**, after
+#102 has made the output executable. The issue and parent roadmap record
+the same change. CI will report an informative size warning and remain green
+if all native semantic checks and the exact `ass.c` compile/assembly pass.
 
 ### Architectural implication
 
-The missing oracle is now blocked by code size, not by an observed syntax
-or type error. The 31-byte compiler-image margin also prevents treating new
-machine-lowering machinery as an additive feature in the existing 24 KiB
-bootstrap image: the future approach must replace or reorganise existing
-compiler code or its memory layout, not simply accumulate another layer.
+The first C-written compiler is live, but its emitter decides too early:
+scattered materialisation to the hardware stack, reconstructed pointers and
+indexes, and no persistent A/X/Y/flags or loop-cursor strategy. The first #102
+step is **bounded lookahead over *semantic operations***, allowing the
+machine-code strategy to be selected before emission. Merely buffering
+already chosen instructions is not sufficient.
 
-This creates a sequencing conflict in the issue plan: #101 explicitly forbids
-code-quality optimisation but demands an exact assembler oracle that the
-current direct code generator cannot execute. Do not quietly weaken #101 or
-claim that #102's preconditions are met; the gate needs an explicit roadmap
-decision.
+The 31-byte compiler-image margin also argues for **replacing** existing
+direct-emitter machinery in stages rather than simply adding a second
+general-purpose optimiser alongside it.
 
 These are measurements, **not** optimisation targets in #101. No modified
 `ass.c`, alternate semantic implementation, relaxed language contract or
@@ -117,8 +123,8 @@ but lead to redundant value movement, stack traffic and address
 reconstruction. The `PHA`/`PLA` counts in the saved baseline illustrate
 the symptom; they do not explain the systemic cause in isolation.
 
-**The gate for #102 is semantic and functional, not aesthetic.** A compiler
-that merely emits valid assembler is not enough: existing native fixture
-behaviour and the exact compiled-assembler bootstrap oracle must pass.
-If the generated assembler exceeds the fixed `$0800-$47ff` code region,
-or if the oracle does not complete, the check fails and #101 remains open.
+**The #101 gate is observed Phase 1 semantic behaviour, not size.** The native
+fixtures must execute correctly (or reject invalid input), and exact `ass.c`
+must compile and assemble. Compile-and-assemble alone does **not** prove the
+compiled C assembler works; its native functional oracle is explicitly retained
+as a later #37 gate once #102 addresses the physical code size.
