@@ -32,7 +32,7 @@
 /* more compact templates: shift_prefix=1111, shift_left=1124, shift_right=1173, shift_dec=1222, index_load_char=1228, index_load_word=1280, index_store_char=1372, index_store_word=1483, scale_index=1629, array_add_lo=1674, array_mid=1687, array_end=1713, ptr_add_lo=1729, ptr_mid=1740, ptr_high_suffix=1764 */
 char job_source[64];
 
-char fixed_text[1881] = {
+char fixed_text[1952] = {
     /*   0: BUILD/N1JOB - input job filename (21-byte reserved slot) */
     'B','U','I','L','D','/','N','1','J','O','B',0,0,0,0,0,0,0,0,0,0,
     /*  21: N1OUT.ASM */
@@ -275,7 +275,7 @@ char fixed_text[1881] = {
     84,82,10,9,116,120,97,10,9,97,100,99,32,0,43,49,
     10,9,115,116,97,32,78,67,95,80,84,82,43,49,10,0,
     /* 1782: generic pointer-value indexed byte load */
-    9,99,108,99,10,9,97,100,99,32,78,67,95,84,77,80,10,9,115,116,97,32,78,67,95,80,84,82,10,9,116,120,97,10,9,97,100,99,32,78,67,95,84,77,80,43,49,10,9,115,116,97,32,78,67,95,80,84,82,43,49,10,9,108,100,121,32,35,36,48,48,10,9,108,100,97,32,40,78,67,95,80,84,82,41,44,121,10,9,108,100,120,32,35,36,48,48,10,0
+    9,112,108,97,10,9,116,97,120,10,9,112,108,97,10,9,115,116,97,32,78,67,95,84,77,80,10,9,115,116,120,32,78,67,95,84,77,80,43,49,10,9,112,108,97,10,9,116,97,120,10,9,112,108,97,10,9,99,108,99,10,9,97,100,99,32,78,67,95,84,77,80,10,9,115,116,97,32,78,67,95,80,84,82,10,9,116,120,97,10,9,97,100,99,32,78,67,95,84,77,80,43,49,10,9,115,116,97,32,78,67,95,80,84,82,43,49,10,9,108,100,121,32,35,36,48,48,10,9,108,100,97,32,40,78,67,95,80,84,82,41,44,121,10,9,108,100,120,32,35,36,48,48,10,9,112,104,97,10,9,116,120,97,10,9,112,104,97,10,0
 };
 
 /*
@@ -1955,30 +1955,6 @@ char emit_index_load(char area, char symbol, char kind, char element_type)
     return write_text((fixed_text + 1280));
 }
 
-/* Pointer values, including strings and parenthesised pointer expressions,
- * are already on the hardware stack. Pop index, then base, before loading.
- * This is ordinary Phase 1 semantics, not an alternative code generator.
- */
-char emit_pointer_value_index()
-{
-    if (emit_pop_ax() == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 443), (fixed_text + 198), 0) == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 447), (fixed_text + 198), 1) == 0) {
-        return 0;
-    }
-    if (emit_pop_ax() == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 1782)) == 0) {
-        return 0;
-    }
-    return emit_push_ax();
-}
-
 char finish_call_marker()
 {
     int marker;
@@ -2223,7 +2199,7 @@ char expression_close_index()
         type = 1;
     }
     if (kind == 5) {
-        if (emit_pointer_value_index() == 0) {
+        if (write_text((fixed_text + 1782)) == 0) {
             return 0;
         }
         value_top = value_top - 1;
@@ -2272,11 +2248,7 @@ char expression_operator_step()
         return 1;
     }
     if (token_kind == '[') {
-        /* Generic pointer indexing: the base value is already stacked. */
-        if (value_top == 0) {
-            compiler_error = 3;
-            return 0;
-        }
+        /* The pointer value remains stacked while its index is parsed. */
         if (value_type[value_top - 1] != 4) {
             compiler_error = 5;
             return 0;
@@ -2285,11 +2257,8 @@ char expression_operator_step()
             return 0;
         }
         op_argc[op_top - 1] = 5;
-        if (scan_token() == 0) {
-            return 0;
-        }
         expr_expect = 1;
-        return 1;
+        return scan_token();
     }
     if (token_kind == ',') {
         if (reduce_to_marker(202) == 0) {
