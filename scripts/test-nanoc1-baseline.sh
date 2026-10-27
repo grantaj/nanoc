@@ -135,4 +135,30 @@ if [ "$ass_loaded" -gt 16384 ]; then
     echo "FAIL #101: exact ass.c exceeds the current nanoc1 $0800-$47ff code region; the bootstrap oracle cannot run" >&2
     exit 1
 fi
-echo "nanoc1 ass.c fits the native code region; next gate is the assembler bootstrap oracle"
+# Reuse the established native #58 oracle verbatim. It reads its input under
+# the fixed ASSFROMC.ASM filename, so temporarily supply nanoc1's generated
+# assembly there. Save and restore nanoc0's original generated artifact.
+if [ -f "$OUT_DIR/ASSFROMC.ASM" ]; then
+    oracle_input="$OUT_DIR/ASSFROMC.ASM"
+elif [ -f "$OUT_DIR/assfromc.asm" ]; then
+    oracle_input="$OUT_DIR/assfromc.asm"
+else
+    echo "FAIL #101: missing existing assembler-oracle input" >&2
+    exit 1
+fi
+oracle_saved="$OUT_DIR/nanoc0-assfromc.saved"
+cp "$oracle_input" "$oracle_saved"
+restore_oracle_input() {
+    cp "$oracle_saved" "$oracle_input"
+    rm -f "$oracle_saved"
+}
+trap 'restore_oracle_input' EXIT
+cp "$OUT_DIR/n1-ass.asm" "$oracle_input"
+
+# The earlier nanoc0 baseline treats a timeout as non-gating; #101 cannot.
+# A missing result byte is an unfinished proof, not a pass.
+VICE_TIMEOUT=360 VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
+    sh tests/run-test.sh "$BUILD_DIR/test_ass_from_c.prg" nanoc1-ass-oracle
+restore_oracle_input
+trap - EXIT
+echo "PASS #101: native ass bootstrap/oracle matched for nanoc1-generated ass.c"
