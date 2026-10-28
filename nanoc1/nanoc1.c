@@ -1950,8 +1950,44 @@ char emit_index_address(char area, char symbol, char kind, char element_type)
 
 /* The fixed-text indexed-load templates finish by pushing A/X, unlike
  * literal/symbol loads, which leave the newest value pending in A/X. */
-char emit_index_load(char area, char symbol, char kind, char element_type)
+/*
+ * A char index of a fixed byte array fits in Y. Make that addressing
+ * decision once the complete index expression has been type checked;
+ * unlike NC_PTR reconstruction, absolute,Y handles page crossings itself.
+ * Other indexes retain the full 16-bit address path.
+ */
+char emit_index_load(char area, char symbol, char kind, char element_type, char index_type)
 {
+    if (kind == 2 & element_type == 1 & index_type == 1) {
+        if (emit_pop_ax() == 0) {
+            return 0;
+        }
+        if (emit_zero((fixed_text + 467)) == 0) {
+            return 0;
+        }
+        if (emit_instruction((fixed_text + 431)) == 0) {
+            return 0;
+        }
+        if (write_char(' ') == 0) {
+            return 0;
+        }
+        if (emit_global_name(symbol) == 0) {
+            return 0;
+        }
+        if (write_char(',') == 0) {
+            return 0;
+        }
+        if (write_char('y') == 0) {
+            return 0;
+        }
+        if (write_newline() == 0) {
+            return 0;
+        }
+        if (emit_immediate((fixed_text + 435), 0) == 0) {
+            return 0;
+        }
+        return emit_push_ax();
+    }
     if (emit_index_address(area, symbol, kind, element_type) == 0) {
         return 0;
     }
@@ -2219,7 +2255,7 @@ char expression_close_index()
         }
         value_top = value_top - 1;
     } else {
-        if (emit_index_load(area, id, kind, type) == 0) {
+        if (emit_index_load(area, id, kind, type, value_type[value_top - 1]) == 0) {
             return 0;
         }
     }
