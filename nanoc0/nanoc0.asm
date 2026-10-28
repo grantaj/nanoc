@@ -27,6 +27,8 @@ NANOC_TARGET_LIMIT  = $d000
 NANOC_TARGET_BSS_LIMIT = NANOC_TARGET_LIMIT-NANOC_TARGET_BSS
 NANOC_COMPILER_BSS      = $a000
 NANOC_COMPILER_BSS_LIMIT = NANOC_TARGET_LIMIT-NANOC_COMPILER_BSS
+NANOC_DEVELOPMENT_BSS = $0800
+NANOC_DEVELOPMENT_BSS_LIMIT = $4000-NANOC_DEVELOPMENT_BSS
 
 	* = $4000
 
@@ -94,6 +96,11 @@ compilerMain:
 	beq .compilerBss
 	cmp #NANOC_LAYOUT_DEVELOPMENT
 	bne .ordinaryBss
+	lda #<NANOC_DEVELOPMENT_BSS
+	sta bssBase
+	lda #>NANOC_DEVELOPMENT_BSS
+	sta bssBase+1
+	jmp .bssReady
 .compilerBss:
 	lda #<NANOC_COMPILER_BSS
 	sta bssBase
@@ -296,7 +303,12 @@ generated_layout_fits:
 	cmp #NANOC_LAYOUT_COMPILER
 	beq .compilerLimit
 	cmp #NANOC_LAYOUT_DEVELOPMENT
-	bne .ordinaryLimit
+	beq .developmentLimit
+	jmp .ordinaryLimit
+.developmentLimit:
+	lda bssOffset+1
+	cmp #>NANOC_DEVELOPMENT_BSS_LIMIT
+	jmp .compareHigh
 .compilerLimit:
 	lda bssOffset+1
 	cmp #>NANOC_COMPILER_BSS_LIMIT
