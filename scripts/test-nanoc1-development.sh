@@ -95,12 +95,11 @@ if [ -f "$OUT_DIR/N1OUT.ASM" ]; then
 else
     next="$OUT_DIR/n1out.asm"
 fi
-# The much larger second-generation source contains conditional branches
-# beyond the 6502's +/-127-byte displacement. For the *size probe only*,
-# vasm's documented -opt-branch lowers these to inverse branch + JMP.
-# This is NOT native self-hosting success: the compiler must eventually emit
-# safe control transfers itself and produce an image fitting a real C64 map.
-"$VASM" -opt-branch -I"$ROOT/ass" -Fbin -cbm-prg -o "$OUT_DIR/nanoc2-size.prg" "$next"
+# This strict second-generation size probe deliberately does not enable
+# assembler branch relaxation. Native nanoc1 must generate correct 6502
+# control flow itself, including far exits from large while bodies.
+# Assembling is not evidence of executable fit in the target C64 map.
+"$VASM" -I"$ROOT/ass" -Fbin -cbm-prg -o "$OUT_DIR/nanoc2-size.prg" "$next"
 set -- $(od -An -tu1 -N2 "$OUT_DIR/nanoc2-size.prg")
 second_origin=$(( $1 + 256 * $2 ))
 second=$(($(wc -c < "$OUT_DIR/nanoc2-size.prg") - 2))
@@ -112,4 +111,4 @@ if [ "$second" -gt 63488 ]; then
     echo "FAIL #108: next-generation size $second cannot be placed at 0x0800" >&2
     exit 1
 fi
-echo "PASS #108: exact-source self-compile; seed=$loaded B, next-generation=$second B (assembler branch relaxation, NOT executable fit)"
+echo "PASS #108: exact-source self-compile; seed=$loaded B, next-generation=$second B (strict 6502 branches, NOT executable fit)"
