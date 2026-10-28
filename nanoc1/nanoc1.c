@@ -444,23 +444,16 @@ char write_hex_digit(char value)
 
 char write_hex_byte(char value)
 {
-    char high;
-    char low;
-
-    high = (value >> 4) & 15;
-    low = value & 15;
-    if (write_hex_digit(high) == 0) {
-        return 0;
-    }
-    return write_hex_digit(low);
+    write_hex_digit((value >> 4) & 15);
+    write_hex_digit(value & 15);
+    return compiler_error == 0;
 }
 
 char write_hex_word(unsigned value)
 {
-    if (write_hex_byte((value >> 8) & 255) == 0) {
-        return 0;
-    }
-    return write_hex_byte(value & 255);
+    write_hex_byte((value >> 8) & 255);
+    write_hex_byte(value & 255);
+    return compiler_error == 0;
 }
 
 char write_newline()
@@ -470,18 +463,16 @@ char write_newline()
 
 char emit_instruction(char *op)
 {
-    if (write_char(9) == 0) {
-        return 0;
-    }
-    return write_text(op);
+    write_char(9);
+    write_text(op);
+    return compiler_error == 0;
 }
 
 char emit_zero(char *op)
 {
-    if (emit_instruction(op) == 0) {
-        return 0;
-    }
-    return write_newline();
+    emit_instruction(op);
+    write_newline();
+    return compiler_error == 0;
 }
 
 char emit_immediate(char *op, char value)
@@ -524,16 +515,11 @@ char emit_function_name(char symbol)
 
 char emit_current_name(char function_id, char slot)
 {
-    if (write_text((fixed_text + 683)) == 0) {
-        return 0;
-    }
-    if (write_hex_byte(function_id) == 0) {
-        return 0;
-    }
-    if (write_char('_') == 0) {
-        return 0;
-    }
-    return write_hex_byte(slot);
+    write_text((fixed_text + 683));
+    write_hex_byte(function_id);
+    write_char('_');
+    write_hex_byte(slot);
+    return compiler_error == 0;
 }
 
 char emit_symbol_name(char area, char symbol)
@@ -565,13 +551,10 @@ char emit_label_name(unsigned label)
 
 char emit_label(unsigned label)
 {
-    if (emit_label_name(label) == 0) {
-        return 0;
-    }
-    if (write_char(':') == 0) {
-        return 0;
-    }
-    return write_newline();
+    emit_label_name(label);
+    write_char(':');
+    write_newline();
+    return compiler_error == 0;
 }
 
 char emit_jump_label(char *op, unsigned label)
@@ -592,36 +575,22 @@ char emit_text_operand(char *op, char *text)
 }
 char emit_include(char *path)
 {
-    if (write_char(9) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 182)) == 0) {
-        return 0;
-    }
-    if (write_char('"') == 0) {
-        return 0;
-    }
-    if (write_text(path) == 0) {
-        return 0;
-    }
-    if (write_char('"') == 0) {
-        return 0;
-    }
-    return write_newline();
+    write_char(9);
+    write_text((fixed_text + 182));
+    write_char('"');
+    write_text(path);
+    write_char('"');
+    write_newline();
+    return compiler_error == 0;
 }
 
 char emit_byte_data(char value)
 {
-    if (write_char(9) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 687)) == 0) {
-        return 0;
-    }
-    if (write_hex_byte(value) == 0) {
-        return 0;
-    }
-    return write_newline();
+    write_char(9);
+    write_text((fixed_text + 687));
+    write_hex_byte(value);
+    write_newline();
+    return compiler_error == 0;
 }
 
 char next_source_char()
@@ -1307,42 +1276,28 @@ char callee_name(char function_id)
 
 char emit_callee_call(char function_id)
 {
-    if (emit_instruction((fixed_text + 535)) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
-    if (callee_name(function_id) == 0) {
-        return 0;
-    }
-    return write_newline();
+    emit_instruction((fixed_text + 535));
+    write_char(' ');
+    callee_name(function_id);
+    write_newline();
+    return compiler_error == 0;
 }
 
 /* The same target slot may need its low and high bytes stored. */
 char emit_param_byte(char function_id, char argument, char high)
 {
-    if (emit_instruction((fixed_text + 443)) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
+    emit_instruction((fixed_text + 443));
+    write_char(' ');
     if (global_kind[function_id] == 4) {
-        if (runtime_param_name(function_id, argument) == 0) {
-            return 0;
-        }
+        runtime_param_name(function_id, argument);
     } else {
-        if (emit_current_name(function_id, argument) == 0) {
-            return 0;
-        }
+        emit_current_name(function_id, argument);
     }
     if (high != 0) {
-        if (write_text((fixed_text + 584)) == 0) {
-            return 0;
-        }
+        write_text((fixed_text + 584));
     }
-    return write_newline();
+    write_newline();
+    return compiler_error == 0;
 }
 
 char emit_param_store(char function_id, char argument, char type)
@@ -1413,38 +1368,29 @@ char emit_address_value(char kind, unsigned target)
 {
     char high;
     char *op;
-    char *prefix;
 
     high = 0;
     while (high < 2) {
-        if (high == 0) {
-            op = fixed_text + 431;
-            prefix = fixed_text + 547;
-        } else {
+        op = fixed_text + 431;
+        if (high != 0) {
             op = fixed_text + 435;
-            prefix = fixed_text + 551;
         }
-        if (emit_instruction(op) == 0) {
-            return 0;
-        }
-        if (write_text(prefix) == 0) {
-            return 0;
+        emit_instruction(op);
+        if (high == 0) {
+            write_text((fixed_text + 547));
+        } else {
+            write_text((fixed_text + 551));
         }
         if (kind == 2) {
-            if (emit_global_name(target) == 0) {
-                return 0;
-            }
+            emit_global_name(target);
         } else {
-            if (emit_label_name(target) == 0) {
-                return 0;
-            }
+            emit_label_name(target);
         }
-        if (write_newline() == 0) {
-            return 0;
-        }
+        write_newline();
         high = high + 1;
     }
-    return hold_ax();
+    hold_ax();
+    return compiler_error == 0;
 }
 
 char emit_array_address(char symbol)
