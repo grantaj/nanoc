@@ -320,7 +320,7 @@ char compiler_error;
  */
 char loop_data[1488];
 /* Emission mnemonics absent from fixed_text; no extra compiler literals. */
-char loop_instr[16] = {'c','p','y',0,'b','c','s',0,'c','m','p',0,'i','n','c',0};
+char loop_ops[16] = {'c','p','y',0,'b','c','s',0,'c','m','p',0,'i','n','c',0};
 
 /* fixed symbol model: flat names keep Phase 1 data structures obvious */
 char global_name[6656];
@@ -1408,7 +1408,7 @@ char loop_copy()
  * legally refer to i, so later reads must observe its new value. There are
  * no calls or pointer writes which could invalidate the cached addresses.
  */
-char loop_pointer_base(char area, char symbol, char *scratch)
+char loop_ptr_base(char area, char symbol, char *scratch)
 {
     emit_symbol_operand((fixed_text + 431), area, symbol, 0);
     emit_scratch((fixed_text + 443), scratch, 0);
@@ -1417,7 +1417,7 @@ char loop_pointer_base(char area, char symbol, char *scratch)
     return compiler_error == 0;
 }
 
-char loop_indirect(char *op, char *scratch)
+char loop_ind(char *op, char *scratch)
 {
     emit_instruction(op);
     write_char(' ');
@@ -1430,7 +1430,7 @@ char loop_indirect(char *op, char *scratch)
     return compiler_error == 0;
 }
 
-char loop_compare_bytes()
+char loop_cmp_bytes()
 {
     char index_id;
     char index_area;
@@ -1551,20 +1551,20 @@ char loop_compare_bytes()
     equal_label = label_counter;
     label_counter = label_counter + 1;
 
-    loop_pointer_base(left_area, left_id, (fixed_text + 198));
-    loop_pointer_base(right_area, right_id, (fixed_text + 205));
+    loop_ptr_base(left_area, left_id, (fixed_text + 198));
+    loop_ptr_base(right_area, right_id, (fixed_text + 205));
     emit_label(loop_label);
     emit_symbol_operand((fixed_text + 439), index_area, index_id, 0);
-    emit_symbol_operand((loop_instr + 0), bound_area, bound_id, 0);
-    emit_jump_label((loop_instr + 4), done_label);
-    loop_indirect((fixed_text + 431), (fixed_text + 198));
-    loop_indirect((loop_instr + 8), (fixed_text + 205));
+    emit_symbol_operand((loop_ops + 0), bound_area, bound_id, 0);
+    emit_jump_label((loop_ops + 4), done_label);
+    loop_ind((fixed_text + 431), (fixed_text + 198));
+    loop_ind((loop_ops + 8), (fixed_text + 205));
     emit_jump_label((fixed_text + 523), equal_label);
     emit_immediate((fixed_text + 431), 0);
     emit_immediate((fixed_text + 435), 0);
     emit_zero((fixed_text + 539));
     emit_label(equal_label);
-    emit_symbol_operand((loop_instr + 12), index_area, index_id, 0);
+    emit_symbol_operand((loop_ops + 12), index_area, index_id, 0);
     emit_jump_label((fixed_text + 531), loop_label);
     emit_label(done_label);
     ax_pending = 0;
@@ -3053,7 +3053,7 @@ char statement_while()
             loop_data[2] = 0;
             return scan_token();
         }
-        if (loop_compare_bytes() != 0) {
+        if (loop_cmp_bytes() != 0) {
             /* The pointer scan's early exit and back edge are now complete. */
             loop_data[2] = 0;
             return scan_token();
