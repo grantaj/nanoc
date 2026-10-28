@@ -16,8 +16,8 @@ PRG="$LARGE_DIR/nanoc1-large.prg"
 mkdir -p "$OUT_DIR" "$LARGE_DIR"
 # C64 OPEN with ,S,W does not replace existing output. The strict native
 # rung may have already produced these exact three filenames in this job.
-rm -f "$OUT_DIR/NCOUT.ASM" "$OUT_DIR/ncout.asm" \\
-    "$OUT_DIR/ASSFROMC.ASM" "$OUT_DIR/assfromc.asm" \\
+rm -f "$OUT_DIR/NCOUT.ASM" "$OUT_DIR/ncout.asm" \
+    "$OUT_DIR/ASSFROMC.ASM" "$OUT_DIR/assfromc.asm" \
     "$OUT_DIR/NANOC1.ASM" "$OUT_DIR/nanoc1.asm"
 
 # Native ass builds native nanoc0, and native nanoc0 compiles the exact
