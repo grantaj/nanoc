@@ -1235,6 +1235,12 @@ char lookup_name()
     return 255;
 }
 
+/* Fixed-width semantic entry: the kind occupies the first of seven bytes. */
+char loop_kind(char position)
+{
+    return loop_data[16 + position * 7];
+}
+
 char loop_lookup(char position)
 {
     loop_token(position);
@@ -1275,43 +1281,44 @@ char loop_copy()
     if (loop_data[3] == 0 | loop_data[0] != 23) {
         return 0;
     }
-    if (loop_data[16] != '(' | loop_data[30] != '<') {
+    if (loop_kind(0) != '(' | loop_kind(2) != '<') {
         return 0;
     }
-    if (loop_data[44] != ')' | loop_data[51] != '{') {
+    if (loop_kind(4) != ')' | loop_kind(5) != '{') {
         return 0;
     }
-    if (loop_data[65] != '[' | loop_data[79] != ']') {
+    if (loop_kind(7) != '[' | loop_kind(9) != ']') {
         return 0;
     }
-    if (loop_data[86] != '=' | loop_data[100] != '[') {
+    if (loop_kind(10) != '=' | loop_kind(12) != '[') {
         return 0;
     }
-    if (loop_data[114] != ']' | loop_data[121] != ';') {
+    if (loop_kind(14) != ']' | loop_kind(15) != ';') {
         return 0;
     }
-    if (loop_data[135] != '=' | loop_data[149] != '+') {
+    if (loop_kind(17) != '=' | loop_kind(19) != '+') {
         return 0;
     }
-    if (loop_data[163] != ';' | loop_data[170] != '}') {
+    if (loop_kind(21) != ';' | loop_kind(22) != '}') {
         return 0;
     }
-    if (loop_data[156] != 131) {
+    if (loop_kind(20) != 131) {
         return 0;
     }
-    if (loop_data[159] != 1 | loop_data[160] != 0) {
+    loop_token(20);
+    if (token_value != 1) {
         return 0;
     }
-    if (loop_data[23] != 130 | loop_data[37] != 130) {
+    if (loop_kind(1) != 130 | loop_kind(3) != 130) {
         return 0;
     }
-    if (loop_data[58] != 130 | loop_data[72] != 130) {
+    if (loop_kind(6) != 130 | loop_kind(8) != 130) {
         return 0;
     }
-    if (loop_data[93] != 130 | loop_data[107] != 130) {
+    if (loop_kind(11) != 130 | loop_kind(13) != 130) {
         return 0;
     }
-    if (loop_data[128] != 130 | loop_data[142] != 130) {
+    if (loop_kind(16) != 130 | loop_kind(18) != 130) {
         return 0;
     }
     if (loop_same(1, 8) == 0 | loop_same(1, 13) == 0) {
