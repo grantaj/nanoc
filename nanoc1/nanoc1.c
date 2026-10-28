@@ -359,6 +359,13 @@ char expr_done;
  */
 char ax_pending;
 
+/* One char scalar currently held in Y, and one deferred direct index use.
+ * Invalidated at branches, calls, index writes and instructions changing Y. */
+char y_known;
+char y_area;
+char y_symbol;
+char y_index_pending;
+
 /* bounded structured-control state */
 char ctrl_kind[16];
 unsigned ctrl_label0[16];
@@ -1462,6 +1469,7 @@ char emit_string_literal()
     unsigned skip_label;
     char i;
 
+    y_known = 0;
     data_label = label_counter;
     label_counter = label_counter + 1;
     skip_label = label_counter;
@@ -1668,6 +1676,8 @@ char reduce_unary()
 {
     char type;
 
+    y_known = 0;
+
     if (value_top < 1) {
         compiler_error = 3;
         return 0;
@@ -1697,6 +1707,7 @@ char reduce_binary(char op)
     char result;
     char unsigned_compare;
 
+    y_known = 0;
     if (value_top < 2) {
         compiler_error = 3;
         return 0;
@@ -1828,6 +1839,7 @@ char emit_call_finish(char marker_index)
     char expected;
     char actual;
 
+    y_known = 0;
     function_id = op_aux[marker_index];
     argc = op_argc[marker_index];
     base = op_base[marker_index];
@@ -1877,6 +1889,7 @@ char emit_call_finish(char marker_index)
  */
 char emit_index_address(char area, char symbol, char kind, char element_type)
 {
+    y_known = 0;
     emit_pop_ax();
     if (kind == 2) {
         if (element_type != 1) {
@@ -1912,8 +1925,12 @@ char emit_index_load(char area, char symbol, char kind, char element_type, char 
          * Output errors are sticky in compiler_error. Each output helper
          * becomes a no-op after failure, so one check at the end suffices.
          */
-        emit_pop_ax();
-        emit_zero((fixed_text + 467));
+        if (y_index_pending == 0) {
+            y_known = 0;
+            emit_pop_ax();
+            emit_zero((fixed_text + 467));
+        }
+        y_index_pending = 0;
         emit_instruction((fixed_text + 431));
         write_char(' ');
         emit_global_name(symbol);
@@ -1924,6 +1941,7 @@ char emit_index_load(char area, char symbol, char kind, char element_type, char 
         hold_ax();
         return compiler_error == 0;
     }
+    y_index_pending = 0;
     if (emit_index_address(area, symbol, kind, element_type) == 0) {
         return 0;
     }
@@ -2022,6 +2040,31 @@ char expression_identifier()
         if (kind != 1) {
             compiler_error = 5;
             return 0;
+        }
+        /*
+         * A bare char index of a fixed byte array needs only Y. Its entire
+         * syntax is known here (the next token is ']'); delay producing an
+         * A/X value, and reuse Y if it still names this unchanged scalar.
+         */
+        if (type == 1 & token_kind == ']' & op_top > 0) {
+            if (op_code[op_top - 1] == 203 & op_argc[op_top - 1] == 2) {
+                if (global_type[op_aux[op_top - 1]] == 1) {
+                    if (y_known == 0 | y_area != area | y_symbol != id) {
+                        if (emit_symbol_operand((fixed_text + 439), area, id, 0) == 0) {
+                            return 0;
+                        }
+                        y_area = area;
+                        y_symbol = id;
+                        y_known = 1;
+                    }
+                    y_index_pending = 1;
+                    if (push_value_type(type) == 0) {
+                        return 0;
+                    }
+                    expr_expect = 0;
+                    return 1;
+                }
+            }
         }
         if (emit_load_symbol(area, id, type) == 0) {
             return 0;
@@ -2314,6 +2357,7 @@ char expression_loop()
 
 char compile_expression()
 {
+    y_index_pending = 0;
     op_top = 0;
     value_top = 0;
     ax_pending = 0;
@@ -2372,6 +2416,9 @@ char emit_false_jump(unsigned target)
 
 char emit_scalar_store(char area, char symbol, char type)
 {
+    if (y_known != 0 & y_area == area & y_symbol == symbol) {
+        y_known = 0;
+    }
     if (emit_pop_ax() == 0) {
         return 0;
     }
@@ -2388,6 +2435,7 @@ char emit_scalar_store(char area, char symbol, char type)
 
 char emit_index_store(char element_type)
 {
+    y_known = 0;
     if (flush_ax() == 0) {
         return 0;
     }
@@ -2429,6 +2477,9 @@ char statement_close()
     char frame;
     char kind;
     unsigned second_label;
+
+    /* Incoming branches may hold different Y values at this join. */
+    y_known = 0;
 
     if (ctrl_top == 0) {
         if (scan_token() == 0) {
@@ -2493,6 +2544,7 @@ char statement_if()
 {
     unsigned false_label;
 
+    y_known = 0;
     false_label = label_counter;
     label_counter = label_counter + 1;
     if (scan_token() == 0) {
@@ -2533,6 +2585,8 @@ char statement_while()
     unsigned loop_label;
     unsigned done_label;
 
+    /* First entry and the back edge must agree: start with unknown Y. */
+    y_known = 0;
     loop_label = label_counter;
     label_counter = label_counter + 1;
     done_label = label_counter;
@@ -2741,6 +2795,7 @@ char parse_statements()
                                 compiler_error = 3;
                                 return 0;
                             }
+                            y_known = 0;
                             if (emit_jump_label((fixed_text + 531), break_label) == 0) {
                                 return 0;
                             }
@@ -2773,6 +2828,7 @@ char parse_statements()
                                 if (emit_pop_ax() == 0) {
                                     return 0;
                                 }
+                                y_known = 0;
                                 if (emit_zero((fixed_text + 539)) == 0) {
                                     return 0;
                                 }
@@ -3147,6 +3203,7 @@ char parse_function(char function_id)
     int slot;
     char param_start;
 
+    y_known = 0;
     current_func = function_id;
     local_count = 0;
     param_start = param_count;
