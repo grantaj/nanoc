@@ -74,7 +74,7 @@ echo "PASS #108: separate development seed code=$loaded/36864 B BSS=$bss/14336 B
 # Reuse the production semantic corpus with the *same* real compiler binary.
 # This harness lives at $0400; all user-program execution uses a fresh VICE
 # process and the ordinary Phase 1 $0800/$4800 target layout.
-VICE="$VICE" VASM="$VASM" BUILD_DIR="$BUILD_DIR" \
+NANOC1_SEED_ASM="$source" VICE="$VICE" VASM="$VASM" BUILD_DIR="$BUILD_DIR" \
     sh scripts/test-nanoc1-baseline.sh
 
 # Also compile the exact compiler source with the new compiler, as a size
