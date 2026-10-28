@@ -158,6 +158,16 @@ if ! grep -Eq '^[[:space:]]*lda[[:space:]]+[(]NC_PTR[)],y' "$OUT_DIR/n1-index-wi
 fi
 echo 'PASS #102: int/unsigned offsets 256/257 use full 16-bit address'
 
+# The same width distinction applies to pointer-valued bases: Y handles a
+# char index, while 256 must use the complete address calculation.
+case_source n1-pointer-index-y TESTS/NANOC1/POINTER-INDEX-Y.C accept run 90 0
+if ! grep -Eq '^[[:space:]]*lda[[:space:]]+[(]NC_PTR[)],y' "$OUT_DIR/n1-pointer-index-y.asm"; then
+    echo 'FAIL #102: char-indexed pointer load did not use indirect,Y' >&2
+    exit 1
+fi
+echo 'PASS #102: char-indexed pointer uses indirect,Y; wide index executes without wrap'
+
+
 # A bounded complete while region must select the Y-carried copy algorithm.
 # This same native fixture verifies that unmatched loops replay correctly.
 case_source n1-loop-copy TESTS/NANOC1/LOOP-COPY.C accept run 90 0
