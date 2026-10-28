@@ -5,11 +5,13 @@ on:
     paths:
       - 'nanoc0/**'
       - 'nanoc1/**'
-      - 'ass/test_nanoc0_development.asm'
-      - 'ass/test_nanoc1_development_compile.asm'
-      - 'scripts/test-nanoc1-development.sh'
-      - 'scripts/test-nanoc1-baseline.sh'
-      - '.github/workflows/dev-bootstrap.yml'
+      - 'ass/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'bootstrap/**'
+      - 'test.inc'
+      - 'Makefile'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 jobs:
