@@ -2,7 +2,11 @@
 
 ;;; Exercise a preloaded, production-generated nanoc1 at $4000. The harness
 ;;; observes A/X only; it does not duplicate scanner, parser or emitter logic.
-	* = $0800             ; small caller below the compiler at $4000
+    ifdef NANOC_LARGE_SEED
+        * = $0200        ; development BSS begins at $0800
+    else
+        * = $0800        ; strict native compiler still uses old map
+    endif
 
 main:
 	jsr $4000
