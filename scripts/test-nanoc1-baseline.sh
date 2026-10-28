@@ -101,7 +101,14 @@ case_source n1-statements TESTS/NANOC0-STMT/STATEMENTS.C accept run 52 18
 # the hardware stack and immediately retrieved. Inspect the *real* emitter
 # output after executing it; do not test a private copy of emitter logic.
 case_source n1-ax-return TESTS/NANOC1/AX-RETURN.C accept run 90 0
-if grep -Eq '^[[:space:]]*(pha|pla)[[:space:]]* "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
+if grep -Eq '^[[:space:]]*(pha|pla)[[:space:]]*$' "$OUT_DIR/n1-ax-return.asm"; then
+    echo "FAIL #102: a literal return was needlessly materialised on the stack" >&2
+    exit 1
+fi
+echo "PASS #102: literal-to-return uses A/X without hardware-stack round-trip"
+case_source n1-ax-nested TESTS/NANOC1/AX-NESTED.C accept run 90 0
+
+rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
 case_source n1-runtime TESTS/NANOC0-RUNTIME/RUNTIME.C accept run 0 0
 if [ -f "$OUT_DIR/DTEST" ]; then dtest="$OUT_DIR/DTEST"; else dtest="$OUT_DIR/dtest"; fi
 printf 'Q' | cmp - "$dtest"
