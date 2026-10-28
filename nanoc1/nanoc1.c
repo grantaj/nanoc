@@ -2836,15 +2836,78 @@ char statement_while()
 {
     unsigned loop_label;
     unsigned done_label;
+    char index_id;
+    char index_area;
+    char bound_id;
+    char bound_area;
+    char index_ok;
+    char bound_ok;
 
     if (loop_data[2] == 0) {
         if (loop_preview() == 0) {
             return 0;
         }
         if (loop_copy() != 0) {
-            /* All tokens through the closing brace were consumed. */
+            /* The whole cursor-copy loop was selected before emission. */
             loop_data[2] = 0;
             return scan_token();
+        }
+
+        /*
+         * A general char-bound while region can use a byte comparison at
+         * its loop header, even with calls or pointer writes in its body.
+         * Reload Y every iteration: we make no back-edge liveness claim.
+         * The original parser still owns every statement in that body.
+         */
+        if (loop_data[0] >= 6 & loop_kind(0) == '(') {
+            if (loop_kind(1) == 130 & loop_kind(2) == '<') {
+                if (loop_kind(3) == 130 & loop_kind(4) == ')') {
+                    if (loop_kind(5) == '{') {
+                        index_id = loop_lookup(1);
+                        index_area = saved_area;
+                        index_ok = 0;
+                        if (index_id != 255) {
+                            if (index_area == 2) {
+                                index_ok = local_type[index_id] == 1;
+                            } else {
+                                index_ok = global_kind[index_id] == 1 & global_type[index_id] == 1;
+                            }
+                        }
+                        bound_id = loop_lookup(3);
+                        bound_area = saved_area;
+                        bound_ok = 0;
+                        if (bound_id != 255) {
+                            if (bound_area == 2) {
+                                bound_ok = local_type[bound_id] == 1;
+                            } else {
+                                bound_ok = global_kind[bound_id] == 1 & global_type[bound_id] == 1;
+                            }
+                        }
+                        if (index_ok != 0 & bound_ok != 0) {
+                            loop_label = label_counter;
+                            label_counter = label_counter + 1;
+                            done_label = label_counter;
+                            label_counter = label_counter + 1;
+                            emit_label(loop_label);
+                            emit_symbol_operand((fixed_text + 439), index_area, index_id, 0);
+                            emit_symbol_operand("cpy", bound_area, bound_id, 0);
+                            emit_jump_label("bcs", done_label);
+                            if (compiler_error != 0) {
+                                return 0;
+                            }
+                            /* Replay starts at the body-opening brace. */
+                            loop_data[1] = 5;
+                            if (scan_token() == 0) {
+                                return 0;
+                            }
+                            if (push_control(4, loop_label, done_label) == 0) {
+                                return 0;
+                            }
+                            return scan_token();
+                        }
+                    }
+                }
+            }
         }
         /* Unknown region: replay its original tokens, semantics unchanged. */
         token_kind = 139;
