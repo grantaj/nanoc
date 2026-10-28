@@ -334,13 +334,13 @@ char ria;
 char rba;
 
 /* fixed symbol model: flat names keep Phase 1 data structures obvious */
-char global_name[5632];
-char global_name_len[176];
-char global_kind[176];
-char global_type[176];
-unsigned global_array_len[176];
-char global_param_start[176];
-char global_param_count[176];
+char global_name[6656];
+char global_name_len[208];
+char global_kind[208];
+char global_type[208];
+unsigned global_array_len[208];
+char global_param_start[208];
+char global_param_count[208];
 char global_count;
 
 char local_name[1024];
@@ -1197,7 +1197,7 @@ int add_global_saved(char kind, char type)
 {
     int id;
 
-    if (global_count >= 176) {
+    if (global_count >= 208) {
         compiler_error = 6;
         return -1;
     }
