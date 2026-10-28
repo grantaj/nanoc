@@ -3037,10 +3037,10 @@ char statement_while()
     unsigned loop_label;
     unsigned done_label;
     unsigned body_label;
-    char index_id;
-    char index_area;
-    char bound_id;
-    char bound_area;
+    char ix;
+    char ia;
+    char bn;
+    char ba;
     char index_ok;
     char bound_ok;
 
@@ -3069,24 +3069,24 @@ char statement_while()
             if (loop_kind(1) == 130 & loop_kind(2) == '<') {
                 if (loop_kind(3) == 130 & loop_kind(4) == ')') {
                     if (loop_kind(5) == '{') {
-                        index_id = loop_lookup(1);
-                        index_area = saved_area;
+                        ix = loop_lookup(1);
+                        ia = saved_area;
                         index_ok = 0;
-                        if (index_id != 255) {
-                            if (index_area == 2) {
-                                index_ok = local_type[index_id] == 1;
+                        if (ix != 255) {
+                            if (ia == 2) {
+                                index_ok = local_type[ix] == 1;
                             } else {
-                                index_ok = global_kind[index_id] == 1 & global_type[index_id] == 1;
+                                index_ok = global_kind[ix] == 1 & global_type[ix] == 1;
                             }
                         }
-                        bound_id = loop_lookup(3);
-                        bound_area = saved_area;
+                        bn = loop_lookup(3);
+                        ba = saved_area;
                         bound_ok = 0;
-                        if (bound_id != 255) {
-                            if (bound_area == 2) {
-                                bound_ok = local_type[bound_id] == 1;
+                        if (bn != 255) {
+                            if (ba == 2) {
+                                bound_ok = local_type[bn] == 1;
                             } else {
-                                bound_ok = global_kind[bound_id] == 1 & global_type[bound_id] == 1;
+                                bound_ok = global_kind[bn] == 1 & global_type[bn] == 1;
                             }
                         }
                         if (index_ok != 0 & bound_ok != 0) {
@@ -3097,8 +3097,8 @@ char statement_while()
                             body_label = label_counter;
                             label_counter = label_counter + 1;
                             emit_label(loop_label);
-                            emit_symbol_operand((fixed_text + 439), index_area, index_id, 0);
-                            emit_symbol_operand("cpy", bound_area, bound_id, 0);
+                            emit_symbol_operand((fixed_text + 439), ia, ix, 0);
+                            emit_symbol_operand("cpy", ba, bn, 0);
                             /*
                              * The body may contain arbitrary statements.
                              * An ordinary 6502 BCS cannot reach the end of
