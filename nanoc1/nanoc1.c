@@ -309,6 +309,17 @@ char hold_valid;
 unsigned source_line;
 char compiler_error;
 
+/*
+ * Bounded semantic lookahead for one while region, no AST:
+ *   0 count, 1 replay position, 2 replay active, 3 complete
+ *   4..5 text pool used; entries begin at 16, seven bytes each:
+ *   kind, type, length, value low/high, text offset low/high.
+ *   64 entries use 448 bytes; spelling pool begins at 464 (1024 bytes).
+ * A non-matching or oversized region replays the original tokens through
+ * the existing semantic compiler. Nothing is committed while previewing.
+ */
+char loop_data[1488];
+
 /* fixed symbol model: flat names keep Phase 1 data structures obvious */
 char global_name[5632];
 char global_name_len[176];
@@ -966,7 +977,7 @@ char scan_operator_token()
     return 1;
 }
 
-char scan_token()
+char scan_real_token()
 {
     token_length = 0;
     token_value = 0;
@@ -991,6 +1002,277 @@ char scan_token()
         return scan_string_token();
     }
     return scan_operator_token();
+}
+
+
+/* The token window stores semantic tokens, not chosen 6502 instructions. */
+char loop_token(char position)
+{
+    unsigned slot;
+    unsigned start;
+    char i;
+
+    slot = 16 + position * 7;
+    token_kind = loop_data[slot];
+    token_type = loop_data[slot + 1];
+    token_length = loop_data[slot + 2];
+    token_value = loop_data[slot + 3] + (loop_data[slot + 4] << 8);
+    start = loop_data[slot + 5] + (loop_data[slot + 6] << 8);
+    i = 0;
+    while (i < token_length) {
+        token_text[i] = loop_data[464 + start + i];
+        i = i + 1;
+    }
+    token_text[token_length] = 0;
+    return 1;
+}
+
+char scan_token()
+{
+    char position;
+
+    if (loop_data[2] != 0) {
+        position = loop_data[1];
+        if (position < loop_data[0]) {
+            loop_data[1] = position + 1;
+            return loop_token(position);
+        }
+        loop_data[2] = 0;
+    }
+    return scan_real_token();
+}
+
+/*
+ * Preview the complete loop body, or as much as fits in the fixed window.
+ * If full, replay all recorded tokens, then continue reading from the
+ * original scanner position. There is never a need to rewind a C64 file.
+ */
+char loop_preview()
+{
+    char depth;
+    char opened;
+    char count;
+    char i;
+    unsigned used;
+    unsigned slot;
+
+    depth = 0;
+    opened = 0;
+    loop_data[0] = 0;
+    loop_data[1] = 0;
+    loop_data[2] = 0;
+    loop_data[3] = 0;
+    loop_data[4] = 0;
+    loop_data[5] = 0;
+    while (1) {
+        count = loop_data[0];
+        used = loop_data[4] + (loop_data[5] << 8);
+        /* Each native scanner token has at most 190 spelling bytes. */
+        if (count >= 64 | used + 192 > 1024) {
+            break;
+        }
+        if (scan_real_token() == 0) {
+            return 0;
+        }
+        slot = 16 + count * 7;
+        loop_data[slot] = token_kind;
+        loop_data[slot + 1] = token_type;
+        loop_data[slot + 2] = token_length;
+        loop_data[slot + 3] = token_value & 255;
+        loop_data[slot + 4] = (token_value >> 8) & 255;
+        loop_data[slot + 5] = used & 255;
+        loop_data[slot + 6] = (used >> 8) & 255;
+        i = 0;
+        while (i < token_length) {
+            loop_data[464 + used + i] = token_text[i];
+            i = i + 1;
+        }
+        used = used + token_length;
+        loop_data[4] = used & 255;
+        loop_data[5] = (used >> 8) & 255;
+        loop_data[0] = count + 1;
+        if (token_kind == '{') {
+            depth = depth + 1;
+            opened = 1;
+        }
+        if (token_kind == '}') {
+            if (depth > 0) {
+                depth = depth - 1;
+            }
+            if (opened != 0 & depth == 0) {
+                loop_data[3] = 1;
+                break;
+            }
+        }
+        if (token_kind == 128) {
+            break;
+        }
+    }
+    /* Restore the original while token, then replay the preview on demand. */
+    token_kind = 139;
+    token_type = 0;
+    token_length = 0;
+    token_value = 0;
+    loop_data[2] = 1;
+    return 1;
+}
+
+char loop_same(char left, char right)
+{
+    unsigned a;
+    unsigned b;
+    char n;
+    char i;
+
+    a = 16 + left * 7;
+    b = 16 + right * 7;
+    n = loop_data[a + 2];
+    if (n != loop_data[b + 2]) {
+        return 0;
+    }
+    a = loop_data[a + 5] + (loop_data[a + 6] << 8);
+    b = loop_data[b + 5] + (loop_data[b + 6] << 8);
+    i = 0;
+    while (i < n) {
+        if (loop_data[464 + a + i] != loop_data[464 + b + i]) {
+            return 0;
+        }
+        i = i + 1;
+    }
+    return 1;
+}
+
+char loop_lookup(char position)
+{
+    loop_token(position);
+    return lookup_name();
+}
+
+/* Emit one absolute,Y array operation chosen from the semantic loop. */
+char loop_array_instruction(char *op, char symbol)
+{
+    emit_instruction(op);
+    write_char(' ');
+    emit_global_name(symbol);
+    write_char(',');
+    write_char('y');
+    write_newline();
+    return compiler_error == 0;
+}
+
+/*
+ * Whole-loop machine selector for the first provably safe cursor algorithm:
+ * while (i < n) { dst[i] = src[i]; i = i + 1; }
+ * All four symbols are checked; i,n are byte scalars, src,dst fixed byte
+ * arrays. No calls, aliases through pointers, or interior control edges.
+ * The selected machine trajectory retains Y across the *back edge* and
+ * writes i once on exit. Other loops use the unchanged general parser.
+ */
+char loop_copy()
+{
+    char i_id;
+    char i_area;
+    char n_id;
+    char n_area;
+    char src_id;
+    char dst_id;
+    unsigned start_label;
+    unsigned end_label;
+
+    if (loop_data[3] == 0 | loop_data[0] != 23) {
+        return 0;
+    }
+    if (loop_data[16] != '(' | loop_data[30] != '<') {
+        return 0;
+    }
+    if (loop_data[44] != '{' | loop_data[65] != '[') {
+        return 0;
+    }
+    if (loop_data[79] != '=' | loop_data[93] != '[') {
+        return 0;
+    }
+    if (loop_data[114] != ';' | loop_data[128] != '=') {
+        return 0;
+    }
+    if (loop_data[142] != '+' | loop_data[156] != ';') {
+        return 0;
+    }
+    if (loop_data[163] != '}') {
+        return 0;
+    }
+    if (loop_data[149] != 131) {
+        return 0;
+    }
+    if (loop_data[152] != 1 | loop_data[153] != 0) {
+        return 0;
+    }
+    if (loop_same(1, 8) == 0 | loop_same(1, 13) == 0) {
+        return 0;
+    }
+    if (loop_same(1, 16) == 0 | loop_same(1, 18) == 0) {
+        return 0;
+    }
+
+    i_id = loop_lookup(1);
+    if (i_id == 255) {
+        return 0;
+    }
+    i_area = saved_area;
+    if (i_area == 2) {
+        if (local_type[i_id] != 1) {
+            return 0;
+        }
+    } else {
+        if (global_kind[i_id] != 1 | global_type[i_id] != 1) {
+            return 0;
+        }
+    }
+    n_id = loop_lookup(3);
+    if (n_id == 255) {
+        return 0;
+    }
+    n_area = saved_area;
+    if (n_area == 2) {
+        if (local_type[n_id] != 1) {
+            return 0;
+        }
+    } else {
+        if (global_kind[n_id] != 1 | global_type[n_id] != 1) {
+            return 0;
+        }
+    }
+    dst_id = loop_lookup(6);
+    if (dst_id == 255 | saved_area != 1) {
+        return 0;
+    }
+    if (global_kind[dst_id] != 2 | global_type[dst_id] != 1) {
+        return 0;
+    }
+    src_id = loop_lookup(11);
+    if (src_id == 255 | saved_area != 1) {
+        return 0;
+    }
+    if (global_kind[src_id] != 2 | global_type[src_id] != 1) {
+        return 0;
+    }
+
+    /* The loop has no path out of its own straight-line induction step. */
+    start_label = label_counter;
+    label_counter = label_counter + 1;
+    end_label = label_counter;
+    label_counter = label_counter + 1;
+    emit_symbol_operand("ldy", i_area, i_id, 0);
+    emit_label(start_label);
+    emit_symbol_operand("cpy", n_area, n_id, 0);
+    emit_jump_label("bcs", end_label);
+    loop_array_instruction("lda", src_id);
+    loop_array_instruction("sta", dst_id);
+    emit_zero("iny");
+    emit_jump_label("jmp", start_label);
+    emit_label(end_label);
+    emit_symbol_operand("sty", i_area, i_id, 0);
+    ax_pending = 0;
+    return compiler_error == 0;
 }
 
 char save_token_name()
@@ -2532,6 +2814,19 @@ char statement_while()
 {
     unsigned loop_label;
     unsigned done_label;
+
+    if (loop_data[2] == 0) {
+        if (loop_preview() == 0) {
+            return 0;
+        }
+        if (loop_copy() != 0) {
+            /* All tokens through the closing brace were consumed. */
+            loop_data[2] = 0;
+            return scan_token();
+        }
+        /* Unknown region: replay its original tokens, semantics unchanged. */
+        token_kind = 139;
+    }
 
     loop_label = label_counter;
     label_counter = label_counter + 1;
