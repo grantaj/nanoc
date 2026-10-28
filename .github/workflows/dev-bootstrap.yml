@@ -1,0 +1,38 @@
+name: Oversized seed compiler (development layout)
+
+on:
+  pull_request:
+    paths:
+      - 'nanoc0/**'
+      - 'nanoc1/**'
+      - 'ass/test_nanoc0_development.asm'
+      - 'ass/test_nanoc1_development_compile.asm'
+      - 'scripts/test-nanoc1-development.sh'
+      - 'scripts/test-nanoc1-baseline.sh'
+      - '.github/workflows/dev-bootstrap.yml'
+  workflow_dispatch:
+
+jobs:
+  development-bootstrap:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out nanoc
+        uses: actions/checkout@v7.0.1
+      - name: Set up C64 tools
+        run: make setup
+      - name: Check development test syntax
+        run: sh -n scripts/test-nanoc1-development.sh
+      - name: Exercise oversized seed and self-compilation on VICE
+        run: sh scripts/test-nanoc1-development.sh
+      - name: Preserve native development assembly
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: development-bootstrap-generated
+          path: |
+            build-development/nanoc0-integration/nanoc1dev.asm
+            build-development/nanoc0-integration/NANOC1DEV.ASM
+            build-development/nanoc0-integration/n1-self-compile.result
+            build-development/nanoc0-integration/n1-ass.asm
+            build-development/nanoc0-integration/nanoc2-size.prg
+          if-no-files-found: ignore
