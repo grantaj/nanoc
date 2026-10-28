@@ -128,6 +128,14 @@ VICE_PRELOAD_PRG="$LARGE_DIR/large-fallback.prg" VICE_TIMEOUT=90 \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_large_execution.prg" large-fallback-execute
 echo "PASS #102: selected loop and ordinary fallback execute correctly on 6510"
 
+# The generated assembler is a non-gating code-quality probe while it
+# remains bigger than the $0800-$47ff execution region.
+case_compile large-ass BOOTSTRAP/ASS.C 360
+"$VASM" -I"$ROOT/ass" -Fbin -cbm-prg \
+    -o "$LARGE_DIR/large-ass.prg" "$LARGE_DIR/large-ass.asm"
+ass_bytes=$(($(wc -c < "$LARGE_DIR/large-ass.prg") - 2))
+echo "SIZE #102: exact ass.c generated image=$ass_bytes bytes (target 16384)"
+
 # The first generation now compiles its own *exact* source. The second
 # generation's size is an independent measurement, not the size of the seed.
 case_compile large-self NANOC1/NANOC1.C 360
