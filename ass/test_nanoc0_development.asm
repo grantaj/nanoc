@@ -2,8 +2,8 @@
 	include "../nanoc0/interface.inc"
 
 ; Development-only: real nanoc0 executes at $4000 and emits exact nanoc1.c
-; using the roomy $0800 code / $a000 static map. Do NOT assemble the new
-; image here: the 24-KiB native assembler staging window is still occupied.
+; with code $4000-$cfff and BSS $0800-$3fff. Do NOT assemble or run that
+; image in this process: the resident nanoc0 uses $4000 and $c000 workspace.
 
 	* = $0800
 main:

@@ -218,9 +218,6 @@ if ! awk '
 fi
 echo "PASS #102: byte-bound exit uses a local skip and full-address JMP"
 
-
-
-
 rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
 case_source n1-runtime TESTS/NANOC0-RUNTIME/RUNTIME.C accept run 0 0
 if [ -f "$OUT_DIR/DTEST" ]; then dtest="$OUT_DIR/DTEST"; else dtest="$OUT_DIR/dtest"; fi
@@ -242,12 +239,18 @@ case_source n1-operator-depth TESTS/NANOC1/OPERATOR-DEPTH.C reject none
 
 # Whole-program stress: no alternate assembler source and no C rewrite.
 case_source n1-ass BOOTSTRAP/ASS.C accept compile
-compiler_asm="$OUT_DIR/NANOC1.ASM"
-if [ ! -f "$compiler_asm" ]; then compiler_asm="$OUT_DIR/nanoc1.asm"; fi
-if [ ! -f "$compiler_asm" ]; then compiler_asm="$OUT_DIR/NANOC1DEV.ASM"; fi
-if [ ! -f "$compiler_asm" ]; then compiler_asm="$OUT_DIR/nanoc1dev.asm"; fi
-if [ ! -f "$compiler_asm" ]; then
-    echo "FAIL nanoc1 baseline: missing exact seed compiler assembly" >&2
+# The strict runner writes NANOC1.ASM; the development runner passes its
+# own NANOC1DEV.ASM explicitly. Never use an artifact from the other profile:
+# a shared build directory may contain a perfectly valid but stale seed.
+if [ -n "${NANOC1_SEED_ASM:-}" ]; then
+    compiler_asm=$NANOC1_SEED_ASM
+elif [ -f "$OUT_DIR/NANOC1.ASM" ]; then
+    compiler_asm="$OUT_DIR/NANOC1.ASM"
+else
+    compiler_asm="$OUT_DIR/nanoc1.asm"
+fi
+if [ ! -s "$compiler_asm" ]; then
+    echo "FAIL nanoc1 baseline: missing selected seed assembly $compiler_asm" >&2
     exit 1
 fi
 compiler_source=$(wc -c < "$compiler_asm")
