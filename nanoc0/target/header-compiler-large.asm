@@ -1,7 +1,7 @@
 ;;; Development-only compiler map. See issue #108.
 ;;;
 ;;; With the native assembler/driver no longer resident, the test harness
-;;; occupies $0800-$0fff, compiler BSS occupies $1000-$3fff and code occupies
+;;; occupies $0200-$07ff, compiler BSS occupies $0800-$3fff and code occupies
 ;;; $4000-$cfff. Never use this header in the low-resident native ass driver:
 ;;; that driver owns memory in the latter two ranges while assembling.
 ;;;
@@ -11,7 +11,7 @@
     * = $4000
 NC_TMP = $fc
 NC_PTR = $fe
-NC_BSS = $1000
+NC_BSS = $0800
 
 __nc_start:
     lda $01
