@@ -203,7 +203,7 @@ machine trajectories, with joins explicitly reconciled.
 
 The first-generation compiler from `nanoc0` may exceed its old 24-KiB
 staging window. Development validation therefore uses #108's separate
-`$0800` image / `$a000` BSS process and executes the **same compiled C
+`$4000` image / `$0800` BSS process and executes the **same compiled C
 compiler source** natively. The normal strict bootstrap remains a final
 convergence check, not a veto on this experiment. The exact `ass.c` size,
 source-level semantic tests and selected loop execution all remain measured.
