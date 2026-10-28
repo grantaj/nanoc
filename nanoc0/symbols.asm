@@ -47,15 +47,17 @@ SYMBOL_AREA_NONE       = 0
 SYMBOL_AREA_CURRENT    = 1
 SYMBOL_AREA_PERSISTENT = 2
 
-PERSISTENT_SYMBOL_CAPACITY = 196
-CURRENT_SYMBOL_CAPACITY    = 32
-NAME_POOL_CAPACITY         = 2664
-PARAM_META_CAPACITY        = 160
+PERSISTENT_SYMBOL_CAPACITY = 188
+CURRENT_SYMBOL_CAPACITY    = 20
+NAME_POOL_CAPACITY         = 2764
+PARAM_META_CAPACITY        = 144
 
 ;;; The 4096 symbol/name bytes are working RAM, not loaded program data.
 ;;; $c000-$cfff is ordinary C64 RAM below I/O, above every nanoc0 image.
-;;; The development seed requires 160 saved parameter types, and uses the
-;;; remainder as name storage. No dynamic allocation or hidden-memory access.
+;;; The development seed fits 185 persistent symbols, 139 parameter types
+;;; (including runtime entries), and 112 bytes of current-function names.
+;;; Capacity is redistributed within the SAME $c000-$cfff workspace, not
+;;; extended into the assembler's RAM or hidden memory.
 SYMBOL_WORKSPACE_BYTES = 4096
 NANOC_SYMBOL_WORKSPACE = $c000
 
