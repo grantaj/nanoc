@@ -35,7 +35,7 @@ if [ "$#" -ne 5 ]; then
 fi
 bss=$(( $4 + 256 * $5 ))
 if [ "$bss" -gt 12288 ]; then
-    echo "FAIL #108: compiler BSS $bss exceeds $a000-$cfff (12288 B)" >&2
+    echo "FAIL #108: compiler BSS $bss exceeds 0xa000-0xcfff (12288 B)" >&2
     exit 1
 fi
 if [ -f "$OUT_DIR/NANOC1DEV.ASM" ]; then
@@ -55,12 +55,12 @@ fi
 set -- $(od -An -tu1 -N2 "$OUT_DIR/nanoc1.prg")
 origin=$(( $1 + 256 * $2 ))
 if [ "$origin" -ne 2048 ]; then
-    echo "FAIL #108: expected compiler origin $0800, got $origin" >&2
+    echo "FAIL #108: expected compiler origin at 0x0800, got $origin" >&2
     exit 1
 fi
 loaded=$(($(wc -c < "$OUT_DIR/nanoc1.prg") - 2))
 if [ "$loaded" -gt 38912 ]; then
-    echo "FAIL #108: compiler code $loaded exceeds $0800-$9fff (38912 B)" >&2
+    echo "FAIL #108: compiler code $loaded exceeds 0x0800-0x9fff (38912 B)" >&2
     exit 1
 fi
 echo "PASS #108: separate development seed code=$loaded/38912 B BSS=$bss/12288 B"
