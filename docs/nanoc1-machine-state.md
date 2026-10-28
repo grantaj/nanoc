@@ -207,3 +207,72 @@ staging window. Development validation therefore uses #108's separate
 compiler source** natively. The normal strict bootstrap remains a final
 convergence check, not a veto on this experiment. The exact `ass.c` size,
 source-level semantic tests and selected loop execution all remain measured.
+
+## #102: typed pointer byte reads and whole-region byte comparisons
+
+A Phase-1 `char*` indexed by a `char` has precisely the operand sizes for
+6502 indirect indexed addressing. The expression emitter now consumes the
+evaluated byte index in Y, loads the pointer into NC_PTR, and executes
+`LDA (NC_PTR),Y`. It does *not* materialize a 16-bit sum or use the hardware
+stack to carry a computed address. An `int` or `unsigned` index still uses
+the existing full-width computation; its high byte must not be dropped.
+
+A second bounded whole-loop selector handles a read-only byte comparison with
+an early return:
+
+```c
+while (i < n) {
+    if (a[i] != b[i]) { return 0; }
+    i = i + 1;
+}
+```
+
+The two operands must be scalar `char*` variables; the cursor and bound must
+be `char` scalars, with the same resolved cursor in every occurrence.
+The entire body is verified *before* emitting instructions, including the
+mismatch exit and induction step. On a match the emitted strategy is:
+
+```asm
+    lda a          ; also load a+1
+    sta NC_TMP
+    lda a+1
+    sta NC_TMP+1
+    lda b          ; also load b+1
+    sta NC_PTR
+    lda b+1
+    sta NC_PTR+1
+loop:
+    ldy i
+    cpy n
+    bcs done
+    lda (NC_TMP),y
+    cmp (NC_PTR),y
+    beq equal
+    lda #0
+    ldx #0
+    rts
+equal:
+    inc i
+    jmp loop
+done:
+```
+
+Unlike a fixed-array copy loop, this operation **updates the cursor in
+memory on each iteration**, rather than deferring its store. Either input
+pointer is permitted to refer to the cursor: the following read must observe
+the increment. The two pointer *values* are safe to retain across the loop
+because it contains no calls or writes through either pointer. Any other
+syntax or side effect falls back to the full ordinary compiler. The normal
+C64 process ABI reserves NC_TMP and NC_PTR as the two zero-page scratch words.
+
+The integration fixtures exercise page crossings, the zero-length and
+255-element boundaries, mismatch at the first/last byte, and a differently
+spelled induction step that must use the fallback. The exact `ass.c` probe
+also asserts that `same_text` now selects indirect-Y pointer comparison.
+
+These are two separate machine strategies: one globally useful addressing
+choice for byte pointer reads, and one bounded region decision that retains
+both zero-page pointers through a control-flow back edge. Neither is yet a
+general loop-operation representation. Later work should unify their
+read/write/compare/cursor semantics rather than accumulate one handwritten
+whole-loop matcher per C spelling.
