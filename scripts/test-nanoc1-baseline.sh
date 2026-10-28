@@ -186,6 +186,23 @@ if [ "$selected" -ge "$fallback" ]; then
 fi
 echo "PASS #102: selected copy program $selected bytes vs legacy emitter $fallback bytes"
 
+# This header selector also applies to real pointer-using loops like ass.c.
+# Y is reloaded at the header, so arbitrary body operations may clobber Y.
+case_source n1-byte-bound TESTS/NANOC1/LOOP-BYTE-BOUND.C accept run 90 0
+case_source n1-byte-bound-fallback TESTS/NANOC1/LOOP-BYTE-BOUND-FALLBACK.C accept run 90 0
+if ! grep -Eq '^[[:space:]]*cpy[[:space:]]+__v' "$OUT_DIR/n1-byte-bound.asm"; then
+    echo 'FAIL #102: byte bound did not select native CPY header' >&2
+    exit 1
+fi
+bounded=$(($(wc -c < "$OUT_DIR/n1-byte-bound.prg") - 2))
+ordinary=$(($(wc -c < "$OUT_DIR/n1-byte-bound-fallback.prg") - 2))
+if [ "$bounded" -ge "$ordinary" ]; then
+    echo "FAIL #102: byte-bound machine header $bounded not smaller than legacy $ordinary" >&2
+    exit 1
+fi
+echo "PASS #102: byte-bound native program $bounded bytes vs ordinary $ordinary bytes"
+
+
 
 rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
 case_source n1-runtime TESTS/NANOC0-RUNTIME/RUNTIME.C accept run 0 0
