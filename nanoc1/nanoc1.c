@@ -2409,6 +2409,25 @@ char emit_index_load(char area, char symbol, char kind, char element_type, char 
         hold_ax();
         return compiler_error == 0;
     }
+    /*
+     * A byte index into a char* is already the 6502's indirect,Y addressing
+     * mode. Preserve the evaluated index in Y, load the pointer word once,
+     * then read directly. A wide index still takes the full 16-bit path.
+     */
+    if (kind != 2 & element_type == 1 & index_type == 1) {
+        emit_pop_ax();
+        emit_zero((fixed_text + 467));
+        emit_symbol_operand((fixed_text + 431), area, symbol, 0);
+        emit_scratch((fixed_text + 443), (fixed_text + 205), 0);
+        emit_symbol_operand((fixed_text + 431), area, symbol, 1);
+        emit_scratch((fixed_text + 443), (fixed_text + 205), 1);
+        emit_instruction((fixed_text + 431));
+        write_text((fixed_text + 555));
+        write_newline();
+        emit_immediate((fixed_text + 435), 0);
+        hold_ax();
+        return compiler_error == 0;
+    }
     if (emit_index_address(area, symbol, kind, element_type) == 0) {
         return 0;
     }
