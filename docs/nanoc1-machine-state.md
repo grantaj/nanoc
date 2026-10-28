@@ -136,3 +136,62 @@ a claim made for this initial index-algorithm selection.
 Both the 24,576-byte native compiler bootstrap limit and full Phase 1 semantic
 execution remain hard gates. The exact compiled `ass.c` loaded size is reported
 as a measurement, independently of executable fit.
+
+
+## #102: a source identity held in Y (next straight-line region)
+
+The smallest persistent 6502 state worth testing after the absolute,Y choice is
+**which char scalar Y was loaded from**, not another abstract expression form.
+With the old direct emitter, each `a[i]` emits an independent `LDA i; LDX #0;
+TAY`, including when the immediately previous access left the same `i`
+unchanged in Y.
+
+The parser already has one token of forward context: after reading identifier
+`i`, it has scanned the next token. If that token is `]` and the current
+operator is a *fixed global byte array* index, this is a complete, bounded
+semantic operation. The compiler can select `LDY i` directly, without
+emitting an unnecessary A/X semantic value, then `LDA array,Y; LDX #0`.
+
+Only **one byte of persistent identity** is needed:
+
+- `y_id`: global symbol 0–175, local symbol 176–207, or 255 for unknown.
+  The two disjoint ranges cover exactly the current bounded symbol tables.
+- `ax_pending == 2`: the direct index value is in Y, not in A/X or on the
+  hardware stack; the closing bracket consumes it. The existing values 0
+  (stack) and 1 (A/X) remain unchanged.
+
+This representation replaces four initially proposed globals and avoids
+exhausting `nanoc0`'s fixed source-name arena.
+
+If the next direct array access indexes the *same* scalar, no new `LDY` is
+necessary, even when the array base differs and unrelated scalar stores occur
+between accesses. A new scalar source gets a new `LDY`. This chooses a
+different sequence of 6502 loads **before** generating the index value.
+
+The current conservative invalidation contract is intentionally strict:
+
+- Assignment to that scalar invalidates the identity after its RHS is read.
+- Calls, arbitrary indexed address/write operations, unary/binary reductions,
+  and string literal jumps invalidate Y.
+- Function entry, `if`/`while` entries, block joins, `break`, and returns
+  invalidate it; no assumption is made about loop-back-edge register state.
+- Ordinary scalar loads and stores to *other* scalars preserve Y, and `LDA
+  array,Y` itself leaves Y intact.
+
+This is **cross-statement straight-line reuse**, not yet loop-carried reuse.
+The next step needs a way to reconcile a known Y identity on *both* incoming
+edges of a loop head, and to prove where it is still valid through the body,
+rather than trusting the value observed while parsing source linearly.
+
+Tests use the actual native-produced compiler. `y-index-identity.c` checks
+three distinct regions: reuse over several unrelated scalar stores, a changed
+index and if/else join, then invalidation by a function that changes a global
+index. A generated-code assertion checks the number of `LDY` reloads
+alongside native 6510 execution. The old wide-index regression ensures the
+16-bit fallback is unchanged.
+
+The native compiler remains limited to 24,576 loaded bytes. Space for this
+bounded state comes from removing repeated output-error branches in the
+existing emitter helpers, using their original sticky `compiler_error`
+contract. No language rules, assembler source, or private test compiler
+implementations have changed.

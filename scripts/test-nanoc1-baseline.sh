@@ -158,6 +158,15 @@ if ! grep -Eq '^[[:space:]]*lda[[:space:]]+[(]NC_PTR[)],y' "$OUT_DIR/n1-index-wi
 fi
 echo 'PASS #102: int/unsigned offsets 256/257 use full 16-bit address'
 
+# Track a bare char index's source identity across unrelated scalar stores.
+# The real native program also tests invalidation at assignments, calls and joins.
+case_source n1-y-index-identity TESTS/NANOC1/Y-INDEX-IDENTITY.C accept run 90 0
+y_loads=$(grep -Ec '^[[:space:]]*ldy[[:space:]]+__g[[:xdigit:]][[:xdigit:]]' "$OUT_DIR/n1-y-index-identity.asm" || true)
+if [ "$y_loads" -ne 3 ]; then
+    echo "FAIL #102: expected 3 index reloads across 6 reads, found $y_loads" >&2
+    exit 1
+fi
+echo 'PASS #102: Y identity reused across consecutive scalar statements'
 rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
 case_source n1-runtime TESTS/NANOC0-RUNTIME/RUNTIME.C accept run 0 0
 if [ -f "$OUT_DIR/DTEST" ]; then dtest="$OUT_DIR/DTEST"; else dtest="$OUT_DIR/dtest"; fi

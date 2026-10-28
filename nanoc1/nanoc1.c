@@ -346,10 +346,9 @@ char expr_done;
 /*
  * Value-location contract (one pending value, not a register allocator):
  *
- * ax_pending == 1: only the newest expression value is live in A/X, NOT on
- *                  the hardware stack. emit_pop_ax consumes it without PLA.
- * ax_pending == 0: every live expression value is on the hardware stack;
- *                  emit_pop_ax uses the old PLA/TAX/PLA template.
+ * ax_pending == 1: newest expression value lives in A/X, not on stack.
+ * ax_pending == 0: live expression values are on the hardware stack.
+ * ax_pending == 2: a bare byte-array index lives in Y until ']' consumes it.
  *
  * flush_ax materialises the pending value before an operand overwrites A/X.
  * hold_ax claims A/X for a newly computed value. Fixed-text index-load and
@@ -357,7 +356,13 @@ char expr_done;
  * calls hold_ax. Calls, stores and branches consume/reconcile the location
  * before another expression starts; control-flow joins never carry it.
  */
+/*
+ * Value location: 0 = hardware stack, 1 = A/X, 2 = bare byte index in Y.
+ * Y retains source identity separately, even while A/X holds another value.
+ */
 char ax_pending;
+/* Y identity: global slot 0..175, local slot 176..207, 255 = unknown. */
+char y_id;
 
 /* bounded structured-control state */
 char ctrl_kind[16];
@@ -437,23 +442,16 @@ char write_hex_digit(char value)
 
 char write_hex_byte(char value)
 {
-    char high;
-    char low;
-
-    high = (value >> 4) & 15;
-    low = value & 15;
-    if (write_hex_digit(high) == 0) {
-        return 0;
-    }
-    return write_hex_digit(low);
+    write_hex_digit((value >> 4) & 15);
+    write_hex_digit(value & 15);
+    return compiler_error == 0;
 }
 
 char write_hex_word(unsigned value)
 {
-    if (write_hex_byte((value >> 8) & 255) == 0) {
-        return 0;
-    }
-    return write_hex_byte(value & 255);
+    write_hex_byte((value >> 8) & 255);
+    write_hex_byte(value & 255);
+    return compiler_error == 0;
 }
 
 char write_newline()
@@ -463,18 +461,16 @@ char write_newline()
 
 char emit_instruction(char *op)
 {
-    if (write_char(9) == 0) {
-        return 0;
-    }
-    return write_text(op);
+    write_char(9);
+    write_text(op);
+    return compiler_error == 0;
 }
 
 char emit_zero(char *op)
 {
-    if (emit_instruction(op) == 0) {
-        return 0;
-    }
-    return write_newline();
+    emit_instruction(op);
+    write_newline();
+    return compiler_error == 0;
 }
 
 char emit_immediate(char *op, char value)
@@ -501,32 +497,25 @@ char emit_scratch(char *op, char *name, char high)
 }
 char emit_global_name(char symbol)
 {
-    if (write_text((fixed_text + 679)) == 0) {
-        return 0;
-    }
-    return write_hex_byte(symbol);
+    write_text((fixed_text + 679));
+    write_hex_byte(symbol);
+    return compiler_error == 0;
 }
 
 char emit_function_name(char symbol)
 {
-    if (write_text((fixed_text + 675)) == 0) {
-        return 0;
-    }
-    return write_hex_byte(symbol);
+    write_text((fixed_text + 675));
+    write_hex_byte(symbol);
+    return compiler_error == 0;
 }
 
 char emit_current_name(char function_id, char slot)
 {
-    if (write_text((fixed_text + 683)) == 0) {
-        return 0;
-    }
-    if (write_hex_byte(function_id) == 0) {
-        return 0;
-    }
-    if (write_char('_') == 0) {
-        return 0;
-    }
-    return write_hex_byte(slot);
+    write_text((fixed_text + 683));
+    write_hex_byte(function_id);
+    write_char('_');
+    write_hex_byte(slot);
+    return compiler_error == 0;
 }
 
 char emit_symbol_name(char area, char symbol)
@@ -550,21 +539,17 @@ char emit_symbol_operand(char *op, char area, char symbol, char high)
 }
 char emit_label_name(unsigned label)
 {
-    if (write_text((fixed_text + 587)) == 0) {
-        return 0;
-    }
-    return write_hex_word(label);
+    write_text((fixed_text + 587));
+    write_hex_word(label);
+    return compiler_error == 0;
 }
 
 char emit_label(unsigned label)
 {
-    if (emit_label_name(label) == 0) {
-        return 0;
-    }
-    if (write_char(':') == 0) {
-        return 0;
-    }
-    return write_newline();
+    emit_label_name(label);
+    write_char(':');
+    write_newline();
+    return compiler_error == 0;
 }
 
 char emit_jump_label(char *op, unsigned label)
@@ -585,36 +570,22 @@ char emit_text_operand(char *op, char *text)
 }
 char emit_include(char *path)
 {
-    if (write_char(9) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 182)) == 0) {
-        return 0;
-    }
-    if (write_char('"') == 0) {
-        return 0;
-    }
-    if (write_text(path) == 0) {
-        return 0;
-    }
-    if (write_char('"') == 0) {
-        return 0;
-    }
-    return write_newline();
+    write_char(9);
+    write_text((fixed_text + 182));
+    write_char('"');
+    write_text(path);
+    write_char('"');
+    write_newline();
+    return compiler_error == 0;
 }
 
 char emit_byte_data(char value)
 {
-    if (write_char(9) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 687)) == 0) {
-        return 0;
-    }
-    if (write_hex_byte(value) == 0) {
-        return 0;
-    }
-    return write_newline();
+    write_char(9);
+    write_text((fixed_text + 687));
+    write_hex_byte(value);
+    write_newline();
+    return compiler_error == 0;
 }
 
 char next_source_char()
@@ -1223,32 +1194,22 @@ char emit_bss_assignment(char area, char symbol, unsigned size)
 {
     unsigned new_end;
 
-    /* Subtract first: a 16-bit addition can wrap before the limit check. */
+    /* Subtract first: a 16-bit addition may wrap before the limit check. */
     if (size > 34304 - bss_offset) {
         compiler_error = 6;
         return 0;
     }
     new_end = bss_offset + size;
     if (area == 2) {
-        if (emit_current_name(current_func, symbol) == 0) {
-            return 0;
-        }
+        emit_current_name(current_func, symbol);
     } else {
-        if (emit_global_name(symbol) == 0) {
-            return 0;
-        }
+        emit_global_name(symbol);
     }
-    if (write_text((fixed_text + 572)) == 0) {
-        return 0;
-    }
-    if (write_hex_word(bss_offset) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
+    write_text((fixed_text + 572));
+    write_hex_word(bss_offset);
+    write_newline();
     bss_offset = new_end;
-    return 1;
+    return compiler_error == 0;
 }
 
 char runtime_param_name(char function_id, char argument)
@@ -1300,58 +1261,39 @@ char callee_name(char function_id)
 
 char emit_callee_call(char function_id)
 {
-    if (emit_instruction((fixed_text + 535)) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
-    if (callee_name(function_id) == 0) {
-        return 0;
-    }
-    return write_newline();
+    emit_instruction((fixed_text + 535));
+    write_char(' ');
+    callee_name(function_id);
+    write_newline();
+    return compiler_error == 0;
 }
 
 /* The same target slot may need its low and high bytes stored. */
 char emit_param_byte(char function_id, char argument, char high)
 {
-    if (emit_instruction((fixed_text + 443)) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
+    emit_instruction((fixed_text + 443));
+    write_char(' ');
     if (global_kind[function_id] == 4) {
-        if (runtime_param_name(function_id, argument) == 0) {
-            return 0;
-        }
+        runtime_param_name(function_id, argument);
     } else {
-        if (emit_current_name(function_id, argument) == 0) {
-            return 0;
-        }
+        emit_current_name(function_id, argument);
     }
     if (high != 0) {
-        if (write_text((fixed_text + 584)) == 0) {
-            return 0;
-        }
+        write_text((fixed_text + 584));
     }
-    return write_newline();
+    write_newline();
+    return compiler_error == 0;
 }
 
 char emit_param_store(char function_id, char argument, char type)
 {
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
+    emit_zero((fixed_text + 455));
     if (type != 1) {
-        if (emit_param_byte(function_id, argument, 1) == 0) {
-            return 0;
-        }
+        emit_param_byte(function_id, argument, 1);
     }
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
-    return emit_param_byte(function_id, argument, 0);
+    emit_zero((fixed_text + 455));
+    emit_param_byte(function_id, argument, 0);
+    return compiler_error == 0;
 }
 
 char emit_push_ax()
@@ -1386,19 +1328,14 @@ char emit_pop_ax()
 
 char emit_load_symbol(char area, char symbol, char type)
 {
-    if (emit_symbol_operand((fixed_text + 431), area, symbol, 0) == 0) {
-        return 0;
-    }
+    emit_symbol_operand((fixed_text + 431), area, symbol, 0);
     if (type == 1) {
-        if (emit_immediate((fixed_text + 435), 0) == 0) {
-            return 0;
-        }
+        emit_immediate((fixed_text + 435), 0);
     } else {
-        if (emit_symbol_operand((fixed_text + 435), area, symbol, 1) == 0) {
-            return 0;
-        }
+        emit_symbol_operand((fixed_text + 435), area, symbol, 1);
     }
-    return hold_ax();
+    hold_ax();
+    return compiler_error == 0;
 }
 
 /* Both a global array and a string literal are constant 16-bit addresses. */
@@ -1406,38 +1343,29 @@ char emit_address_value(char kind, unsigned target)
 {
     char high;
     char *op;
-    char *prefix;
 
     high = 0;
     while (high < 2) {
-        if (high == 0) {
-            op = fixed_text + 431;
-            prefix = fixed_text + 547;
-        } else {
+        op = fixed_text + 431;
+        if (high != 0) {
             op = fixed_text + 435;
-            prefix = fixed_text + 551;
         }
-        if (emit_instruction(op) == 0) {
-            return 0;
-        }
-        if (write_text(prefix) == 0) {
-            return 0;
+        emit_instruction(op);
+        if (high == 0) {
+            write_text((fixed_text + 547));
+        } else {
+            write_text((fixed_text + 551));
         }
         if (kind == 2) {
-            if (emit_global_name(target) == 0) {
-                return 0;
-            }
+            emit_global_name(target);
         } else {
-            if (emit_label_name(target) == 0) {
-                return 0;
-            }
+            emit_label_name(target);
         }
-        if (write_newline() == 0) {
-            return 0;
-        }
+        write_newline();
         high = high + 1;
     }
-    return hold_ax();
+    hold_ax();
+    return compiler_error == 0;
 }
 
 char emit_array_address(char symbol)
@@ -1447,13 +1375,10 @@ char emit_array_address(char symbol)
 
 char emit_literal_value(unsigned value)
 {
-    if (emit_immediate((fixed_text + 431), value & 255) == 0) {
-        return 0;
-    }
-    if (emit_immediate((fixed_text + 435), (value >> 8) & 255) == 0) {
-        return 0;
-    }
-    return hold_ax();
+    emit_immediate((fixed_text + 431), value & 255);
+    emit_immediate((fixed_text + 435), (value >> 8) & 255);
+    hold_ax();
+    return compiler_error == 0;
 }
 
 char emit_string_literal()
@@ -1462,16 +1387,13 @@ char emit_string_literal()
     unsigned skip_label;
     char i;
 
+    y_id = 255;
     data_label = label_counter;
     label_counter = label_counter + 1;
     skip_label = label_counter;
     label_counter = label_counter + 1;
-    if (emit_jump_label((fixed_text + 531), skip_label) == 0) {
-        return 0;
-    }
-    if (emit_label(data_label) == 0) {
-        return 0;
-    }
+    emit_jump_label((fixed_text + 531), skip_label);
+    emit_label(data_label);
     i = 0;
     while (i < token_length) {
         if (emit_byte_data(token_text[i]) == 0) {
@@ -1479,13 +1401,10 @@ char emit_string_literal()
         }
         i = i + 1;
     }
-    if (emit_byte_data(0) == 0) {
-        return 0;
-    }
-    if (emit_label(skip_label) == 0) {
-        return 0;
-    }
-    return emit_address_value(1, data_label);
+    emit_byte_data(0);
+    emit_label(skip_label);
+    emit_address_value(1, data_label);
+    return compiler_error == 0;
 }
 
 char is_numeric_type(char type)
@@ -1668,6 +1587,8 @@ char reduce_unary()
 {
     char type;
 
+    y_id = 255;
+
     if (value_top < 1) {
         compiler_error = 3;
         return 0;
@@ -1697,6 +1618,7 @@ char reduce_binary(char op)
     char result;
     char unsigned_compare;
 
+    y_id = 255;
     if (value_top < 2) {
         compiler_error = 3;
         return 0;
@@ -1828,6 +1750,7 @@ char emit_call_finish(char marker_index)
     char expected;
     char actual;
 
+    y_id = 255;
     function_id = op_aux[marker_index];
     argc = op_argc[marker_index];
     base = op_base[marker_index];
@@ -1877,6 +1800,7 @@ char emit_call_finish(char marker_index)
  */
 char emit_index_address(char area, char symbol, char kind, char element_type)
 {
+    y_id = 255;
     emit_pop_ax();
     if (kind == 2) {
         if (element_type != 1) {
@@ -1912,8 +1836,11 @@ char emit_index_load(char area, char symbol, char kind, char element_type, char 
          * Output errors are sticky in compiler_error. Each output helper
          * becomes a no-op after failure, so one check at the end suffices.
          */
-        emit_pop_ax();
-        emit_zero((fixed_text + 467));
+        if (ax_pending != 2) {
+            y_id = 255;
+            emit_pop_ax();
+            emit_zero((fixed_text + 467));
+        }
         emit_instruction((fixed_text + 431));
         write_char(' ');
         emit_global_name(symbol);
@@ -1964,6 +1891,7 @@ char expression_identifier()
     char id;
     char area;
     char kind;
+    char source;
     char type;
 
     id = lookup_name();
@@ -2022,6 +1950,33 @@ char expression_identifier()
         if (kind != 1) {
             compiler_error = 5;
             return 0;
+        }
+        /*
+         * A bare char index of a fixed byte array needs only Y. Its entire
+         * syntax is known here (the next token is ']'); delay producing an
+         * A/X value, and reuse Y if it still names this unchanged scalar.
+         */
+        if (type == 1 & token_kind == ']' & op_top > 0) {
+            if (op_code[op_top - 1] == 203 & op_argc[op_top - 1] == 2) {
+                if (global_type[op_aux[op_top - 1]] == 1) {
+                    source = id;
+                    if (area == 2) {
+                        source = id + 176;
+                    }
+                    if (y_id != source) {
+                        if (emit_symbol_operand((fixed_text + 439), area, id, 0) == 0) {
+                            return 0;
+                        }
+                        y_id = source;
+                    }
+                    ax_pending = 2;
+                    if (push_value_type(type) == 0) {
+                        return 0;
+                    }
+                    expr_expect = 0;
+                    return 1;
+                }
+            }
         }
         if (emit_load_symbol(area, id, type) == 0) {
             return 0;
@@ -2183,6 +2138,8 @@ char expression_close_index()
         type = 1;
     }
     if (kind == 5) {
+        /* Pointer indexing changes Y and may address an aliased char scalar. */
+        y_id = 255;
         if (flush_ax() == 0) {
             return 0;
         }
@@ -2349,45 +2306,38 @@ char emit_false_jump(unsigned target)
 
     skip = label_counter;
     label_counter = label_counter + 1;
-    if (emit_pop_ax() == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 443), (fixed_text + 198), 0) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 459)) == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 495), (fixed_text + 198), 0) == 0) {
-        return 0;
-    }
-    if (emit_jump_label((fixed_text + 527), skip) == 0) {
-        return 0;
-    }
-    if (emit_jump_label((fixed_text + 531), target) == 0) {
-        return 0;
-    }
-    return emit_label(skip);
+    emit_pop_ax();
+    emit_scratch((fixed_text + 443), (fixed_text + 198), 0);
+    emit_zero((fixed_text + 459));
+    emit_scratch((fixed_text + 495), (fixed_text + 198), 0);
+    emit_jump_label((fixed_text + 527), skip);
+    emit_jump_label((fixed_text + 531), target);
+    emit_label(skip);
+    return compiler_error == 0;
 }
 
 char emit_scalar_store(char area, char symbol, char type)
 {
-    if (emit_pop_ax() == 0) {
-        return 0;
+    char source;
+
+    source = symbol;
+    if (area == 2) {
+        source = symbol + 176;
     }
-    if (emit_symbol_operand((fixed_text + 443), area, symbol, 0) == 0) {
-        return 0;
+    if (y_id == source) {
+        y_id = 255;
     }
+    emit_pop_ax();
+    emit_symbol_operand((fixed_text + 443), area, symbol, 0);
     if (type != 1) {
-        if (emit_symbol_operand((fixed_text + 447), area, symbol, 1) == 0) {
-            return 0;
-        }
+        emit_symbol_operand((fixed_text + 447), area, symbol, 1);
     }
-    return 1;
+    return compiler_error == 0;
 }
 
 char emit_index_store(char element_type)
 {
+    y_id = 255;
     if (flush_ax() == 0) {
         return 0;
     }
@@ -2429,6 +2379,9 @@ char statement_close()
     char frame;
     char kind;
     unsigned second_label;
+
+    /* Incoming branches may hold different Y values at this join. */
+    y_id = 255;
 
     if (ctrl_top == 0) {
         if (scan_token() == 0) {
@@ -2493,6 +2446,7 @@ char statement_if()
 {
     unsigned false_label;
 
+    y_id = 255;
     false_label = label_counter;
     label_counter = label_counter + 1;
     if (scan_token() == 0) {
@@ -2533,6 +2487,8 @@ char statement_while()
     unsigned loop_label;
     unsigned done_label;
 
+    /* First entry and the back edge must agree: start with unknown Y. */
+    y_id = 255;
     loop_label = label_counter;
     label_counter = label_counter + 1;
     done_label = label_counter;
@@ -2741,6 +2697,7 @@ char parse_statements()
                                 compiler_error = 3;
                                 return 0;
                             }
+                            y_id = 255;
                             if (emit_jump_label((fixed_text + 531), break_label) == 0) {
                                 return 0;
                             }
@@ -2773,6 +2730,7 @@ char parse_statements()
                                 if (emit_pop_ax() == 0) {
                                     return 0;
                                 }
+                                y_id = 255;
                                 if (emit_zero((fixed_text + 539)) == 0) {
                                     return 0;
                                 }
@@ -2890,24 +2848,19 @@ char constant_fits_type(char type)
 
 char emit_global_label(char symbol)
 {
-    if (emit_global_name(symbol) == 0) {
-        return 0;
-    }
-    if (write_char(':') == 0) {
-        return 0;
-    }
-    return write_newline();
+    emit_global_name(symbol);
+    write_char(':');
+    write_newline();
+    return compiler_error == 0;
 }
 
 char emit_typed_const(char type, unsigned value)
 {
-    if (type == 1) {
-        return emit_byte_data(value & 255);
+    emit_byte_data(value & 255);
+    if (type != 1) {
+        emit_byte_data((value >> 8) & 255);
     }
-    if (emit_byte_data(value & 255) == 0) {
-        return 0;
-    }
-    return emit_byte_data((value >> 8) & 255);
+    return compiler_error == 0;
 }
 
 char parse_global_array(char symbol, char element_type)
@@ -3147,6 +3100,7 @@ char parse_function(char function_id)
     int slot;
     char param_start;
 
+    y_id = 255;
     current_func = function_id;
     local_count = 0;
     param_start = param_count;
@@ -3306,64 +3260,36 @@ char parse_unit()
 
 char emit_finish_program()
 {
-    if (write_text((fixed_text + 212)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 567)) == 0) {
-        return 0;
-    }
-    if (write_hex_word(bss_offset) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
-    /*
-     * Runtime code may refer to __nc_bss_bytes, so emit it only after that
-     * constant is known. User code can freely make forward JSR references to
-     * the runtime helpers; ass already resolves those ordinary label fixups.
-     */
-    if (emit_include((fixed_text + 153)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 227)) == 0) {
-        return 0;
-    }
-    if (write_char(':') == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
-    if (emit_text_operand((fixed_text + 535), (fixed_text + 238)) == 0) {
-        return 0;
-    }
     if (main_symbol >= 0) {
         if (global_param_count[main_symbol] != 0) {
             compiler_error = 5;
             return 0;
         }
-        if (emit_instruction((fixed_text + 535)) == 0) {
-            return 0;
-        }
-        if (write_char(' ') == 0) {
-            return 0;
-        }
-        if (emit_function_name(main_symbol) == 0) {
-            return 0;
-        }
-        if (write_newline() == 0) {
-            return 0;
-        }
-    } else {
-        if (emit_immediate((fixed_text + 431), 0) == 0) {
-            return 0;
-        }
-        if (emit_immediate((fixed_text + 435), 0) == 0) {
-            return 0;
-        }
     }
-    return emit_zero((fixed_text + 539));
+    write_text((fixed_text + 212));
+    write_text((fixed_text + 567));
+    write_hex_word(bss_offset);
+    write_newline();
+    /*
+     * The BSS limit precedes the runtime include and entry point.
+     * Ordinary forward JSR references are resolved by the assembler.
+     */
+    emit_include((fixed_text + 153));
+    write_text((fixed_text + 227));
+    write_char(':');
+    write_newline();
+    emit_text_operand((fixed_text + 535), (fixed_text + 238));
+    if (main_symbol >= 0) {
+        emit_instruction((fixed_text + 535));
+        write_char(' ');
+        emit_function_name(main_symbol);
+        write_newline();
+    } else {
+        emit_immediate((fixed_text + 431), 0);
+        emit_immediate((fixed_text + 435), 0);
+    }
+    emit_zero((fixed_text + 539));
+    return compiler_error == 0;
 }
 
 char compile_file(char *source_name, char source_length, char *output_name, char output_length)
