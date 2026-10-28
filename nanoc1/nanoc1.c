@@ -1,10 +1,11 @@
 /*
  * nanoc1.c -- first Nano C compiler written in Nano C Phase 1.
  *
- * This is deliberately the semantic baseline.  Values are materialised as
- * ordinary 16-bit A/X pairs and expressions use a bounded hardware-stack value
- * stack.  The later #102 machine pass is allowed to replace that lowering; this
- * source first makes the language implementation explicit and trustworthy.
+ * The scanner, symbol rules and bounded parser are the tested Phase 1 semantic
+ * baseline (#101). The first #102 emitter change holds the newest expression
+ * value in A/X until another operation really needs the hardware stack.
+ * Most expression lowering remains direct; region/loop-aware 6502 code
+ * selection is separate follow-on work.
  */
 
 /* token kinds above the ASCII range */
@@ -342,7 +343,20 @@ char value_top;
 char expr_type;
 char expr_expect;
 char expr_done;
-/* One finished expression value may remain in A/X until its consumer is known. */
+/*
+ * Value-location contract (one pending value, not a register allocator):
+ *
+ * ax_pending == 1: only the newest expression value is live in A/X, NOT on
+ *                  the hardware stack. emit_pop_ax consumes it without PLA.
+ * ax_pending == 0: every live expression value is on the hardware stack;
+ *                  emit_pop_ax uses the old PLA/TAX/PLA template.
+ *
+ * flush_ax materialises the pending value before an operand overwrites A/X.
+ * hold_ax claims A/X for a newly computed value. Fixed-text index-load and
+ * unary-negate templates still leave their result on the STACK, so neither
+ * calls hold_ax. Calls, stores and branches consume/reconcile the location
+ * before another expression starts; control-flow joins never carry it.
+ */
 char ax_pending;
 
 /* bounded structured-control state */
@@ -1700,6 +1714,7 @@ char reduce_unary()
         compiler_error = 5;
         return 0;
     }
+    /* The negation template pops and re-pushes its result: stack-resident. */
     if (flush_ax() == 0) {
         return 0;
     }
@@ -1933,6 +1948,8 @@ char emit_index_address(char area, char symbol, char kind, char element_type)
     return write_text((fixed_text + 1764));
 }
 
+/* The fixed-text indexed-load templates finish by pushing A/X, unlike
+ * literal/symbol loads, which leave the newest value pending in A/X. */
 char emit_index_load(char area, char symbol, char kind, char element_type)
 {
     if (emit_index_address(area, symbol, kind, element_type) == 0) {
