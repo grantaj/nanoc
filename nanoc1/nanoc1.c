@@ -2172,6 +2172,8 @@ char expression_close_index()
         type = 1;
     }
     if (kind == 5) {
+        /* Pointer indexing changes Y and may address an aliased char scalar. */
+        y_known = 0;
         if (flush_ax() == 0) {
             return 0;
         }
