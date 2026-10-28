@@ -6,11 +6,13 @@ int main()
 {
     int i = 256;
     unsigned j = 257;
+    int zero = 0;
+    int one = 1;
     char a = 0;
     char b = 0;
 
-    bytes[0] = 'q';
-    bytes[1] = 'r';
+    bytes[zero] = 'q';
+    bytes[one] = 'r';
     bytes[i] = 'A';
     bytes[j] = 'B';
 
@@ -18,8 +20,8 @@ int main()
     b = bytes[j];
     if (a == 'A') {
         if (b == 'B') {
-            if (bytes[0] == 'q') {
-                if (bytes[1] == 'r') {
+            if (bytes[zero] == 'q') {
+                if (bytes[one] == 'r') {
                     return 'Z';
                 }
             }
