@@ -319,6 +319,8 @@ char compiler_error;
  * the existing semantic compiler. Nothing is committed while previewing.
  */
 char loop_data[1488];
+/* Emission mnemonics absent from fixed_text; no extra compiler literals. */
+char loop_instr[16] = {'c','p','y',0,'b','c','s',0,'c','m','p',0,'i','n','c',0};
 
 /* fixed symbol model: flat names keep Phase 1 data structures obvious */
 char global_name[6656];
@@ -1408,19 +1410,22 @@ char loop_copy()
  */
 char loop_pointer_base(char area, char symbol, char *scratch)
 {
-    emit_symbol_operand("lda", area, symbol, 0);
-    emit_scratch("sta", scratch, 0);
-    emit_symbol_operand("lda", area, symbol, 1);
-    emit_scratch("sta", scratch, 1);
+    emit_symbol_operand((fixed_text + 431), area, symbol, 0);
+    emit_scratch((fixed_text + 443), scratch, 0);
+    emit_symbol_operand((fixed_text + 431), area, symbol, 1);
+    emit_scratch((fixed_text + 443), scratch, 1);
     return compiler_error == 0;
 }
 
 char loop_indirect(char *op, char *scratch)
 {
     emit_instruction(op);
-    write_text(" (");
+    write_char(' ');
+    write_char('(');
     write_text(scratch);
-    write_text("),y");
+    write_char(')');
+    write_char(',');
+    write_char('y');
     write_newline();
     return compiler_error == 0;
 }
@@ -1546,21 +1551,21 @@ char loop_compare_bytes()
     equal_label = label_counter;
     label_counter = label_counter + 1;
 
-    loop_pointer_base(left_area, left_id, "NC_TMP");
-    loop_pointer_base(right_area, right_id, "NC_PTR");
+    loop_pointer_base(left_area, left_id, (fixed_text + 198));
+    loop_pointer_base(right_area, right_id, (fixed_text + 205));
     emit_label(loop_label);
-    emit_symbol_operand("ldy", index_area, index_id, 0);
-    emit_symbol_operand("cpy", bound_area, bound_id, 0);
-    emit_jump_label("bcs", done_label);
-    loop_indirect("lda", "NC_TMP");
-    loop_indirect("cmp", "NC_PTR");
-    emit_jump_label("beq", equal_label);
-    emit_immediate("lda", 0);
-    emit_immediate("ldx", 0);
-    emit_zero("rts");
+    emit_symbol_operand((fixed_text + 439), index_area, index_id, 0);
+    emit_symbol_operand((loop_instr + 0), bound_area, bound_id, 0);
+    emit_jump_label((loop_instr + 4), done_label);
+    loop_indirect((fixed_text + 431), (fixed_text + 198));
+    loop_indirect((loop_instr + 8), (fixed_text + 205));
+    emit_jump_label((fixed_text + 523), equal_label);
+    emit_immediate((fixed_text + 431), 0);
+    emit_immediate((fixed_text + 435), 0);
+    emit_zero((fixed_text + 539));
     emit_label(equal_label);
-    emit_symbol_operand("inc", index_area, index_id, 0);
-    emit_jump_label("jmp", loop_label);
+    emit_symbol_operand((loop_instr + 12), index_area, index_id, 0);
+    emit_jump_label((fixed_text + 531), loop_label);
     emit_label(done_label);
     ax_pending = 0;
     return compiler_error == 0;
