@@ -90,3 +90,49 @@ That requires knowing upcoming uses and loop boundaries, not just the most
 recent expression value. Measure the emitted loop *as an algorithm* against
 handwritten 6502; do not regard fewer pushes by itself as proof of completion
 of #102.
+
+
+## #102 next step: index-width-aware 6502 addressing
+
+An indexed expression is currently parsed with bounded operator/value stacks.
+By the time the closing `] ` is consumed, the parser knows the **complete
+index expression's type** and whether the base is a fixed global array or a
+stored pointer. This is sufficient forward semantic context to select an
+addressing *algorithm*, rather than merely adjust emitted instructions.
+
+For a global `char` array with a `char`-typed index, the index is
+zero-extended, 0 through 255. No 16-bit address addition is necessary:
+
+```asm
+    ; index already in A, high byte in X is zero
+    tay
+    lda __gNN,y          ; base + Y, with correct page carry
+    ldx #$00             ; canonical 16-bit result
+```
+
+The result remains pending in A/X, so a following scalar store or condition
+can consume it without a stack round trip. The old lowering instead computes
+`base + index` into NC_PTR and loads through `(NC_PTR),y`, introducing
+two 16-bit additions and zero-page pointer stores.
+
+The selection occurs at the **semantic index consumer**, after parsing the
+whole index, but before emitting any address instructions. This is not a
+textual peephole. It applies to repeated reads inside `while` and `if`
+regions as well as straight-line reads. The fixture deliberately places a
+256-byte array after 220 bytes of padding and accesses offset 200, forcing
+an actual page crossing.
+
+The fallback stays unchanged for `int` or `unsigned` index expressions,
+wider array elements (which require index scaling), stored pointers, and
+indexed *stores* (whose RHS can clobber Y). This conservative split avoids
+assuming that a byte-valued index can represent an arbitrary 16-bit offset.
+
+**Limitation:** We still reload Y for every access, and no register state is
+kept across a loop back-edge. Retaining one index/cursor *between* independent
+expressions requires source-identity tracking, plus conservative invalidation
+at calls and loop/control joins. That is the next machine-state problem, not
+a claim made for this initial index-algorithm selection.
+
+Both the 24,576-byte native compiler bootstrap limit and full Phase 1 semantic
+execution remain hard gates. The exact compiled `ass.c` loaded size is reported
+as a measurement, independently of executable fit.

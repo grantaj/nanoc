@@ -479,43 +479,26 @@ char emit_zero(char *op)
 
 char emit_immediate(char *op, char value)
 {
-    if (emit_instruction(op) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
-    if (write_char('#') == 0) {
-        return 0;
-    }
-    if (write_char('$') == 0) {
-        return 0;
-    }
-    if (write_hex_byte(value) == 0) {
-        return 0;
-    }
-    return write_newline();
+    /* Output failure is sticky: emit the parts, then check once. */
+    emit_instruction(op);
+    write_char(' ');
+    write_char('#');
+    write_char('$');
+    write_hex_byte(value);
+    write_newline();
+    return compiler_error == 0;
 }
-
 char emit_scratch(char *op, char *name, char high)
 {
-    if (emit_instruction(op) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
-    if (write_text(name) == 0) {
-        return 0;
-    }
+    emit_instruction(op);
+    write_char(' ');
+    write_text(name);
     if (high != 0) {
-        if (write_text((fixed_text + 584)) == 0) {
-            return 0;
-        }
+        write_text((fixed_text + 584));
     }
-    return write_newline();
+    write_newline();
+    return compiler_error == 0;
 }
-
 char emit_global_name(char symbol)
 {
     if (write_text((fixed_text + 679)) == 0) {
@@ -556,23 +539,15 @@ char emit_symbol_name(char area, char symbol)
 
 char emit_symbol_operand(char *op, char area, char symbol, char high)
 {
-    if (emit_instruction(op) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
-    if (emit_symbol_name(area, symbol) == 0) {
-        return 0;
-    }
+    emit_instruction(op);
+    write_char(' ');
+    emit_symbol_name(area, symbol);
     if (high != 0) {
-        if (write_text((fixed_text + 584)) == 0) {
-            return 0;
-        }
+        write_text((fixed_text + 584));
     }
-    return write_newline();
+    write_newline();
+    return compiler_error == 0;
 }
-
 char emit_label_name(unsigned label)
 {
     if (write_text((fixed_text + 587)) == 0) {
@@ -594,32 +569,20 @@ char emit_label(unsigned label)
 
 char emit_jump_label(char *op, unsigned label)
 {
-    if (emit_instruction(op) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
-    if (emit_label_name(label) == 0) {
-        return 0;
-    }
-    return write_newline();
+    emit_instruction(op);
+    write_char(' ');
+    emit_label_name(label);
+    write_newline();
+    return compiler_error == 0;
 }
-
 char emit_text_operand(char *op, char *text)
 {
-    if (emit_instruction(op) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
-    if (write_text(text) == 0) {
-        return 0;
-    }
-    return write_newline();
+    emit_instruction(op);
+    write_char(' ');
+    write_text(text);
+    write_newline();
+    return compiler_error == 0;
 }
-
 char emit_include(char *path)
 {
     if (write_char(9) == 0) {
@@ -1908,50 +1871,59 @@ char emit_call_finish(char marker_index)
     return push_value_type(global_type[function_id]);
 }
 
+/*
+ * Reconstruct a full 16-bit address for an index that cannot use absolute,Y.
+ * These are output-only operations: write failure sticks in compiler_error.
+ */
 char emit_index_address(char area, char symbol, char kind, char element_type)
 {
-    if (emit_pop_ax() == 0) {
-        return 0;
-    }
+    emit_pop_ax();
     if (kind == 2) {
         if (element_type != 1) {
-            if (write_text((fixed_text + 1629)) == 0) {
-                return 0;
-            }
+            write_text((fixed_text + 1629));
         }
-        if (write_text((fixed_text + 1674)) == 0) {
-            return 0;
-        }
-        if (emit_global_name(symbol) == 0) {
-            return 0;
-        }
-        if (write_text((fixed_text + 1687)) == 0) {
-            return 0;
-        }
-        if (emit_global_name(symbol) == 0) {
-            return 0;
-        }
-        return write_text((fixed_text + 1713));
+        write_text((fixed_text + 1674));
+        emit_global_name(symbol);
+        write_text((fixed_text + 1687));
+        emit_global_name(symbol);
+        write_text((fixed_text + 1713));
+    } else {
+        write_text((fixed_text + 1729));
+        emit_symbol_name(area, symbol);
+        write_text((fixed_text + 1740));
+        emit_symbol_name(area, symbol);
+        write_text((fixed_text + 1764));
     }
-    if (write_text((fixed_text + 1729)) == 0) {
-        return 0;
-    }
-    if (emit_symbol_name(area, symbol) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 1740)) == 0) {
-        return 0;
-    }
-    if (emit_symbol_name(area, symbol) == 0) {
-        return 0;
-    }
-    return write_text((fixed_text + 1764));
+    return compiler_error == 0;
 }
 
 /* The fixed-text indexed-load templates finish by pushing A/X, unlike
  * literal/symbol loads, which leave the newest value pending in A/X. */
-char emit_index_load(char area, char symbol, char kind, char element_type)
+/*
+ * A char index of a fixed byte array fits in Y. Make that addressing
+ * decision once the complete index expression has been type checked;
+ * unlike NC_PTR reconstruction, absolute,Y handles page crossings itself.
+ * Other indexes retain the full 16-bit address path.
+ */
+char emit_index_load(char area, char symbol, char kind, char element_type, char index_type)
 {
+    if (kind == 2 & element_type == 1 & index_type == 1) {
+        /*
+         * Output errors are sticky in compiler_error. Each output helper
+         * becomes a no-op after failure, so one check at the end suffices.
+         */
+        emit_pop_ax();
+        emit_zero((fixed_text + 467));
+        emit_instruction((fixed_text + 431));
+        write_char(' ');
+        emit_global_name(symbol);
+        write_char(',');
+        write_char('y');
+        write_newline();
+        emit_immediate((fixed_text + 435), 0);
+        hold_ax();
+        return compiler_error == 0;
+    }
     if (emit_index_address(area, symbol, kind, element_type) == 0) {
         return 0;
     }
@@ -2219,7 +2191,7 @@ char expression_close_index()
         }
         value_top = value_top - 1;
     } else {
-        if (emit_index_load(area, id, kind, type) == 0) {
+        if (emit_index_load(area, id, kind, type, value_type[value_top - 1]) == 0) {
             return 0;
         }
     }

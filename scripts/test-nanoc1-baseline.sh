@@ -134,6 +134,30 @@ echo "PASS #102: binary-to-store and comparison-to-branch keep A/X"
 
 case_source n1-ax-nested TESTS/NANOC1/AX-NESTED.C accept run 90 0
 
+# #102: choose 6502 absolute,Y for a fixed byte array indexed by a char.
+# The real 6510 test covers repeated accesses through a while/if region,
+# writes through the conservative 16-bit fallback, and Y=200 page crossing.
+case_source n1-index-y-loop TESTS/NANOC1/INDEX-Y-LOOP.C accept run 90 0
+if ! grep -Eq "^[[:space:]]*lda[[:space:]]+__g[[:xdigit:]][[:xdigit:]],y" "$OUT_DIR/n1-index-y-loop.asm"; then
+    echo "FAIL #102: byte array char index did not select absolute,Y" >&2
+    exit 1
+fi
+echo "PASS #102: byte array index uses native 6502 absolute,Y"
+
+# Wide-index boundary: a byte array can exceed 256 elements. Both signed
+# int and unsigned offsets 256/257 must go through full 16-bit NC_PTR.
+# Verify both the native result and the real emitted address path.
+case_source n1-index-wide-fallback TESTS/NANOC1/INDEX-WIDE-FALLBACK.C accept run 90 0
+if grep -Eq '^[[:space:]]*lda[[:space:]]+__g[[:xdigit:]][[:xdigit:]],y' "$OUT_DIR/n1-index-wide-fallback.asm"; then
+    echo 'FAIL #102: wide index used byte-only absolute,Y addressing' >&2
+    exit 1
+fi
+if ! grep -Eq '^[[:space:]]*lda[[:space:]]+[(]NC_PTR[)],y' "$OUT_DIR/n1-index-wide-fallback.asm"; then
+    echo 'FAIL #102: wide indexed load omitted full NC_PTR addressing' >&2
+    exit 1
+fi
+echo 'PASS #102: int/unsigned offsets 256/257 use full 16-bit address'
+
 rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
 case_source n1-runtime TESTS/NANOC0-RUNTIME/RUNTIME.C accept run 0 0
 if [ -f "$OUT_DIR/DTEST" ]; then dtest="$OUT_DIR/DTEST"; else dtest="$OUT_DIR/dtest"; fi
