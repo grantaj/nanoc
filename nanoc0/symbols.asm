@@ -22,8 +22,8 @@
 ;;;
 ;;;   persistent symbols       129    original bootstrap capacity 176
 ;;;   persistent name bytes   2044    original bootstrap capacity 2560
-;;; #102's larger C optimiser now needs 208 symbols and 2624 name bytes.
-;;; Both fit exactly within $c000-$cfff without overlapping $d000 I/O.
+;;; #102's larger C optimiser needs 208 symbols and a 4096-byte name pool.
+;;; The workspace now fits below $d000 without imposing the old name cap.
 ;;;   parameter type entries   105    capacity 128
 ;;;   max current symbols       11    capacity 32
 ;;;   max current name bytes    95    uses the unused tail of the name pool
@@ -51,15 +51,17 @@ SYMBOL_AREA_PERSISTENT = 2
 
 PERSISTENT_SYMBOL_CAPACITY = 208
 CURRENT_SYMBOL_CAPACITY    = 32
-NAME_POOL_CAPACITY         = 2624
+NAME_POOL_CAPACITY         = 4096
 PARAM_META_CAPACITY        = 128
 
-;;; The bounded 4096-byte symbol/name workspace is RAM, not program data.
-;;; $c000-$cfff is ordinary C64 RAM below the $d000 I/O boundary; this
-;;; development capacity allows Phase 1 C's region-based code generator to grow.
-;;; The byte-indexed persistent symbol table still fits under 256 entries.
-SYMBOL_WORKSPACE_BYTES = 4096
-NANOC_SYMBOL_WORKSPACE = $c000
+;;; The bootstrap symbol workspace is ordinary RAM, never resident code.
+;;; Move it down to $b000 now that the successor C compiler has real region
+;;; state and more names. At 208 symbols and a 4096-byte name pool, it ends
+;;; at $c5c0, safely below the $d000 I/O/KERNAL boundary. The assembler
+;;; uses $a000-$bfff while *building* nanoc0, but is inactive while nanoc0
+;;; compiles; both stages reinitialize their own independent tables.
+SYMBOL_WORKSPACE_BYTES = 5568
+NANOC_SYMBOL_WORKSPACE = $b000
 
 symbolWorkspaceStart  = NANOC_SYMBOL_WORKSPACE
 persistentNameOffsetLo = symbolWorkspaceStart
