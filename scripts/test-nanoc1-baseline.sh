@@ -138,7 +138,11 @@ case_source n1-ax-nested TESTS/NANOC1/AX-NESTED.C accept run 90 0
 # The real 6510 test covers repeated accesses through a while/if region,
 # writes through the conservative 16-bit fallback, and Y=200 page crossing.
 case_source n1-index-y-loop TESTS/NANOC1/INDEX-Y-LOOP.C accept run 90 0
-if ! grep -Eq '^[[:space:]]*lda[[:space:]]+__g[[:xdigit:]][[:xdigit:]],y[[:space:]]*
+if ! grep -Eq "^[[:space:]]*lda[[:space:]]+__g[[:xdigit:]][[:xdigit:]],y" "$OUT_DIR/n1-index-y-loop.asm"; then
+    echo "FAIL #102: byte array char index did not select absolute,Y" >&2
+    exit 1
+fi
+echo "PASS #102: byte array index uses native 6502 absolute,Y"
 
 rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
 case_source n1-runtime TESTS/NANOC0-RUNTIME/RUNTIME.C accept run 0 0
