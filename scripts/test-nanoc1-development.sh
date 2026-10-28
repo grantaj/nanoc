@@ -24,10 +24,14 @@ mkdir -p "$OUT_DIR"
     "$VASM" -Fbin -cbm-prg -o "../$BUILD_DIR/test_nanoc1_compile.prg" test_nanoc1_development_compile.asm
 )
 rm -f "$OUT_DIR/NANOC1DEV.ASM" "$OUT_DIR/nanoc1dev.asm"
-VICE_PRELOAD_PRG="$ROOT/$BUILD_DIR/nanoc0.prg" \
+if ! VICE_PRELOAD_PRG="$ROOT/$BUILD_DIR/nanoc0.prg" \
     VICE_TIMEOUT=360 VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
     VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
-    sh tests/run-test.sh "$BUILD_DIR/test_nanoc0_development.prg" nanoc0-development
+    sh tests/run-test.sh "$BUILD_DIR/test_nanoc0_development.prg" nanoc0-development; then
+    set -- $(od -An -tu1 -N7 "$BUILD_DIR/nanoc0-development.result")
+    echo "development seed status=${2:-?} detail=${3:-?} bss-low=${4:-?} bss-high=${5:-?} line-low=${6:-?} line-high=${7:-?}" >&2
+    exit 1
+fi
 
 # The driver copies the real nanoc0-reported BSS usage to $05/$06.
 set -- $(od -An -tu1 -N5 "$BUILD_DIR/nanoc0-development.result")
