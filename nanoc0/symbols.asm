@@ -54,14 +54,14 @@ CURRENT_SYMBOL_CAPACITY    = 32
 NAME_POOL_CAPACITY         = 4096
 PARAM_META_CAPACITY        = 128
 
-;;; The bootstrap symbol workspace is ordinary RAM, never resident code.
-;;; Move it down to $b000 now that the successor C compiler has real region
-;;; state and more names. At 208 symbols and a 4096-byte name pool, it ends
-;;; at $c5c0, safely below the $d000 I/O/KERNAL boundary. The assembler
-;;; uses $a000-$bfff while *building* nanoc0, but is inactive while nanoc0
-;;; compiles; both stages reinitialize their own independent tables.
+;;; Two explicit, non-overlapping work areas while nanoc0 runs:
+;;;   $c000-$c5bf symbol/type/parameter records (1472 bytes)
+;;;   $a000-$afff bounded name pool (4096 bytes)
+;;; Scanner text and output scratch occupy $b000 and must NOT be overlapped.
+;;; The native assembler can use $a000-$bfff while *building* nanoc0, but
+;;; is inactive while that compiler parses the source. No region reaches I/O.
 SYMBOL_WORKSPACE_BYTES = 5568
-NANOC_SYMBOL_WORKSPACE = $b000
+NANOC_SYMBOL_WORKSPACE = $c000
 
 symbolWorkspaceStart  = NANOC_SYMBOL_WORKSPACE
 persistentNameOffsetLo = symbolWorkspaceStart
@@ -74,8 +74,8 @@ currentNameOffsetLo    = persistentParamCount+PERSISTENT_SYMBOL_CAPACITY
 currentNameOffsetHi    = currentNameOffsetLo+CURRENT_SYMBOL_CAPACITY
 currentType            = currentNameOffsetHi+CURRENT_SYMBOL_CAPACITY
 parameterType          = currentType+CURRENT_SYMBOL_CAPACITY
-namePool               = parameterType+PARAM_META_CAPACITY
-symbolWorkspaceEnd     = namePool+NAME_POOL_CAPACITY
+namePool               = $a000
+symbolWorkspaceEnd     = parameterType+PARAM_META_CAPACITY
 
 RUNTIME_SYMBOL_COUNT = 5
 RUNTIME_NAME_BYTES   = 44
