@@ -40,21 +40,21 @@ fi
 test -s "$source" || { echo "FAIL #108: native nanoc0 emitted no compiler assembly" >&2; exit 1; }
 header=$(sed -n '1p' "$source")
 case "$header" in
-    *'../nanoc0/target/header-compiler.asm"'*) ;;
+    *'../nanoc0/target/header.asm"'*) ;;
     *) echo "FAIL #108: unexpected first-generation compiler header" >&2; exit 1 ;;
 esac
-sed '1s@header-compiler.asm@header-compiler-large.asm@' "$source" > "$SEED"
+sed '1s@../nanoc0/target/header.asm@../nanoc0/target/header-compiler-large.asm@' "$source" > "$SEED"
 tail -n +2 "$source" > "$LARGE_DIR/original-body"
 tail -n +2 "$SEED" > "$LARGE_DIR/large-body"
 cmp "$LARGE_DIR/original-body" "$LARGE_DIR/large-body"
 
 # Static memory safety, checked before ANY load/execution:
-#   $0800-$0fff harness, $1000-$3fff compiler BSS, $4000-$cfff code.
+#   $0200-$07ff harness, $0800-$3fff compiler BSS, $4000-$cfff code.
 #   $d000-$ffff stays I/O/KERNAL. Zero page $fc-$ff stays scratch.
 bss_hex=$(sed -n 's/^__nc_bss_end = NC_BSS+[$]\\([[:xdigit:]]*\\)$/\\1/p' "$SEED" | tail -n 1)
 [ -n "$bss_hex" ] || { echo "FAIL #108: missing compiler BSS end" >&2; exit 1; }
 bss=$((0x$bss_hex))
-[ "$bss" -le 12288 ] || { echo 'FAIL #108: compiler BSS extends past $3fff' >&2; exit 1; }
+[ "$bss" -le 14336 ] || { echo 'FAIL #108: compiler BSS extends past $3fff' >&2; exit 1; }
 
 "$VASM" -I"$ROOT/ass" -Fbin -cbm-prg -o "$PRG" "$SEED"
 set -- $(od -An -tu1 -N2 "$PRG")
@@ -67,7 +67,22 @@ seed_bytes=$(($(wc -c < "$PRG") - 2))
 }
 echo "PASS #108: native-produced seed $seed_bytes bytes, BSS $bss bytes, non-overlapping map"
 
-# Run the actual first-generation compiler with a small caller at $0800.
+# The normal harness lives at $0800; build the development variant at $0200
+# to leave the entire $0800-$3fff compiler BSS unobstructed.
+(
+    cd ass
+    "$VASM" -DNANOC_LARGE_SEED=1 -Fbin -cbm-prg \
+        -o "../$BUILD_DIR/test_nanoc1_large_compile.prg" test_nanoc1_compile.asm
+)
+set -- $(od -An -tu1 -N2 "$BUILD_DIR/test_nanoc1_large_compile.prg")
+[ "$1" -eq 0 ] && [ "$2" -eq 2 ] || {
+    echo 'FAIL #108: large compiler caller must begin at $0200' >&2; exit 1;
+}
+[ "$(wc -c < "$BUILD_DIR/test_nanoc1_large_compile.prg")" -le 1538 ] || {
+    echo 'FAIL #108: caller overlaps compiler BSS at $0800' >&2; exit 1;
+}
+
+# Run the actual first-generation compiler with a small caller at $0200.
 # The original strict all-native bootstrap/semantic tests stay unchanged.
 case_compile() {
     name=$1
@@ -78,7 +93,7 @@ case_compile() {
     VICE_PRELOAD_PRG="$PRG" VICE_TIMEOUT="$timeout" \
         VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
         VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
-        sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_compile.prg" "$name"
+        sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_large_compile.prg" "$name"
     set -- $(od -An -tu1 -N3 "$BUILD_DIR/$name.result")
     [ "$#" -ge 3 ] && [ "$2" -eq 0 ] && [ "$3" -eq 0 ] || {
         echo "FAIL #108: native compiler status for $name: ${2:-missing}/${3:-missing}" >&2
