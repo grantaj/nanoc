@@ -1,11 +1,11 @@
 ; Development seed compiler: built by real nanoc0, assembled after it exits.
 ; This image is NEVER assembled while the low-memory native assembler is live.
-; Code $0800-$9fff (38 KiB); static C workspace $a000-$cfff (12 KiB).
+; Code $4000-$cfff (36 KiB); static C workspace $0800-$3fff (14 KiB).
 
-	* = $0800
+	* = $4000
 NC_TMP = $fc
 NC_PTR = $fe
-NC_BSS = $a000
+NC_BSS = $0800
 
 __nc_start:
 	lda $01
