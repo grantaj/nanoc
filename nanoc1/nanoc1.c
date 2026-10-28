@@ -2836,6 +2836,7 @@ char statement_while()
 {
     unsigned loop_label;
     unsigned done_label;
+    unsigned body_label;
     char index_id;
     char index_area;
     char bound_id;
@@ -2888,10 +2889,20 @@ char statement_while()
                             label_counter = label_counter + 1;
                             done_label = label_counter;
                             label_counter = label_counter + 1;
+                            body_label = label_counter;
+                            label_counter = label_counter + 1;
                             emit_label(loop_label);
                             emit_symbol_operand((fixed_text + 439), index_area, index_id, 0);
                             emit_symbol_operand("cpy", bound_area, bound_id, 0);
-                            emit_jump_label("bcs", done_label);
+                            /*
+                             * The body may contain arbitrary statements.
+                             * An ordinary 6502 BCS cannot reach the end of
+                             * a large loop; invert the test locally, then
+                             * use a full-address JMP for the exit.
+                             */
+                            emit_jump_label("bcc", body_label);
+                            emit_jump_label("jmp", done_label);
+                            emit_label(body_label);
                             if (compiler_error != 0) {
                                 return 0;
                             }
