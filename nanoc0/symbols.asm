@@ -47,15 +47,16 @@ SYMBOL_AREA_NONE       = 0
 SYMBOL_AREA_CURRENT    = 1
 SYMBOL_AREA_PERSISTENT = 2
 
-PERSISTENT_SYMBOL_CAPACITY = 188
-CURRENT_SYMBOL_CAPACITY    = 20
-NAME_POOL_CAPACITY         = 2764
-PARAM_META_CAPACITY        = 144
+PERSISTENT_SYMBOL_CAPACITY = 186
+CURRENT_SYMBOL_CAPACITY    = 32
+NAME_POOL_CAPACITY         = 2744
+PARAM_META_CAPACITY        = 140
 
 ;;; The 4096 symbol/name bytes are working RAM, not loaded program data.
 ;;; $c000-$cfff is ordinary C64 RAM below I/O, above every nanoc0 image.
 ;;; The development seed fits 185 persistent symbols, 139 parameter types
-;;; (including runtime entries), and 112 bytes of current-function names.
+;;; (including runtime entries); the largest current-function name set now
+;;; uses under 88 bytes. Keep 32 current symbol slots for existing tests.
 ;;; Capacity is redistributed within the SAME $c000-$cfff workspace, not
 ;;; extended into the assembler's RAM or hidden memory.
 SYMBOL_WORKSPACE_BYTES = 4096
