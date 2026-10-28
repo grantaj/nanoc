@@ -2313,25 +2313,14 @@ char emit_false_jump(unsigned target)
 
     skip = label_counter;
     label_counter = label_counter + 1;
-    if (emit_pop_ax() == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 443), (fixed_text + 198), 0) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 459)) == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 495), (fixed_text + 198), 0) == 0) {
-        return 0;
-    }
-    if (emit_jump_label((fixed_text + 527), skip) == 0) {
-        return 0;
-    }
-    if (emit_jump_label((fixed_text + 531), target) == 0) {
-        return 0;
-    }
-    return emit_label(skip);
+    emit_pop_ax();
+    emit_scratch((fixed_text + 443), (fixed_text + 198), 0);
+    emit_zero((fixed_text + 459));
+    emit_scratch((fixed_text + 495), (fixed_text + 198), 0);
+    emit_jump_label((fixed_text + 527), skip);
+    emit_jump_label((fixed_text + 531), target);
+    emit_label(skip);
+    return compiler_error == 0;
 }
 
 char emit_scalar_store(char area, char symbol, char type)
@@ -2345,18 +2334,12 @@ char emit_scalar_store(char area, char symbol, char type)
     if (y_id == source) {
         y_id = 255;
     }
-    if (emit_pop_ax() == 0) {
-        return 0;
-    }
-    if (emit_symbol_operand((fixed_text + 443), area, symbol, 0) == 0) {
-        return 0;
-    }
+    emit_pop_ax();
+    emit_symbol_operand((fixed_text + 443), area, symbol, 0);
     if (type != 1) {
-        if (emit_symbol_operand((fixed_text + 447), area, symbol, 1) == 0) {
-            return 0;
-        }
+        emit_symbol_operand((fixed_text + 447), area, symbol, 1);
     }
-    return 1;
+    return compiler_error == 0;
 }
 
 char emit_index_store(char element_type)
