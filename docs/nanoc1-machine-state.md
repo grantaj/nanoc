@@ -152,12 +152,16 @@ operator is a *fixed global byte array* index, this is a complete, bounded
 semantic operation. The compiler can select `LDY i` directly, without
 emitting an unnecessary A/X semantic value, then `LDA array,Y; LDX #0`.
 
-Three bytes of identity and one pending marker suffice:
+Only **one byte of persistent identity** is needed:
 
-- `y_known` says Y agrees with an unchanged source char scalar.
-- `y_area, y_symbol` identify that scalar, including local/global namespace.
-- `y_index_pending` says the topmost indexed expression will consume Y rather
-  than a stacked or pending A/X index value.
+- `y_id`: global symbol 0–175, local symbol 176–207, or 255 for unknown.
+  The two disjoint ranges cover exactly the current bounded symbol tables.
+- `ax_pending == 2`: the direct index value is in Y, not in A/X or on the
+  hardware stack; the closing bracket consumes it. The existing values 0
+  (stack) and 1 (A/X) remain unchanged.
+
+This representation replaces four initially proposed globals and avoids
+exhausting `nanoc0`'s fixed source-name arena.
 
 If the next direct array access indexes the *same* scalar, no new `LDY` is
 necessary, even when the array base differs and unrelated scalar stores occur
