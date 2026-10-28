@@ -479,43 +479,26 @@ char emit_zero(char *op)
 
 char emit_immediate(char *op, char value)
 {
-    if (emit_instruction(op) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
-    if (write_char('#') == 0) {
-        return 0;
-    }
-    if (write_char('$') == 0) {
-        return 0;
-    }
-    if (write_hex_byte(value) == 0) {
-        return 0;
-    }
-    return write_newline();
+    /* Output failure is sticky: emit the parts, then check once. */
+    emit_instruction(op);
+    write_char(' ');
+    write_char('#');
+    write_char('$');
+    write_hex_byte(value);
+    write_newline();
+    return compiler_error == 0;
 }
-
 char emit_scratch(char *op, char *name, char high)
 {
-    if (emit_instruction(op) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
-    if (write_text(name) == 0) {
-        return 0;
-    }
+    emit_instruction(op);
+    write_char(' ');
+    write_text(name);
     if (high != 0) {
-        if (write_text((fixed_text + 584)) == 0) {
-            return 0;
-        }
+        write_text((fixed_text + 584));
     }
-    return write_newline();
+    write_newline();
+    return compiler_error == 0;
 }
-
 char emit_global_name(char symbol)
 {
     if (write_text((fixed_text + 679)) == 0) {
@@ -556,23 +539,15 @@ char emit_symbol_name(char area, char symbol)
 
 char emit_symbol_operand(char *op, char area, char symbol, char high)
 {
-    if (emit_instruction(op) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
-    if (emit_symbol_name(area, symbol) == 0) {
-        return 0;
-    }
+    emit_instruction(op);
+    write_char(' ');
+    emit_symbol_name(area, symbol);
     if (high != 0) {
-        if (write_text((fixed_text + 584)) == 0) {
-            return 0;
-        }
+        write_text((fixed_text + 584));
     }
-    return write_newline();
+    write_newline();
+    return compiler_error == 0;
 }
-
 char emit_label_name(unsigned label)
 {
     if (write_text((fixed_text + 587)) == 0) {
@@ -594,32 +569,20 @@ char emit_label(unsigned label)
 
 char emit_jump_label(char *op, unsigned label)
 {
-    if (emit_instruction(op) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
-    if (emit_label_name(label) == 0) {
-        return 0;
-    }
-    return write_newline();
+    emit_instruction(op);
+    write_char(' ');
+    emit_label_name(label);
+    write_newline();
+    return compiler_error == 0;
 }
-
 char emit_text_operand(char *op, char *text)
 {
-    if (emit_instruction(op) == 0) {
-        return 0;
-    }
-    if (write_char(' ') == 0) {
-        return 0;
-    }
-    if (write_text(text) == 0) {
-        return 0;
-    }
-    return write_newline();
+    emit_instruction(op);
+    write_char(' ');
+    write_text(text);
+    write_newline();
+    return compiler_error == 0;
 }
-
 char emit_include(char *path)
 {
     if (write_char(9) == 0) {
