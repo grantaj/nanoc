@@ -30,9 +30,9 @@ jobs:
         with:
           name: development-bootstrap-generated
           path: |
-            build-development/nanoc0-integration/nanoc1dev.asm
-            build-development/nanoc0-integration/NANOC1DEV.ASM
-            build-development/nanoc0-integration/n1-self-compile.result
-            build-development/nanoc0-integration/n1-ass.asm
-            build-development/nanoc0-integration/nanoc2-size.prg
+            build/nanoc0-integration/nanoc1dev.asm
+            build/nanoc0-integration/NANOC1DEV.ASM
+            build/nanoc0-integration/n1-self-compile.result
+            build/nanoc0-integration/n1-ass.asm
+            build/nanoc0-integration/nanoc2-size.prg
           if-no-files-found: ignore
