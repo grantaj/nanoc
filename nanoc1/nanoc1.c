@@ -1392,12 +1392,8 @@ char emit_string_literal()
     label_counter = label_counter + 1;
     skip_label = label_counter;
     label_counter = label_counter + 1;
-    if (emit_jump_label((fixed_text + 531), skip_label) == 0) {
-        return 0;
-    }
-    if (emit_label(data_label) == 0) {
-        return 0;
-    }
+    emit_jump_label((fixed_text + 531), skip_label);
+    emit_label(data_label);
     i = 0;
     while (i < token_length) {
         if (emit_byte_data(token_text[i]) == 0) {
@@ -1405,13 +1401,10 @@ char emit_string_literal()
         }
         i = i + 1;
     }
-    if (emit_byte_data(0) == 0) {
-        return 0;
-    }
-    if (emit_label(skip_label) == 0) {
-        return 0;
-    }
-    return emit_address_value(1, data_label);
+    emit_byte_data(0);
+    emit_label(skip_label);
+    emit_address_value(1, data_label);
+    return compiler_error == 0;
 }
 
 char is_numeric_type(char type)
