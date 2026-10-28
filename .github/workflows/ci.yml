@@ -17,6 +17,11 @@ jobs:
       - name: Set up development environment
         run: make setup
 
+      - name: Check native-test shell syntax
+        run: |
+          sh -n scripts/test-nanoc0-integration.sh
+          sh -n scripts/test-nanoc1-baseline.sh
+
       - name: Build all targets
         run: make
 
