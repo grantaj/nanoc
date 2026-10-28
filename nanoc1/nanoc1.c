@@ -1432,14 +1432,14 @@ char loop_ind(char *op, char *scratch)
 
 char loop_cmp_bytes()
 {
-    char index_id;
-    char index_area;
-    char bound_id;
-    char bound_area;
-    char left_id;
-    char left_area;
-    char right_id;
-    char right_area;
+    char ix;
+    char ia;
+    char bn;
+    char ba;
+    char li;
+    char la;
+    char ri;
+    char ra;
     unsigned loop_label;
     unsigned done_label;
     unsigned equal_label;
@@ -1487,59 +1487,59 @@ char loop_cmp_bytes()
         return 0;
     }
 
-    index_id = loop_lookup(1);
-    if (index_id == 255) {
+    ix = loop_lookup(1);
+    if (ix == 255) {
         return 0;
     }
-    index_area = saved_area;
-    if (index_area == 2) {
-        if (local_type[index_id] != 1) {
+    ia = saved_area;
+    if (ia == 2) {
+        if (local_type[ix] != 1) {
             return 0;
         }
     } else {
-        if (global_kind[index_id] != 1 | global_type[index_id] != 1) {
+        if (global_kind[ix] != 1 | global_type[ix] != 1) {
             return 0;
         }
     }
-    bound_id = loop_lookup(3);
-    if (bound_id == 255) {
+    bn = loop_lookup(3);
+    if (bn == 255) {
         return 0;
     }
-    bound_area = saved_area;
-    if (bound_area == 2) {
-        if (local_type[bound_id] != 1) {
+    ba = saved_area;
+    if (ba == 2) {
+        if (local_type[bn] != 1) {
             return 0;
         }
     } else {
-        if (global_kind[bound_id] != 1 | global_type[bound_id] != 1) {
+        if (global_kind[bn] != 1 | global_type[bn] != 1) {
             return 0;
         }
     }
-    left_id = loop_lookup(8);
-    if (left_id == 255) {
+    li = loop_lookup(8);
+    if (li == 255) {
         return 0;
     }
-    left_area = saved_area;
-    if (left_area == 2) {
-        if (local_type[left_id] != 4) {
+    la = saved_area;
+    if (la == 2) {
+        if (local_type[li] != 4) {
             return 0;
         }
     } else {
-        if (global_kind[left_id] != 1 | global_type[left_id] != 4) {
+        if (global_kind[li] != 1 | global_type[li] != 4) {
             return 0;
         }
     }
-    right_id = loop_lookup(13);
-    if (right_id == 255) {
+    ri = loop_lookup(13);
+    if (ri == 255) {
         return 0;
     }
-    right_area = saved_area;
-    if (right_area == 2) {
-        if (local_type[right_id] != 4) {
+    ra = saved_area;
+    if (ra == 2) {
+        if (local_type[ri] != 4) {
             return 0;
         }
     } else {
-        if (global_kind[right_id] != 1 | global_type[right_id] != 4) {
+        if (global_kind[ri] != 1 | global_type[ri] != 4) {
             return 0;
         }
     }
@@ -1551,11 +1551,11 @@ char loop_cmp_bytes()
     equal_label = label_counter;
     label_counter = label_counter + 1;
 
-    loop_ptr_base(left_area, left_id, (fixed_text + 198));
-    loop_ptr_base(right_area, right_id, (fixed_text + 205));
+    loop_ptr_base(la, li, (fixed_text + 198));
+    loop_ptr_base(ra, ri, (fixed_text + 205));
     emit_label(loop_label);
-    emit_symbol_operand((fixed_text + 439), index_area, index_id, 0);
-    emit_symbol_operand((loop_ops + 0), bound_area, bound_id, 0);
+    emit_symbol_operand((fixed_text + 439), ia, ix, 0);
+    emit_symbol_operand((loop_ops + 0), ba, bn, 0);
     emit_jump_label((loop_ops + 4), done_label);
     loop_ind((fixed_text + 431), (fixed_text + 198));
     loop_ind((loop_ops + 8), (fixed_text + 205));
@@ -1564,7 +1564,7 @@ char loop_cmp_bytes()
     emit_immediate((fixed_text + 435), 0);
     emit_zero((fixed_text + 539));
     emit_label(equal_label);
-    emit_symbol_operand((loop_ops + 12), index_area, index_id, 0);
+    emit_symbol_operand((loop_ops + 12), ia, ix, 0);
     emit_jump_label((fixed_text + 531), loop_label);
     emit_label(done_label);
     ax_pending = 0;
