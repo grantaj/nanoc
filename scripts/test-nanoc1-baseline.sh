@@ -202,6 +202,23 @@ if [ "$bounded" -ge "$ordinary" ]; then
 fi
 echo "PASS #102: byte-bound native program $bounded bytes vs ordinary $ordinary bytes"
 
+# The loop body is deliberately longer than a 6502 conditional-branch range.
+# Its byte-bound header must select a local BCC skip followed by a full JMP.
+case_source n1-loop-long-body TESTS/NANOC1/LOOP-LONG-BODY.C accept run 90 0
+if ! awk '
+    $1 == "cpy" && $2 ~ /^__g/ {
+        if (getline <= 0 || $1 != "bcc") exit 1
+        if (getline <= 0 || $1 != "jmp") exit 1
+        found = 1
+    }
+    END { if (!found) exit 1 }
+' "$OUT_DIR/n1-loop-long-body.asm"; then
+    echo "FAIL #102: wide loop body has an unsafe relative branch at its header" >&2
+    exit 1
+fi
+echo "PASS #102: byte-bound exit uses a local skip and full-address JMP"
+
+
 
 
 rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
