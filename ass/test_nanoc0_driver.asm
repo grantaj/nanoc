@@ -197,8 +197,15 @@ main:
 	sta NANOC_COMMAND_OUTPUT+1
 	lda #nanoc1OutputNameEnd-nanoc1OutputName
 	sta NANOC_COMMAND_OUTPUT_LENGTH
-	lda #NANOC_LAYOUT_COMPILER
-	sta NANOC_COMMAND_LAYOUT
+    ; The development-only seed is assembled and executed separately with
+    ; its own checked code/BSS map. Permit a larger compiler's static BSS
+    ; without claiming the original $a000-$cfff runtime layout can hold it.
+    ifdef NANOC_SEED_ONLY
+        lda #$00          ; ordinary layout: compile-only size allowance
+    else
+        lda #NANOC_LAYOUT_COMPILER
+    endif
+    sta NANOC_COMMAND_LAYOUT
 	lda #STAGE_COMPILE_NANOC1
 	sta INTEGRATION_STAGE
 	jsr NANOC0_IMAGE
