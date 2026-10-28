@@ -218,6 +218,27 @@ if ! awk '
 fi
 echo "PASS #102: byte-bound exit uses a local skip and full-address JMP"
 
+# Two pointer-indexed byte streams are one loop machine operation:
+# hoist both pointers into the zero-page words, then use indirect,Y compares.
+# Exercise the real 6510, including page crossing, empty scans and mismatches.
+case_source n1-loop-pointer-compare TESTS/NANOC1/LOOP-POINTER-COMPARE.C accept run 90 0
+if ! grep -Eq '^[[:space:]]*cmp[[:space:]]+[(]NC_PTR[)],y' "$OUT_DIR/n1-loop-pointer-compare.asm"; then
+    echo 'FAIL #102: pointer comparison did not select cached zero-page cursor' >&2
+    exit 1
+fi
+if ! grep -Eq '^[[:space:]]*lda[[:space:]]+[(]NC_TMP[)],y' "$OUT_DIR/n1-loop-pointer-compare.asm"; then
+    echo 'FAIL #102: left pointer was not loaded through cached zero-page cursor' >&2
+    exit 1
+fi
+case_source n1-loop-pointer-compare-fallback TESTS/NANOC1/LOOP-POINTER-COMPARE-FALLBACK.C accept run 90 0
+selected=$(($(wc -c < "$OUT_DIR/n1-loop-pointer-compare.prg") - 2))
+fallback=$(($(wc -c < "$OUT_DIR/n1-loop-pointer-compare-fallback.prg") - 2))
+if [ "$selected" -ge "$fallback" ]; then
+    echo "FAIL #102: cached pointer scan $selected not smaller than direct emitter $fallback" >&2
+    exit 1
+fi
+echo "PASS #102: cached pointer scan $selected bytes vs direct emitter $fallback bytes"
+
 rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
 case_source n1-runtime TESTS/NANOC0-RUNTIME/RUNTIME.C accept run 0 0
 if [ -f "$OUT_DIR/DTEST" ]; then dtest="$OUT_DIR/DTEST"; else dtest="$OUT_DIR/dtest"; fi
@@ -239,6 +260,12 @@ case_source n1-operator-depth TESTS/NANOC1/OPERATOR-DEPTH.C reject none
 
 # Whole-program stress: no alternate assembler source and no C rewrite.
 case_source n1-ass BOOTSTRAP/ASS.C accept compile
+if ! grep -Eq '^[[:space:]]*cmp[[:space:]]+[(]NC_PTR[)],y' "$OUT_DIR/n1-ass.asm"; then
+    echo 'FAIL #102: actual ass.c did not use the whole-loop pointer scan' >&2
+    exit 1
+fi
+echo 'PASS #102: ass.c selects cached-pointer scan in same_text'
+
 # The strict runner writes NANOC1.ASM; the development runner passes its
 # own NANOC1DEV.ASM explicitly. Never use an artifact from the other profile:
 # a shared build directory may contain a perfectly valid but stale seed.
