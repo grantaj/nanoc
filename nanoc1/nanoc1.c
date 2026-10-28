@@ -346,10 +346,9 @@ char expr_done;
 /*
  * Value-location contract (one pending value, not a register allocator):
  *
- * ax_pending == 1: only the newest expression value is live in A/X, NOT on
- *                  the hardware stack. emit_pop_ax consumes it without PLA.
- * ax_pending == 0: every live expression value is on the hardware stack;
- *                  emit_pop_ax uses the old PLA/TAX/PLA template.
+ * ax_pending == 1: newest expression value lives in A/X, not on stack.
+ * ax_pending == 0: live expression values are on the hardware stack.
+ * ax_pending == 2: a bare byte-array index lives in Y until ']' consumes it.
  *
  * flush_ax materialises the pending value before an operand overwrites A/X.
  * hold_ax claims A/X for a newly computed value. Fixed-text index-load and
@@ -357,14 +356,13 @@ char expr_done;
  * calls hold_ax. Calls, stores and branches consume/reconcile the location
  * before another expression starts; control-flow joins never carry it.
  */
+/*
+ * Value location: 0 = hardware stack, 1 = A/X, 2 = bare byte index in Y.
+ * Y retains source identity separately, even while A/X holds another value.
+ */
 char ax_pending;
-
-/* One char scalar currently held in Y, and one deferred direct index use.
- * Invalidated at branches, calls, index writes and instructions changing Y. */
-char y_known;
-char y_area;
-char y_symbol;
-char y_index_pending;
+/* Y identity: global slot 0..175, local slot 176..207, 255 = unknown. */
+char y_id;
 
 /* bounded structured-control state */
 char ctrl_kind[16];
@@ -1415,7 +1413,7 @@ char emit_string_literal()
     unsigned skip_label;
     char i;
 
-    y_known = 0;
+    y_id = 255;
     data_label = label_counter;
     label_counter = label_counter + 1;
     skip_label = label_counter;
@@ -1622,7 +1620,7 @@ char reduce_unary()
 {
     char type;
 
-    y_known = 0;
+    y_id = 255;
 
     if (value_top < 1) {
         compiler_error = 3;
@@ -1653,7 +1651,7 @@ char reduce_binary(char op)
     char result;
     char unsigned_compare;
 
-    y_known = 0;
+    y_id = 255;
     if (value_top < 2) {
         compiler_error = 3;
         return 0;
@@ -1785,7 +1783,7 @@ char emit_call_finish(char marker_index)
     char expected;
     char actual;
 
-    y_known = 0;
+    y_id = 255;
     function_id = op_aux[marker_index];
     argc = op_argc[marker_index];
     base = op_base[marker_index];
@@ -1835,7 +1833,7 @@ char emit_call_finish(char marker_index)
  */
 char emit_index_address(char area, char symbol, char kind, char element_type)
 {
-    y_known = 0;
+    y_id = 255;
     emit_pop_ax();
     if (kind == 2) {
         if (element_type != 1) {
@@ -1871,12 +1869,11 @@ char emit_index_load(char area, char symbol, char kind, char element_type, char 
          * Output errors are sticky in compiler_error. Each output helper
          * becomes a no-op after failure, so one check at the end suffices.
          */
-        if (y_index_pending == 0) {
-            y_known = 0;
+        if (ax_pending != 2) {
+            y_id = 255;
             emit_pop_ax();
             emit_zero((fixed_text + 467));
         }
-        y_index_pending = 0;
         emit_instruction((fixed_text + 431));
         write_char(' ');
         emit_global_name(symbol);
@@ -1887,7 +1884,6 @@ char emit_index_load(char area, char symbol, char kind, char element_type, char 
         hold_ax();
         return compiler_error == 0;
     }
-    y_index_pending = 0;
     if (emit_index_address(area, symbol, kind, element_type) == 0) {
         return 0;
     }
@@ -1928,6 +1924,7 @@ char expression_identifier()
     char id;
     char area;
     char kind;
+    char source;
     char type;
 
     id = lookup_name();
@@ -1995,15 +1992,17 @@ char expression_identifier()
         if (type == 1 & token_kind == ']' & op_top > 0) {
             if (op_code[op_top - 1] == 203 & op_argc[op_top - 1] == 2) {
                 if (global_type[op_aux[op_top - 1]] == 1) {
-                    if (y_known == 0 | y_area != area | y_symbol != id) {
+                    source = id;
+                    if (area == 2) {
+                        source = id + 176;
+                    }
+                    if (y_id != source) {
                         if (emit_symbol_operand((fixed_text + 439), area, id, 0) == 0) {
                             return 0;
                         }
-                        y_area = area;
-                        y_symbol = id;
-                        y_known = 1;
+                        y_id = source;
                     }
-                    y_index_pending = 1;
+                    ax_pending = 2;
                     if (push_value_type(type) == 0) {
                         return 0;
                     }
@@ -2173,7 +2172,7 @@ char expression_close_index()
     }
     if (kind == 5) {
         /* Pointer indexing changes Y and may address an aliased char scalar. */
-        y_known = 0;
+        y_id = 255;
         if (flush_ax() == 0) {
             return 0;
         }
@@ -2305,7 +2304,6 @@ char expression_loop()
 
 char compile_expression()
 {
-    y_index_pending = 0;
     op_top = 0;
     value_top = 0;
     ax_pending = 0;
@@ -2364,8 +2362,14 @@ char emit_false_jump(unsigned target)
 
 char emit_scalar_store(char area, char symbol, char type)
 {
-    if (y_known != 0 & y_area == area & y_symbol == symbol) {
-        y_known = 0;
+    char source;
+
+    source = symbol;
+    if (area == 2) {
+        source = symbol + 176;
+    }
+    if (y_id == source) {
+        y_id = 255;
     }
     if (emit_pop_ax() == 0) {
         return 0;
@@ -2383,7 +2387,7 @@ char emit_scalar_store(char area, char symbol, char type)
 
 char emit_index_store(char element_type)
 {
-    y_known = 0;
+    y_id = 255;
     if (flush_ax() == 0) {
         return 0;
     }
@@ -2427,7 +2431,7 @@ char statement_close()
     unsigned second_label;
 
     /* Incoming branches may hold different Y values at this join. */
-    y_known = 0;
+    y_id = 255;
 
     if (ctrl_top == 0) {
         if (scan_token() == 0) {
@@ -2492,7 +2496,7 @@ char statement_if()
 {
     unsigned false_label;
 
-    y_known = 0;
+    y_id = 255;
     false_label = label_counter;
     label_counter = label_counter + 1;
     if (scan_token() == 0) {
@@ -2534,7 +2538,7 @@ char statement_while()
     unsigned done_label;
 
     /* First entry and the back edge must agree: start with unknown Y. */
-    y_known = 0;
+    y_id = 255;
     loop_label = label_counter;
     label_counter = label_counter + 1;
     done_label = label_counter;
@@ -2743,7 +2747,7 @@ char parse_statements()
                                 compiler_error = 3;
                                 return 0;
                             }
-                            y_known = 0;
+                            y_id = 255;
                             if (emit_jump_label((fixed_text + 531), break_label) == 0) {
                                 return 0;
                             }
@@ -2776,7 +2780,7 @@ char parse_statements()
                                 if (emit_pop_ax() == 0) {
                                     return 0;
                                 }
-                                y_known = 0;
+                                y_id = 255;
                                 if (emit_zero((fixed_text + 539)) == 0) {
                                     return 0;
                                 }
@@ -3151,7 +3155,7 @@ char parse_function(char function_id)
     int slot;
     char param_start;
 
-    y_known = 0;
+    y_id = 255;
     current_func = function_id;
     local_count = 0;
     param_start = param_count;
