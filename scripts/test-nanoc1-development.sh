@@ -40,8 +40,8 @@ if [ "$#" -ne 5 ]; then
     exit 1
 fi
 bss=$(( $4 + 256 * $5 ))
-if [ "$bss" -gt 12288 ]; then
-    echo "FAIL #108: compiler BSS $bss exceeds 0xa000-0xcfff (12288 B)" >&2
+if [ "$bss" -gt 14336 ]; then
+    echo "FAIL #108: compiler BSS $bss exceeds 0x0800-0x3fff (14336 B)" >&2
     exit 1
 fi
 if [ -f "$OUT_DIR/NANOC1DEV.ASM" ]; then
@@ -55,21 +55,21 @@ if [ ! -f "$source" ]; then
 fi
 
 # Only now (in a separate emulator run) build/load the code image. The
-# development C code occupies $0800-$9fff, BSS $a000-$cfff, caller $0400.
+# development C code occupies $4000-$cfff, BSS $0800-$3fff, caller $0400.
 # None of ass's low-memory symbol/staging arena is alive in this process.
 "$VASM" -I"$ROOT/ass" -Fbin -cbm-prg -o "$OUT_DIR/nanoc1.prg" "$source"
 set -- $(od -An -tu1 -N2 "$OUT_DIR/nanoc1.prg")
 origin=$(( $1 + 256 * $2 ))
-if [ "$origin" -ne 2048 ]; then
-    echo "FAIL #108: expected compiler origin at 0x0800, got $origin" >&2
+if [ "$origin" -ne 16384 ]; then
+    echo "FAIL #108: expected compiler origin at 0x4000, got $origin" >&2
     exit 1
 fi
 loaded=$(($(wc -c < "$OUT_DIR/nanoc1.prg") - 2))
-if [ "$loaded" -gt 38912 ]; then
-    echo "FAIL #108: compiler code $loaded exceeds 0x0800-0x9fff (38912 B)" >&2
+if [ "$loaded" -gt 36864 ]; then
+    echo "FAIL #108: compiler code $loaded exceeds 0x4000-0xcfff (36864 B)" >&2
     exit 1
 fi
-echo "PASS #108: separate development seed code=$loaded/38912 B BSS=$bss/12288 B"
+echo "PASS #108: separate development seed code=$loaded/36864 B BSS=$bss/14336 B"
 
 # Reuse the production semantic corpus with the *same* real compiler binary.
 # This harness lives at $0400; all user-program execution uses a fresh VICE
