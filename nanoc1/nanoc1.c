@@ -1142,139 +1142,6 @@ char loop_same(char left, char right)
     return 1;
 }
 
-char loop_lookup(char position)
-{
-    loop_token(position);
-    return lookup_name();
-}
-
-/* Emit one absolute,Y array operation chosen from the semantic loop. */
-char loop_array_instruction(char *op, char symbol)
-{
-    emit_instruction(op);
-    write_char(' ');
-    emit_global_name(symbol);
-    write_char(',');
-    write_char('y');
-    write_newline();
-    return compiler_error == 0;
-}
-
-/*
- * Whole-loop machine selector for the first provably safe cursor algorithm:
- * while (i < n) { dst[i] = src[i]; i = i + 1; }
- * All four symbols are checked; i,n are byte scalars, src,dst fixed byte
- * arrays. No calls, aliases through pointers, or interior control edges.
- * The selected machine trajectory retains Y across the *back edge* and
- * writes i once on exit. Other loops use the unchanged general parser.
- */
-char loop_copy()
-{
-    char i_id;
-    char i_area;
-    char n_id;
-    char n_area;
-    char src_id;
-    char dst_id;
-    unsigned start_label;
-    unsigned end_label;
-
-    if (loop_data[3] == 0 | loop_data[0] != 23) {
-        return 0;
-    }
-    if (loop_data[16] != '(' | loop_data[30] != '<') {
-        return 0;
-    }
-    if (loop_data[44] != '{' | loop_data[65] != '[') {
-        return 0;
-    }
-    if (loop_data[79] != '=' | loop_data[93] != '[') {
-        return 0;
-    }
-    if (loop_data[114] != ';' | loop_data[128] != '=') {
-        return 0;
-    }
-    if (loop_data[142] != '+' | loop_data[156] != ';') {
-        return 0;
-    }
-    if (loop_data[163] != '}') {
-        return 0;
-    }
-    if (loop_data[149] != 131) {
-        return 0;
-    }
-    if (loop_data[152] != 1 | loop_data[153] != 0) {
-        return 0;
-    }
-    if (loop_same(1, 8) == 0 | loop_same(1, 13) == 0) {
-        return 0;
-    }
-    if (loop_same(1, 16) == 0 | loop_same(1, 18) == 0) {
-        return 0;
-    }
-
-    i_id = loop_lookup(1);
-    if (i_id == 255) {
-        return 0;
-    }
-    i_area = saved_area;
-    if (i_area == 2) {
-        if (local_type[i_id] != 1) {
-            return 0;
-        }
-    } else {
-        if (global_kind[i_id] != 1 | global_type[i_id] != 1) {
-            return 0;
-        }
-    }
-    n_id = loop_lookup(3);
-    if (n_id == 255) {
-        return 0;
-    }
-    n_area = saved_area;
-    if (n_area == 2) {
-        if (local_type[n_id] != 1) {
-            return 0;
-        }
-    } else {
-        if (global_kind[n_id] != 1 | global_type[n_id] != 1) {
-            return 0;
-        }
-    }
-    dst_id = loop_lookup(6);
-    if (dst_id == 255 | saved_area != 1) {
-        return 0;
-    }
-    if (global_kind[dst_id] != 2 | global_type[dst_id] != 1) {
-        return 0;
-    }
-    src_id = loop_lookup(11);
-    if (src_id == 255 | saved_area != 1) {
-        return 0;
-    }
-    if (global_kind[src_id] != 2 | global_type[src_id] != 1) {
-        return 0;
-    }
-
-    /* The loop has no path out of its own straight-line induction step. */
-    start_label = label_counter;
-    label_counter = label_counter + 1;
-    end_label = label_counter;
-    label_counter = label_counter + 1;
-    emit_symbol_operand("ldy", i_area, i_id, 0);
-    emit_label(start_label);
-    emit_symbol_operand("cpy", n_area, n_id, 0);
-    emit_jump_label("bcs", end_label);
-    loop_array_instruction("lda", src_id);
-    loop_array_instruction("sta", dst_id);
-    emit_zero("iny");
-    emit_jump_label("jmp", start_label);
-    emit_label(end_label);
-    emit_symbol_operand("sty", i_area, i_id, 0);
-    ax_pending = 0;
-    return compiler_error == 0;
-}
-
 char save_token_name()
 {
     char i;
@@ -1366,6 +1233,154 @@ char lookup_name()
         return id;
     }
     return 255;
+}
+
+char loop_lookup(char position)
+{
+    loop_token(position);
+    return lookup_name();
+}
+
+/* Emit one absolute,Y array operation chosen from the semantic loop. */
+char loop_array_instruction(char *op, char symbol)
+{
+    emit_instruction(op);
+    write_char(' ');
+    emit_global_name(symbol);
+    write_char(',');
+    write_char('y');
+    write_newline();
+    return compiler_error == 0;
+}
+
+/*
+ * Whole-loop machine selector for the first provably safe cursor algorithm:
+ * while (i < n) { dst[i] = src[i]; i = i + 1; }
+ * All four symbols are checked; i,n are byte scalars, src,dst fixed byte
+ * arrays. No calls, aliases through pointers, or interior control edges.
+ * The selected machine trajectory retains Y across the *back edge* and
+ * writes i once on exit. Other loops use the unchanged general parser.
+ */
+char loop_copy()
+{
+    char i_id;
+    char i_area;
+    char n_id;
+    char n_area;
+    char src_id;
+    char dst_id;
+    unsigned start_label;
+    unsigned end_label;
+
+    if (loop_data[3] == 0 | loop_data[0] != 23) {
+        return 0;
+    }
+    if (loop_data[16] != '(' | loop_data[30] != '<') {
+        return 0;
+    }
+    if (loop_data[44] != ')' | loop_data[51] != '{') {
+        return 0;
+    }
+    if (loop_data[65] != '[' | loop_data[79] != ']') {
+        return 0;
+    }
+    if (loop_data[86] != '=' | loop_data[100] != '[') {
+        return 0;
+    }
+    if (loop_data[114] != ']' | loop_data[121] != ';') {
+        return 0;
+    }
+    if (loop_data[135] != '=' | loop_data[149] != '+') {
+        return 0;
+    }
+    if (loop_data[163] != ';' | loop_data[170] != '}') {
+        return 0;
+    }
+    if (loop_data[156] != 131) {
+        return 0;
+    }
+    if (loop_data[159] != 1 | loop_data[160] != 0) {
+        return 0;
+    }
+    if (loop_data[23] != 130 | loop_data[37] != 130) {
+        return 0;
+    }
+    if (loop_data[58] != 130 | loop_data[72] != 130) {
+        return 0;
+    }
+    if (loop_data[93] != 130 | loop_data[107] != 130) {
+        return 0;
+    }
+    if (loop_data[128] != 130 | loop_data[142] != 130) {
+        return 0;
+    }
+    if (loop_same(1, 8) == 0 | loop_same(1, 13) == 0) {
+        return 0;
+    }
+    if (loop_same(1, 16) == 0 | loop_same(1, 18) == 0) {
+        return 0;
+    }
+
+    i_id = loop_lookup(1);
+    if (i_id == 255) {
+        return 0;
+    }
+    i_area = saved_area;
+    if (i_area == 2) {
+        if (local_type[i_id] != 1) {
+            return 0;
+        }
+    } else {
+        if (global_kind[i_id] != 1 | global_type[i_id] != 1) {
+            return 0;
+        }
+    }
+    n_id = loop_lookup(3);
+    if (n_id == 255) {
+        return 0;
+    }
+    n_area = saved_area;
+    if (n_area == 2) {
+        if (local_type[n_id] != 1) {
+            return 0;
+        }
+    } else {
+        if (global_kind[n_id] != 1 | global_type[n_id] != 1) {
+            return 0;
+        }
+    }
+    dst_id = loop_lookup(6);
+    if (dst_id == 255 | saved_area != 1) {
+        return 0;
+    }
+    if (global_kind[dst_id] != 2 | global_type[dst_id] != 1) {
+        return 0;
+    }
+    src_id = loop_lookup(11);
+    if (src_id == 255 | saved_area != 1) {
+        return 0;
+    }
+    if (global_kind[src_id] != 2 | global_type[src_id] != 1) {
+        return 0;
+    }
+
+    /* The loop has no path out of its own straight-line induction step. */
+    start_label = label_counter;
+    label_counter = label_counter + 1;
+    end_label = label_counter;
+    label_counter = label_counter + 1;
+    emit_symbol_operand("ldy", i_area, i_id, 0);
+    emit_label(start_label);
+    emit_symbol_operand("cpy", n_area, n_id, 0);
+    emit_jump_label("bcs", end_label);
+    loop_array_instruction("lda", src_id);
+    loop_array_instruction("sta", dst_id);
+    emit_zero("iny");
+    emit_jump_label("jmp", start_label);
+    emit_label(end_label);
+    emit_symbol_operand("sty", i_area, i_id, 0);
+    ax_pending = 0;
+    return compiler_error == 0;
 }
 
 char copy_pending_global(char symbol)
