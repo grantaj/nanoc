@@ -497,18 +497,16 @@ char emit_scratch(char *op, char *name, char high)
 }
 char emit_global_name(char symbol)
 {
-    if (write_text((fixed_text + 679)) == 0) {
-        return 0;
-    }
-    return write_hex_byte(symbol);
+    write_text((fixed_text + 679));
+    write_hex_byte(symbol);
+    return compiler_error == 0;
 }
 
 char emit_function_name(char symbol)
 {
-    if (write_text((fixed_text + 675)) == 0) {
-        return 0;
-    }
-    return write_hex_byte(symbol);
+    write_text((fixed_text + 675));
+    write_hex_byte(symbol);
+    return compiler_error == 0;
 }
 
 char emit_current_name(char function_id, char slot)
@@ -541,10 +539,9 @@ char emit_symbol_operand(char *op, char area, char symbol, char high)
 }
 char emit_label_name(unsigned label)
 {
-    if (write_text((fixed_text + 587)) == 0) {
-        return 0;
-    }
-    return write_hex_word(label);
+    write_text((fixed_text + 587));
+    write_hex_word(label);
+    return compiler_error == 0;
 }
 
 char emit_label(unsigned label)
@@ -1197,32 +1194,22 @@ char emit_bss_assignment(char area, char symbol, unsigned size)
 {
     unsigned new_end;
 
-    /* Subtract first: a 16-bit addition can wrap before the limit check. */
+    /* Subtract first: a 16-bit addition may wrap before the limit check. */
     if (size > 34304 - bss_offset) {
         compiler_error = 6;
         return 0;
     }
     new_end = bss_offset + size;
     if (area == 2) {
-        if (emit_current_name(current_func, symbol) == 0) {
-            return 0;
-        }
+        emit_current_name(current_func, symbol);
     } else {
-        if (emit_global_name(symbol) == 0) {
-            return 0;
-        }
+        emit_global_name(symbol);
     }
-    if (write_text((fixed_text + 572)) == 0) {
-        return 0;
-    }
-    if (write_hex_word(bss_offset) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
+    write_text((fixed_text + 572));
+    write_hex_word(bss_offset);
+    write_newline();
     bss_offset = new_end;
-    return 1;
+    return compiler_error == 0;
 }
 
 char runtime_param_name(char function_id, char argument)
@@ -1300,18 +1287,13 @@ char emit_param_byte(char function_id, char argument, char high)
 
 char emit_param_store(char function_id, char argument, char type)
 {
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
+    emit_zero((fixed_text + 455));
     if (type != 1) {
-        if (emit_param_byte(function_id, argument, 1) == 0) {
-            return 0;
-        }
+        emit_param_byte(function_id, argument, 1);
     }
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
-    return emit_param_byte(function_id, argument, 0);
+    emit_zero((fixed_text + 455));
+    emit_param_byte(function_id, argument, 0);
+    return compiler_error == 0;
 }
 
 char emit_push_ax()
@@ -1346,19 +1328,14 @@ char emit_pop_ax()
 
 char emit_load_symbol(char area, char symbol, char type)
 {
-    if (emit_symbol_operand((fixed_text + 431), area, symbol, 0) == 0) {
-        return 0;
-    }
+    emit_symbol_operand((fixed_text + 431), area, symbol, 0);
     if (type == 1) {
-        if (emit_immediate((fixed_text + 435), 0) == 0) {
-            return 0;
-        }
+        emit_immediate((fixed_text + 435), 0);
     } else {
-        if (emit_symbol_operand((fixed_text + 435), area, symbol, 1) == 0) {
-            return 0;
-        }
+        emit_symbol_operand((fixed_text + 435), area, symbol, 1);
     }
-    return hold_ax();
+    hold_ax();
+    return compiler_error == 0;
 }
 
 /* Both a global array and a string literal are constant 16-bit addresses. */
@@ -1398,13 +1375,10 @@ char emit_array_address(char symbol)
 
 char emit_literal_value(unsigned value)
 {
-    if (emit_immediate((fixed_text + 431), value & 255) == 0) {
-        return 0;
-    }
-    if (emit_immediate((fixed_text + 435), (value >> 8) & 255) == 0) {
-        return 0;
-    }
-    return hold_ax();
+    emit_immediate((fixed_text + 431), value & 255);
+    emit_immediate((fixed_text + 435), (value >> 8) & 255);
+    hold_ax();
+    return compiler_error == 0;
 }
 
 char emit_string_literal()
@@ -2898,24 +2872,19 @@ char constant_fits_type(char type)
 
 char emit_global_label(char symbol)
 {
-    if (emit_global_name(symbol) == 0) {
-        return 0;
-    }
-    if (write_char(':') == 0) {
-        return 0;
-    }
-    return write_newline();
+    emit_global_name(symbol);
+    write_char(':');
+    write_newline();
+    return compiler_error == 0;
 }
 
 char emit_typed_const(char type, unsigned value)
 {
-    if (type == 1) {
-        return emit_byte_data(value & 255);
+    emit_byte_data(value & 255);
+    if (type != 1) {
+        emit_byte_data((value >> 8) & 255);
     }
-    if (emit_byte_data(value & 255) == 0) {
-        return 0;
-    }
-    return emit_byte_data((value >> 8) & 255);
+    return compiler_error == 0;
 }
 
 char parse_global_array(char symbol, char element_type)
