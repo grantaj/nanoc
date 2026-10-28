@@ -158,6 +158,14 @@ if ! grep -Eq '^[[:space:]]*lda[[:space:]]+[(]NC_PTR[)],y' "$OUT_DIR/n1-index-wi
 fi
 echo 'PASS #102: int/unsigned offsets 256/257 use full 16-bit address'
 
+# A bounded complete while region must select the Y-carried copy algorithm.
+# This same native fixture verifies that unmatched loops replay correctly.
+case_source n1-loop-copy TESTS/NANOC1/LOOP-COPY.C accept run 90 0
+if ! grep -Eq '^[[:space:]]*cpy[[:space:]]+__g[[:xdigit:]][[:xdigit:]]' "$OUT_DIR/n1-loop-copy.asm"; then
+    echo 'FAIL #102: loop did not select Y-byte bound comparison' >&2
+    exit 1
+fi
+if ! grep -Eq '^[[:space:]]*iny[[:space:]]*
 rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
 case_source n1-runtime TESTS/NANOC0-RUNTIME/RUNTIME.C accept run 0 0
 if [ -f "$OUT_DIR/DTEST" ]; then dtest="$OUT_DIR/DTEST"; else dtest="$OUT_DIR/dtest"; fi
