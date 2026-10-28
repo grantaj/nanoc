@@ -1986,7 +1986,7 @@ char emit_index_load(char area, char symbol, char kind, char element_type, char 
         if (emit_immediate((fixed_text + 435), 0) == 0) {
             return 0;
         }
-        return emit_push_ax();
+        return hold_ax();
     }
     if (emit_index_address(area, symbol, kind, element_type) == 0) {
         return 0;
