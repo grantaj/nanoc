@@ -309,14 +309,38 @@ char hold_valid;
 unsigned source_line;
 char compiler_error;
 
+/*
+ * Bounded loop-region probe. Normal Phase 1 parsing still validates every
+ * token and emits the fallback into ra[]. Only a fully validated, short
+ * semantic region can replace that fallback with a 6502 loop trajectory.
+ * On overflow it streams the original output unchanged.
+ */
+char ro;
+char rp;
+char rv;
+char rf;
+char rc;
+unsigned rb;
+char rk[32];
+char rl[32];
+char rt[1024];
+char ra[1024];
+unsigned rn[32];
+char rid;
+char rbd;
+char rs;
+char rd;
+char ria;
+char rba;
+
 /* fixed symbol model: flat names keep Phase 1 data structures obvious */
-char global_name[5632];
-char global_name_len[176];
-char global_kind[176];
-char global_type[176];
-unsigned global_array_len[176];
-char global_param_start[176];
-char global_param_count[176];
+char global_name[6656];
+char global_name_len[208];
+char global_kind[208];
+char global_type[208];
+unsigned global_array_len[208];
+char global_param_start[208];
+char global_param_count[208];
 char global_count;
 
 char local_name[1024];
@@ -403,8 +427,29 @@ char same_bytes(char *a, char a_length, char *b, char b_length)
 
 char write_char(char value)
 {
+    unsigned k;
+
     if (compiler_error != 0) {
         return 0;
+    }
+    if (ro != 0) {
+        if (rb < 1024) {
+            ra[rb] = value;
+            rb = rb + 1;
+            return 1;
+        }
+        /* A region exceeded the bound: flush its proven ordinary output. */
+        ro = 0;
+        rv = 0;
+        k = 0;
+        while (k < rb) {
+            if (io_write(output_handle, ra[k]) != 0) {
+                compiler_error = 7;
+                return 0;
+            }
+            k = k + 1;
+        }
+        rb = 0;
     }
     if (io_write(output_handle, value) != 0) {
         compiler_error = 7;
@@ -966,7 +1011,7 @@ char scan_operator_token()
     return 1;
 }
 
-char scan_token()
+char scan_token_raw()
 {
     token_length = 0;
     token_value = 0;
@@ -991,6 +1036,36 @@ char scan_token()
         return scan_string_token();
     }
     return scan_operator_token();
+}
+
+/* Record tokens as *semantic candidates*, not assembled instructions. */
+char scan_token()
+{
+    char ok;
+    char k;
+
+    ok = scan_token_raw();
+    if (ok == 0) {
+        return 0;
+    }
+    if (rp != 0 & rv != 0) {
+        if (rc >= 32) {
+            rv = 0;
+        } else {
+            rk[rc] = token_kind;
+            rl[rc] = token_length;
+            rn[rc] = token_value;
+            if (token_kind == 130) {
+                k = 0;
+                while (k < token_length) {
+                    rt[rc * 32 + k] = token_text[k];
+                    k = k + 1;
+                }
+            }
+            rc = rc + 1;
+        }
+    }
+    return 1;
 }
 
 char save_token_name()
@@ -1122,7 +1197,7 @@ int add_global_saved(char kind, char type)
 {
     int id;
 
-    if (global_count >= 176) {
+    if (global_count >= 208) {
         compiler_error = 6;
         return -1;
     }
@@ -1601,6 +1676,17 @@ char emit_shift(char op)
     unsigned loop_label;
     unsigned done_label;
 
+    /* Delay both the ordinary code and semantic tokens through one bounded
+     * loop region. Nested or oversized loops automatically keep normal code.
+     */
+    if (rp == 0) {
+        rp = 1;
+        rv = 1;
+        rf = ctrl_top;
+        rc = 0;
+        rb = 0;
+        ro = 1;
+    }
     loop_label = label_counter;
     label_counter = label_counter + 1;
     done_label = label_counter;
@@ -2424,6 +2510,160 @@ char push_control(char kind, unsigned label0, unsigned label1)
     return 1;
 }
 
+/* The 23-token, type-checked copy/induction loop has three operations:
+ *   test char i < char n;  dst[i] = src[i];  i = i + 1.
+ * All other loops retain the exact ordinary-emitter output.
+ */
+char r_same(char a, char b)
+{
+    if (rl[a] != rl[b]) {
+        return 0;
+    }
+    return same_bytes((rt + a * 32), rl[a], (rt + b * 32), rl[b]);
+}
+
+char r_lookup(char slot)
+{
+    char k;
+
+    token_length = rl[slot];
+    k = 0;
+    while (k < token_length) {
+        token_text[k] = rt[slot * 32 + k];
+        k = k + 1;
+    }
+    token_text[k] = 0;
+    return lookup_name();
+}
+
+char r_match()
+{
+    /* Exact semantics, not a textual assembly peephole. */
+    if (rv == 0 | rc != 23) {
+        return 0;
+    }
+    if (rk[0] != '(' | rk[1] != 130 | rk[2] != '<' |
+        rk[3] != 130 | rk[4] != ')' | rk[5] != '{') {
+        return 0;
+    }
+    if (rk[6] != 130 | rk[7] != '[' | rk[8] != 130 |
+        rk[9] != ']' | rk[10] != '=' | rk[11] != 130 |
+        rk[12] != '[' | rk[13] != 130 | rk[14] != ']' |
+        rk[15] != ';') {
+        return 0;
+    }
+    if (rk[16] != 130 | rk[17] != '=' | rk[18] != 130 |
+        rk[19] != '+' | rk[20] != 131 | rn[20] != 1 |
+        rk[21] != ';' | rk[22] != '}') {
+        return 0;
+    }
+    if (r_same(1, 8) == 0 | r_same(1, 13) == 0 |
+        r_same(1, 16) == 0 | r_same(1, 18) == 0) {
+        return 0;
+    }
+    rid = r_lookup(1);
+    ria = saved_area;
+    if (rid == 255) {
+        return 0;
+    }
+    if (ria == 1) {
+        if (global_kind[rid] != 1 | global_type[rid] != 1) {
+            return 0;
+        }
+    } else {
+        if (local_type[rid] != 1) {
+            return 0;
+        }
+    }
+    rbd = r_lookup(3);
+    rba = saved_area;
+    if (rbd == 255) {
+        return 0;
+    }
+    if (rba == 1) {
+        if (global_kind[rbd] != 1 | global_type[rbd] != 1) {
+            return 0;
+        }
+    } else {
+        if (local_type[rbd] != 1) {
+            return 0;
+        }
+    }
+    rd = r_lookup(6);
+    if (rd == 255 | saved_area != 1) {
+        return 0;
+    }
+    if (global_kind[rd] != 2 | global_type[rd] != 1) {
+        return 0;
+    }
+    rs = r_lookup(11);
+    if (rs == 255 | saved_area != 1) {
+        return 0;
+    }
+    if (global_kind[rs] != 2 | global_type[rs] != 1) {
+        return 0;
+    }
+    return 1;
+}
+
+/* The loop has a single machine-state trajectory: Y is the induction
+ * variable, C is produced by CPY, and memory i becomes authoritative at exit.
+ * No function calls, aliasing pointer writes, break or interior joins occur.
+ */
+char r_emit()
+{
+    unsigned head;
+    unsigned done;
+
+    head = label_counter;
+    label_counter = label_counter + 1;
+    done = label_counter;
+    label_counter = label_counter + 1;
+    emit_symbol_operand("ldy", ria, rid, 0);
+    emit_label(head);
+    emit_symbol_operand("cpy", rba, rbd, 0);
+    emit_jump_label("bcs", done);
+    emit_instruction("lda");
+    write_char(' ');
+    emit_global_name(rs);
+    write_text(",y");
+    write_newline();
+    emit_instruction("sta");
+    write_char(' ');
+    emit_global_name(rd);
+    write_text(",y");
+    write_newline();
+    emit_zero("iny");
+    emit_jump_label((fixed_text + 531), head);
+    emit_label(done);
+    emit_symbol_operand("sty", ria, rid, 0);
+    ax_pending = 0;
+    return compiler_error == 0;
+}
+
+char r_finish()
+{
+    unsigned k;
+    char good;
+
+    ro = 0;
+    rp = 0;
+    good = r_match();
+    if (good != 0) {
+        rb = 0;
+        return r_emit();
+    }
+    k = 0;
+    while (k < rb) {
+        if (write_char(ra[k]) == 0) {
+            return 0;
+        }
+        k = k + 1;
+    }
+    rb = 0;
+    return 1;
+}
+
 char statement_close()
 {
     char frame;
@@ -2450,6 +2690,11 @@ char statement_close()
             return 0;
         }
         ctrl_top = ctrl_top - 1;
+        if (rp != 0 & rf == frame) {
+            if (r_finish() == 0) {
+                return 0;
+            }
+        }
         return scan_token();
     }
     if (kind == 3) {

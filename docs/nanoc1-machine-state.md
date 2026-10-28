@@ -136,3 +136,59 @@ a claim made for this initial index-algorithm selection.
 Both the 24,576-byte native compiler bootstrap limit and full Phase 1 semantic
 execution remain hard gates. The exact compiled `ass.c` loaded size is reported
 as a measurement, independently of executable fit.
+
+
+## #102 experiment: deferred semantic loop region (draft #111)
+
+The first meaningful region unit is a structured `while` with its own exit
+and back-edge. The parser already knows the structure and validates all
+expressions; it now **temporarily buffers the ordinary emitted assembly**
+while recording up to 32 source tokens. The ordinary compiler is still the
+source of syntax/type diagnostics. No C source is re-parsed or silently
+rewritten.
+
+At the matching loop closure a tiny selector asks a *semantic* question,
+using the original symbol table for types and array identity:
+
+- Is the condition `char i < char n`?
+- Does the body contain exactly `dst[i] = src[i]; i = i + 1;`?
+- Are `src` and `dst` fixed global byte arrays, with the same scalar
+  `i` throughout, and no aliases, calls, extra control edges or writes to
+  the bound?
+
+Only then does it discard the private ordinary emission and commit a
+different 6502 machine plan:
+
+```asm
+    ldy i
+loop:
+    cpy n
+    bcs done
+    lda src,y
+    sta dst,y
+    iny
+    jmp loop
+done:
+    sty i
+```
+
+Here Y carries the induction variable across iterations; CPY produces the
+carry for the exit decision; and the source scalar's memory home is updated
+only when the loop exits. The equality of semantics follows from `char`
+range 0..255, the strict upper bound, and the absence of any alias to `i`
+or change of `n` inside the body. The selected loop does no 16-bit
+address reconstruction, temporary zero-page pointer staging, or inner
+hardware-stack round-trips.
+
+Any pattern mismatch or overflow of the 32-token / 1024-byte output region
+selects the original instructions unchanged. In particular, pointer loops,
+word arrays, nested calls, extra expressions, or unrecognized conditions
+remain on the semantic compiler's proven path. This is a bounded entry
+point for further 6502 region choices, **not** a claim of a general loop
+optimizer or that exact `ass.c` now fits 16 KiB.
+
+A larger first-generation compilation under #108/#109 is deliberately
+independent of this selector. The experiment must pass native 6510 execution
+both for the selected loop and for the ordinary-fallback loop, and must
+separately report the first-generation seed size, the self-compiled second
+generation size, and exact `ass.c` loaded bytes.

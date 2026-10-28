@@ -20,8 +20,10 @@
 ;;; number. At this revision that source requires, including the five runtime
 ;;; functions:
 ;;;
-;;;   persistent symbols       129    bootstrap capacity 176
-;;;   persistent name bytes   2044    bootstrap capacity 2560
+;;;   persistent symbols       129    original bootstrap capacity 176
+;;;   persistent name bytes   2044    original bootstrap capacity 2560
+;;; #102's larger C optimiser needs 208 symbols and a 4096-byte name pool.
+;;; The workspace now fits below $d000 without imposing the old name cap.
 ;;;   parameter type entries   105    capacity 128
 ;;;   max current symbols       11    capacity 32
 ;;;   max current name bytes    95    uses the unused tail of the name pool
@@ -47,16 +49,18 @@ SYMBOL_AREA_NONE       = 0
 SYMBOL_AREA_CURRENT    = 1
 SYMBOL_AREA_PERSISTENT = 2
 
-PERSISTENT_SYMBOL_CAPACITY = 176
+PERSISTENT_SYMBOL_CAPACITY = 208
 CURRENT_SYMBOL_CAPACITY    = 32
-NAME_POOL_CAPACITY         = 2560
+NAME_POOL_CAPACITY         = 4096
 PARAM_META_CAPACITY        = 128
 
-;;; The 3488 mutable symbol/name bytes are working RAM, not loaded program data.
-;;; $c000-$cd9f is ordinary C64 RAM below I/O and safely above every nanoc0 image.
-;;; Using one explicit map for production and focused tests also keeps the source
-;;; consumable by ass: no conditional-assembly directive is required.
-SYMBOL_WORKSPACE_BYTES = 3840
+;;; Two explicit, non-overlapping work areas while nanoc0 runs:
+;;;   $c000-$c5bf symbol/type/parameter records (1472 bytes)
+;;;   $a000-$afff bounded name pool (4096 bytes)
+;;; Scanner text and output scratch occupy $b000 and must NOT be overlapped.
+;;; The native assembler can use $a000-$bfff while *building* nanoc0, but
+;;; is inactive while that compiler parses the source. No region reaches I/O.
+SYMBOL_WORKSPACE_BYTES = 5568
 NANOC_SYMBOL_WORKSPACE = $c000
 
 symbolWorkspaceStart  = NANOC_SYMBOL_WORKSPACE
@@ -70,8 +74,8 @@ currentNameOffsetLo    = persistentParamCount+PERSISTENT_SYMBOL_CAPACITY
 currentNameOffsetHi    = currentNameOffsetLo+CURRENT_SYMBOL_CAPACITY
 currentType            = currentNameOffsetHi+CURRENT_SYMBOL_CAPACITY
 parameterType          = currentType+CURRENT_SYMBOL_CAPACITY
-namePool               = parameterType+PARAM_META_CAPACITY
-symbolWorkspaceEnd     = namePool+NAME_POOL_CAPACITY
+namePool               = $a000
+symbolWorkspaceEnd     = parameterType+PARAM_META_CAPACITY
 
 RUNTIME_SYMBOL_COUNT = 5
 RUNTIME_NAME_BYTES   = 44
