@@ -61,6 +61,7 @@ nanoc0Entry:
 ;;; not a second text copy of the generated machine map.
 programHeaderPath:	byte 'h','e','a','d','e','r',0
 programCompilerHeaderPath:	byte 'h','e','a','d','e','r','-','c','o','m','p','i','l','e','r',0
+programDevelopmentHeaderPath:	byte 'h','e','a','d','e','r','-','d','e','v','e','l','o','p','m','e','n','t',0
 
 programEntryPrefix:
 	string "__nc_entry:"
@@ -90,7 +91,10 @@ compilerMain:
 
 	lda NANOC_COMMAND_LAYOUT
 	cmp #NANOC_LAYOUT_COMPILER
+	beq .compilerBss
+	cmp #NANOC_LAYOUT_DEVELOPMENT
 	bne .ordinaryBss
+.compilerBss:
 	lda #<NANOC_COMPILER_BSS
 	sta bssBase
 	lda #>NANOC_COMPILER_BSS
@@ -124,6 +128,12 @@ compilerMain:
 .outputOpen:
 
 	lda NANOC_COMMAND_LAYOUT
+	cmp #NANOC_LAYOUT_DEVELOPMENT
+	bne .notDevelopment
+	ldx #<programDevelopmentHeaderPath
+	ldy #>programDevelopmentHeaderPath
+	jmp .emitHeader
+.notDevelopment:
 	cmp #NANOC_LAYOUT_COMPILER
 	bne .ordinaryHeader
 	ldx #<programCompilerHeaderPath
@@ -284,7 +294,10 @@ generated_layout_fits:
 	;;; I/O window, but the compiler bootstrap starts its BSS at $a000.
 	lda NANOC_COMMAND_LAYOUT
 	cmp #NANOC_LAYOUT_COMPILER
+	beq .compilerLimit
+	cmp #NANOC_LAYOUT_DEVELOPMENT
 	bne .ordinaryLimit
+.compilerLimit:
 	lda bssOffset+1
 	cmp #>NANOC_COMPILER_BSS_LIMIT
 	jmp .compareHigh
