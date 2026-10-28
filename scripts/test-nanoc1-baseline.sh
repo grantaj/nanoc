@@ -175,6 +175,18 @@ if ! grep -Eq '^[[:space:]]*sty[[:space:]]+__g[[:xdigit:]][[:xdigit:]]' "$OUT_DI
 fi
 echo 'PASS #102: selected loop algorithm carries Y over the back edge'
 
+# The control has identical semantics but spells the induction add as 1+i.
+# It forces the ordinary compiler path and gives a concrete size comparison.
+case_source n1-loop-copy-fallback TESTS/NANOC1/LOOP-COPY-FALLBACK.C accept run 90 0
+selected=$(($(wc -c < "$OUT_DIR/n1-loop-copy.prg") - 2))
+fallback=$(($(wc -c < "$OUT_DIR/n1-loop-copy-fallback.prg") - 2))
+if [ "$selected" -ge "$fallback" ]; then
+    echo "FAIL #102: selected machine loop $selected bytes not smaller than fallback $fallback" >&2
+    exit 1
+fi
+echo "PASS #102: selected copy program $selected bytes vs legacy emitter $fallback bytes"
+
+
 rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
 case_source n1-runtime TESTS/NANOC0-RUNTIME/RUNTIME.C accept run 0 0
 if [ -f "$OUT_DIR/DTEST" ]; then dtest="$OUT_DIR/DTEST"; else dtest="$OUT_DIR/dtest"; fi
