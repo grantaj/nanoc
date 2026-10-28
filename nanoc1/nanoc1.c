@@ -1,10 +1,11 @@
 /*
  * nanoc1.c -- first Nano C compiler written in Nano C Phase 1.
  *
- * This is deliberately the semantic baseline.  Values are materialised as
- * ordinary 16-bit A/X pairs and expressions use a bounded hardware-stack value
- * stack.  The later #102 machine pass is allowed to replace that lowering; this
- * source first makes the language implementation explicit and trustworthy.
+ * The scanner, symbol rules and bounded parser are the tested Phase 1 semantic
+ * baseline (#101). The first #102 emitter change holds the newest expression
+ * value in A/X until another operation really needs the hardware stack.
+ * Most expression lowering remains direct; region/loop-aware 6502 code
+ * selection is separate follow-on work.
  */
 
 /* token kinds above the ASCII range */
@@ -342,6 +343,21 @@ char value_top;
 char expr_type;
 char expr_expect;
 char expr_done;
+/*
+ * Value-location contract (one pending value, not a register allocator):
+ *
+ * ax_pending == 1: only the newest expression value is live in A/X, NOT on
+ *                  the hardware stack. emit_pop_ax consumes it without PLA.
+ * ax_pending == 0: every live expression value is on the hardware stack;
+ *                  emit_pop_ax uses the old PLA/TAX/PLA template.
+ *
+ * flush_ax materialises the pending value before an operand overwrites A/X.
+ * hold_ax claims A/X for a newly computed value. Fixed-text index-load and
+ * unary-negate templates still leave their result on the STACK, so neither
+ * calls hold_ax. Calls, stores and branches consume/reconcile the location
+ * before another expression starts; control-flow joins never carry it.
+ */
+char ax_pending;
 
 /* bounded structured-control state */
 char ctrl_kind[16];
@@ -1274,32 +1290,27 @@ char emit_bss_assignment(char area, char symbol, unsigned size)
 
 char runtime_param_name(char function_id, char argument)
 {
+    char *name;
+
     if (function_id == 0) {
-        if (write_text((fixed_text + 626)) == 0) {
-            return 0;
-        }
+        name = fixed_text + 626;
     } else {
         if (function_id == 1) {
-            if (write_text((fixed_text + 642)) == 0) {
-                return 0;
-            }
+            name = fixed_text + 642;
         } else {
             if (function_id == 2) {
-                if (write_text((fixed_text + 608)) == 0) {
-                    return 0;
-                }
+                name = fixed_text + 608;
             } else {
                 if (function_id == 3) {
-                    if (write_text((fixed_text + 658)) == 0) {
-                        return 0;
-                    }
+                    name = fixed_text + 658;
                 } else {
-                    if (write_text((fixed_text + 591)) == 0) {
-                        return 0;
-                    }
+                    name = fixed_text + 591;
                 }
             }
         }
+    }
+    if (write_text(name) == 0) {
+        return 0;
     }
     return write_hex_digit(argument);
 }
@@ -1338,37 +1349,9 @@ char emit_callee_call(char function_id)
     return write_newline();
 }
 
-char emit_param_store(char function_id, char argument, char type)
+/* The same target slot may need its low and high bytes stored. */
+char emit_param_byte(char function_id, char argument, char high)
 {
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
-    if (type != 1) {
-        if (emit_instruction((fixed_text + 443)) == 0) {
-            return 0;
-        }
-        if (write_char(' ') == 0) {
-            return 0;
-        }
-        if (global_kind[function_id] == 4) {
-            if (runtime_param_name(function_id, argument) == 0) {
-                return 0;
-            }
-        } else {
-            if (emit_current_name(function_id, argument) == 0) {
-                return 0;
-            }
-        }
-        if (write_text((fixed_text + 584)) == 0) {
-            return 0;
-        }
-        if (write_newline() == 0) {
-            return 0;
-        }
-    }
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
     if (emit_instruction((fixed_text + 443)) == 0) {
         return 0;
     }
@@ -1384,7 +1367,28 @@ char emit_param_store(char function_id, char argument, char type)
             return 0;
         }
     }
+    if (high != 0) {
+        if (write_text((fixed_text + 584)) == 0) {
+            return 0;
+        }
+    }
     return write_newline();
+}
+
+char emit_param_store(char function_id, char argument, char type)
+{
+    if (emit_zero((fixed_text + 455)) == 0) {
+        return 0;
+    }
+    if (type != 1) {
+        if (emit_param_byte(function_id, argument, 1) == 0) {
+            return 0;
+        }
+    }
+    if (emit_zero((fixed_text + 455)) == 0) {
+        return 0;
+    }
+    return emit_param_byte(function_id, argument, 0);
 }
 
 char emit_push_ax()
@@ -1392,8 +1396,28 @@ char emit_push_ax()
     return write_text((fixed_text + 694));
 }
 
+/* Materialise the last value only when another value needs A/X. */
+char flush_ax()
+{
+    if (ax_pending == 0) {
+        return 1;
+    }
+    ax_pending = 0;
+    return emit_push_ax();
+}
+
+char hold_ax()
+{
+    ax_pending = 1;
+    return 1;
+}
+
 char emit_pop_ax()
 {
+    if (ax_pending != 0) {
+        ax_pending = 0;
+        return 1;
+    }
     return write_text((fixed_text + 710));
 }
 
@@ -1411,36 +1435,51 @@ char emit_load_symbol(char area, char symbol, char type)
             return 0;
         }
     }
-    return emit_push_ax();
+    return hold_ax();
+}
+
+/* Both a global array and a string literal are constant 16-bit addresses. */
+char emit_address_value(char kind, unsigned target)
+{
+    char high;
+    char *op;
+    char *prefix;
+
+    high = 0;
+    while (high < 2) {
+        if (high == 0) {
+            op = fixed_text + 431;
+            prefix = fixed_text + 547;
+        } else {
+            op = fixed_text + 435;
+            prefix = fixed_text + 551;
+        }
+        if (emit_instruction(op) == 0) {
+            return 0;
+        }
+        if (write_text(prefix) == 0) {
+            return 0;
+        }
+        if (kind == 2) {
+            if (emit_global_name(target) == 0) {
+                return 0;
+            }
+        } else {
+            if (emit_label_name(target) == 0) {
+                return 0;
+            }
+        }
+        if (write_newline() == 0) {
+            return 0;
+        }
+        high = high + 1;
+    }
+    return hold_ax();
 }
 
 char emit_array_address(char symbol)
 {
-    if (emit_instruction((fixed_text + 431)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 547)) == 0) {
-        return 0;
-    }
-    if (emit_global_name(symbol) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
-    if (emit_instruction((fixed_text + 435)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 551)) == 0) {
-        return 0;
-    }
-    if (emit_global_name(symbol) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
-    return emit_push_ax();
+    return emit_address_value(2, symbol);
 }
 
 char emit_literal_value(unsigned value)
@@ -1451,7 +1490,7 @@ char emit_literal_value(unsigned value)
     if (emit_immediate((fixed_text + 435), (value >> 8) & 255) == 0) {
         return 0;
     }
-    return emit_push_ax();
+    return hold_ax();
 }
 
 char emit_string_literal()
@@ -1483,42 +1522,12 @@ char emit_string_literal()
     if (emit_label(skip_label) == 0) {
         return 0;
     }
-    if (emit_instruction((fixed_text + 431)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 547)) == 0) {
-        return 0;
-    }
-    if (emit_label_name(data_label) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
-    if (emit_instruction((fixed_text + 435)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 551)) == 0) {
-        return 0;
-    }
-    if (emit_label_name(data_label) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
-    return emit_push_ax();
+    return emit_address_value(1, data_label);
 }
 
 char is_numeric_type(char type)
 {
-    if (type == 1) {
-        return 1;
-    }
-    if (type == 2) {
-        return 1;
-    }
-    if (type == 3) {
+    if (type >= 1 & type <= 3) {
         return 1;
     }
     return 0;
@@ -1532,10 +1541,8 @@ char compatible_type(char actual, char expected)
         }
         return 0;
     }
-    if (is_numeric_type(actual) != 0) {
-        if (is_numeric_type(expected) != 0) {
-            return 1;
-        }
+    if (is_numeric_type(actual) != 0 & is_numeric_type(expected) != 0) {
+        return 1;
     }
     return 0;
 }
@@ -1662,49 +1669,36 @@ char emit_shift(char op)
     return emit_label(done_label);
 }
 
+/*
+ * The relational helper names are eight consecutive 11-byte strings in
+ * fixed_text: unsigned LT/LE/GT/GE, then signed LT/LE/GT/GE.
+ */
 char emit_compare(char op, char unsigned_compare)
 {
-    char *helper;
+    unsigned offset;
 
-    helper = (fixed_text + 312);
     if (op == 142) {
-        helper = (fixed_text + 312);
+        offset = 312;
     } else {
         if (op == 143) {
-            helper = (fixed_text + 322);
+            offset = 322;
         } else {
-            if (unsigned_compare != 0) {
-                if (op == '<') {
-                    helper = (fixed_text + 332);
-                } else {
-                    if (op == 144) {
-                        helper = (fixed_text + 343);
-                    } else {
-                        if (op == '>') {
-                            helper = (fixed_text + 354);
-                        } else {
-                            helper = (fixed_text + 365);
-                        }
-                    }
-                }
-            } else {
-                if (op == '<') {
-                    helper = (fixed_text + 376);
-                } else {
-                    if (op == 144) {
-                        helper = (fixed_text + 387);
-                    } else {
-                        if (op == '>') {
-                            helper = (fixed_text + 398);
-                        } else {
-                            helper = (fixed_text + 409);
-                        }
-                    }
-                }
+            offset = 332;
+            if (unsigned_compare == 0) {
+                offset = 376;
+            }
+            if (op == 144) {
+                offset = offset + 11;
+            }
+            if (op == '>') {
+                offset = offset + 22;
+            }
+            if (op == 145) {
+                offset = offset + 33;
             }
         }
     }
-    return emit_text_operand((fixed_text + 535), helper);
+    return emit_text_operand((fixed_text + 535), fixed_text + offset);
 }
 
 char reduce_unary()
@@ -1718,6 +1712,10 @@ char reduce_unary()
     type = value_type[value_top - 1];
     if (is_numeric_type(type) == 0) {
         compiler_error = 5;
+        return 0;
+    }
+    /* The negation template pops and re-pushes its result: stack-resident. */
+    if (flush_ax() == 0) {
         return 0;
     }
     if (write_text((fixed_text + 976)) == 0) {
@@ -1778,6 +1776,9 @@ char reduce_binary(char op)
             result = 2;
         }
     }
+    if (flush_ax() == 0) {
+        return 0;
+    }
     if (emit_binary_prelude() == 0) {
         return 0;
     }
@@ -1813,7 +1814,7 @@ char reduce_binary(char op)
             }
         }
     }
-    if (emit_push_ax() == 0) {
+    if (hold_ax() == 0) {
         return 0;
     }
     value_top = value_top - 1;
@@ -1881,6 +1882,9 @@ char emit_call_finish(char marker_index)
         }
         i = i + 1;
     }
+    if (flush_ax() == 0) {
+        return 0;
+    }
     i = argc;
     while (i > 0) {
         i = i - 1;
@@ -1898,7 +1902,7 @@ char emit_call_finish(char marker_index)
             return 0;
         }
     }
-    if (emit_push_ax() == 0) {
+    if (hold_ax() == 0) {
         return 0;
     }
     return push_value_type(global_type[function_id]);
@@ -1944,6 +1948,8 @@ char emit_index_address(char area, char symbol, char kind, char element_type)
     return write_text((fixed_text + 1764));
 }
 
+/* The fixed-text indexed-load templates finish by pushing A/X, unlike
+ * literal/symbol loads, which leave the newest value pending in A/X. */
 char emit_index_load(char area, char symbol, char kind, char element_type)
 {
     if (emit_index_address(area, symbol, kind, element_type) == 0) {
@@ -2072,6 +2078,12 @@ char expression_value_step()
         }
         return scan_token();
     }
+    /* A new value may overwrite A/X; the earlier semantic value is live. */
+    if (token_kind == 131 | token_kind == 132 | token_kind == 133 | token_kind == 130) {
+        if (flush_ax() == 0) {
+            return 0;
+        }
+    }
     if (token_kind == 131 | token_kind == 132) {
         type = token_type;
         if (emit_literal_value(token_value) == 0) {
@@ -2199,6 +2211,9 @@ char expression_close_index()
         type = 1;
     }
     if (kind == 5) {
+        if (flush_ax() == 0) {
+            return 0;
+        }
         if (write_text((fixed_text + 1782)) == 0) {
             return 0;
         }
@@ -2329,6 +2344,7 @@ char compile_expression()
 {
     op_top = 0;
     value_top = 0;
+    ax_pending = 0;
     return expression_loop();
 }
 
@@ -2344,6 +2360,10 @@ char compile_call_stmt(char function_id)
     }
     if (expression_loop() == 0) {
         return 0;
+    }
+    if (ax_pending != 0) {
+        ax_pending = 0;
+        return 1;
     }
     if (emit_zero((fixed_text + 455)) == 0) {
         return 0;
@@ -2396,6 +2416,9 @@ char emit_scalar_store(char area, char symbol, char type)
 
 char emit_index_store(char element_type)
 {
+    if (flush_ax() == 0) {
+        return 0;
+    }
     if (element_type == 1) {
         return write_text((fixed_text + 1372));
     }

@@ -97,6 +97,43 @@ case_source n1-return8 TESTS/NANOC0-STMT/RETURN8.C accept run 90 0
 case_source n1-pointer-index TESTS/NANOC1/POINTER-INDEX.C accept run 90 0
 case_source n1-statements TESTS/NANOC0-STMT/STATEMENTS.C accept run 52 18
 
+# #102: the last semantic value must be consumed from A/X, not sent to
+# the hardware stack and immediately retrieved. Inspect the *real* emitter
+# output after executing it; do not test a private copy of emitter logic.
+case_source n1-ax-return TESTS/NANOC1/AX-RETURN.C accept run 90 0
+if grep -Eq '^[[:space:]]*(pha|pla)[[:space:]]*$' "$OUT_DIR/n1-ax-return.asm"; then
+    echo "FAIL #102: a literal return was needlessly materialised on the stack" >&2
+    exit 1
+fi
+echo "PASS #102: literal-to-return uses A/X without hardware-stack round-trip"
+
+# Check *composed* producer/consumer paths in the real native-emitted source.
+# The add result is consumed by a local store, and the equality result by a
+# conditional branch. Neither should visit the hardware stack at that boundary.
+case_source n1-ax-consumers TESTS/NANOC1/AX-CONSUMERS.C accept run 90 0
+if ! awk '
+    $1 == "adc" && $2 == "NC_TMP" { add_seen = 1; in_add = 1; next }
+    in_add && ($1 == "pha" || $1 == "pla") { bad = 1; exit }
+    in_add && $1 == "sta" && index($2, "__v") == 1 {
+        store_seen = 1; in_add = 0
+    }
+    $1 == "jsr" && $2 == "__nc_eq16" { compare_seen = 1; in_cmp = 1; next }
+    in_cmp && ($1 == "pha" || $1 == "pla") { bad = 1; exit }
+    in_cmp && ($1 == "beq" || $1 == "bne") {
+        branch_seen = 1; in_cmp = 0
+    }
+    END {
+        if (bad || !add_seen || !store_seen || !compare_seen || !branch_seen)
+            exit 1
+    }
+' "$OUT_DIR/n1-ax-consumers.asm"; then
+    echo "FAIL #102: binary/store or compare/branch crossed the hardware stack" >&2
+    exit 1
+fi
+echo "PASS #102: binary-to-store and comparison-to-branch keep A/X"
+
+case_source n1-ax-nested TESTS/NANOC1/AX-NESTED.C accept run 90 0
+
 rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
 case_source n1-runtime TESTS/NANOC0-RUNTIME/RUNTIME.C accept run 0 0
 if [ -f "$OUT_DIR/DTEST" ]; then dtest="$OUT_DIR/DTEST"; else dtest="$OUT_DIR/dtest"; fi
