@@ -315,11 +315,23 @@ char compiler_error;
  * semantic region can replace that fallback with a 6502 loop trajectory.
  * On overflow it streams the original output unchanged.
  */
-char ro, rp, rv, rf, rc;
+char ro;
+char rp;
+char rv;
+char rf;
+char rc;
 unsigned rb;
-char rk[32], rl[32], rt[1024], ra[1024];
+char rk[32];
+char rl[32];
+char rt[1024];
+char ra[1024];
 unsigned rn[32];
-char rid, rbd, rs, rd, ria, rba;
+char rid;
+char rbd;
+char rs;
+char rd;
+char ria;
+char rba;
 
 /* fixed symbol model: flat names keep Phase 1 data structures obvious */
 char global_name[5632];
