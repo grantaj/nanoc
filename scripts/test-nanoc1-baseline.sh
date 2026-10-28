@@ -165,7 +165,16 @@ if ! grep -Eq '^[[:space:]]*cpy[[:space:]]+__g[[:xdigit:]][[:xdigit:]]' "$OUT_DI
     echo 'FAIL #102: loop did not select Y-byte bound comparison' >&2
     exit 1
 fi
-if ! grep -Eq '^[[:space:]]*iny[[:space:]]*
+if ! grep -Eq '^[[:space:]]*iny' "$OUT_DIR/n1-loop-copy.asm"; then
+    echo 'FAIL #102: loop did not carry the cursor in Y' >&2
+    exit 1
+fi
+if ! grep -Eq '^[[:space:]]*sty[[:space:]]+__g[[:xdigit:]][[:xdigit:]]' "$OUT_DIR/n1-loop-copy.asm"; then
+    echo 'FAIL #102: loop did not store the final induction variable' >&2
+    exit 1
+fi
+echo 'PASS #102: selected loop algorithm carries Y over the back edge'
+
 rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
 case_source n1-runtime TESTS/NANOC0-RUNTIME/RUNTIME.C accept run 0 0
 if [ -f "$OUT_DIR/DTEST" ]; then dtest="$OUT_DIR/DTEST"; else dtest="$OUT_DIR/dtest"; fi
