@@ -50,16 +50,16 @@ cmp "$LARGE_DIR/original-body" "$LARGE_DIR/large-body"
 bss_hex=$(sed -n 's/^__nc_bss_end = NC_BSS+[$]\\([[:xdigit:]]*\\)$/\\1/p' "$SEED" | tail -n 1)
 [ -n "$bss_hex" ] || { echo "FAIL #108: missing compiler BSS end" >&2; exit 1; }
 bss=$((0x$bss_hex))
-[ "$bss" -le 12288 ] || { echo "FAIL #108: compiler BSS extends past $3fff" >&2; exit 1; }
+[ "$bss" -le 12288 ] || { echo 'FAIL #108: compiler BSS extends past $3fff' >&2; exit 1; }
 
 "$VASM" -I"$ROOT/ass" -Fbin -cbm-prg -o "$PRG" "$SEED"
 set -- $(od -An -tu1 -N2 "$PRG")
 [ "$1" -eq 0 ] && [ "$2" -eq 64 ] || {
-    echo "FAIL #108: seed PRG does not load at $4000" >&2; exit 1;
+    echo 'FAIL #108: seed PRG does not load at $4000' >&2; exit 1;
 }
 seed_bytes=$(($(wc -c < "$PRG") - 2))
 [ "$seed_bytes" -le 36864 ] || {
-    echo "FAIL #108: compiled seed extends past $cfff ($seed_bytes bytes)" >&2; exit 1;
+    echo "FAIL #108: compiled seed is $seed_bytes bytes and extends past cfff" >&2; exit 1;
 }
 echo "PASS #108: native-produced seed $seed_bytes bytes, BSS $bss bytes, non-overlapping map"
 
