@@ -101,6 +101,33 @@ VICE_PRELOAD_PRG="$LARGE_DIR/large-index.prg" VICE_TIMEOUT=90 \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_large_execution.prg" large-seed-execute
 echo "PASS #108: real generated program executes on the 6510"
 
+# #102: the entire simple copy loop is selected as one Y-carried machine
+# trajectory. The nonmatching loop must fall back byte-for-byte to the old
+# emitter despite the same bounded source scan.
+case_compile large-copy TESTS/NANOC1/LOOP-BYTE-COPY.C 90
+"$VASM" -I"$ROOT/ass" -Fbin -cbm-prg \
+    -o "$LARGE_DIR/large-copy.prg" "$LARGE_DIR/large-copy.asm"
+if ! grep -Eq '^[[:space:]]*cpy[[:space:]]+__g' "$LARGE_DIR/large-copy.asm"; then
+    echo "FAIL #102: no loop-carried CPY induction bound" >&2; exit 1
+fi
+if ! grep -Eq '^[[:space:]]*sty[[:space:]]+__g' "$LARGE_DIR/large-copy.asm"; then
+    echo "FAIL #102: no induction-variable writeback at loop exit" >&2; exit 1
+fi
+VICE_PRELOAD_PRG="$LARGE_DIR/large-copy.prg" VICE_TIMEOUT=90 \
+    VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
+    sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_large_execution.prg" large-copy-execute
+
+case_compile large-fallback TESTS/NANOC1/LOOP-FALLBACK.C 90
+"$VASM" -I"$ROOT/ass" -Fbin -cbm-prg \
+    -o "$LARGE_DIR/large-fallback.prg" "$LARGE_DIR/large-fallback.asm"
+if grep -Eq '^[[:space:]]*cpy[[:space:]]+__g' "$LARGE_DIR/large-fallback.asm"; then
+    echo "FAIL #102: unmatched loop used the specialised induction path" >&2; exit 1
+fi
+VICE_PRELOAD_PRG="$LARGE_DIR/large-fallback.prg" VICE_TIMEOUT=90 \
+    VICE_FS_DIR="$ROOT" VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
+    sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_large_execution.prg" large-fallback-execute
+echo "PASS #102: selected loop and ordinary fallback execute correctly on 6510"
+
 # The first generation now compiles its own *exact* source. The second
 # generation's size is an independent measurement, not the size of the seed.
 case_compile large-self NANOC1/NANOC1.C 360
