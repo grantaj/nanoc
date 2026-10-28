@@ -136,3 +136,74 @@ a claim made for this initial index-algorithm selection.
 Both the 24,576-byte native compiler bootstrap limit and full Phase 1 semantic
 execution remain hard gates. The exact compiled `ass.c` loaded size is reported
 as a measurement, independently of executable fit.
+
+
+## #102 larger compiler: bounded whole-loop semantic window
+
+The old direct emitter commits to a complete 16-bit array-address calculation
+while parsing each individual `a[i]`. This is the wrong level of decision for a
+copy loop. The first **region selector** deliberately does not begin with a
+general optimizer. It records the next **64 scanner tokens**, including types,
+literal values and spelling bytes, in one 1,488-byte static array while
+previewing a `while` body.
+
+This is source-semantic context, **not a buffer of already-selected assembly**.
+No output is produced until the entire region has been seen or the bounded
+window fills. The parser can replay *all* recorded tokens to its existing
+expression and statement machinery, then resume the original C64 source
+stream at exactly the first unrecorded token. No seek, AST, CFG or host-language
+compiler is required. Nested, unmatched and over-budget regions retain the
+original correct code path.
+
+The first selected operation is a verified `char`-index copy-loop region:
+
+```c
+while (i < n) {
+    dst[i] = src[i];
+    i = i + 1;
+}
+```
+
+The selection checks the **complete syntax**, symbol identities and machine
+semantics: `i` and `n` must resolve to char scalars, `src` and `dst` to
+non-pointer global byte arrays. There are no calls, pointer aliases, early
+exits or other uses of `i` in this matched body. A local or global `i` is
+allowed. Since `n` is a byte value and the copy increments `i` one step
+while `i<n`, the cursor never wraps through 255 on a terminating iteration.
+
+The resulting 6502 strategy is chosen **before any code is emitted**:
+
+```asm
+    ldy i
+loop:
+    cpy n
+    bcs done
+    lda src,y
+    sta dst,y
+    iny
+    jmp loop
+done:
+    sty i
+```
+
+The loop-bound check, memory addressing and induction step now **share Y
+across the back edge**, instead of treating each C expression as independent.
+The final store to `i` happens at the only loop exit; there are no intervening
+observable uses of `i` except the Y-held index. Absolute,Y addresses cross
+pages correctly. The existing parser remains the semantic fallback for all
+other cases.
+
+This is intentionally the **first bounded whole-loop algorithm**, not a
+general solution for arbitrary loops. The next extension should express the
+captured condition, array memory operations, induction step and
+call/alias barriers as a handful of typed 6502-specific operations, rather
+than adding one handwritten pattern per C spelling. Cases involving pointer
+cursors and byte/word carry should then select among a few whole-region
+machine trajectories, with joins explicitly reconciled.
+
+The first-generation compiler from `nanoc0` may exceed its old 24-KiB
+staging window. Development validation therefore uses #108's separate
+`$0800` image / `$a000` BSS process and executes the **same compiled C
+compiler source** natively. The normal strict bootstrap remains a final
+convergence check, not a veto on this experiment. The exact `ass.c` size,
+source-level semantic tests and selected loop execution all remain measured.
