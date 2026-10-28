@@ -1390,6 +1390,182 @@ char loop_copy()
     return compiler_error == 0;
 }
 
+
+/*
+ * A byte-compare loop has two read-only pointer operands and one mutable
+ * cursor. This region is a tiny 6502 machine operation sequence, not a
+ * sequence of independent pointer-index expressions:
+ *
+ * while (i < n) {
+ *     if (a[i] != b[i]) { return 0; }
+ *     i = i + 1;
+ * }
+ *
+ * Keep both pointers in the two ZP words and use Y for every byte access.
+ * Unlike the copy loop, update i in memory each iteration: the pointers may
+ * legally refer to i, so later reads must observe its new value. There are
+ * no calls or pointer writes which could invalidate the cached addresses.
+ */
+char loop_pointer_base(char area, char symbol, char *scratch)
+{
+    emit_symbol_operand("lda", area, symbol, 0);
+    emit_scratch("sta", scratch, 0);
+    emit_symbol_operand("lda", area, symbol, 1);
+    emit_scratch("sta", scratch, 1);
+    return compiler_error == 0;
+}
+
+char loop_indirect(char *op, char *scratch)
+{
+    emit_instruction(op);
+    write_text(" (");
+    write_text(scratch);
+    write_text("),y");
+    write_newline();
+    return compiler_error == 0;
+}
+
+char loop_compare_bytes()
+{
+    char index_id;
+    char index_area;
+    char bound_id;
+    char bound_area;
+    char left_id;
+    char left_area;
+    char right_id;
+    char right_area;
+    unsigned loop_label;
+    unsigned done_label;
+    unsigned equal_label;
+
+    if (loop_data[3] == 0 | loop_data[0] != 30) {
+        return 0;
+    }
+    if (loop_kind(0) != '(' | loop_kind(2) != '<' |
+        loop_kind(4) != ')' | loop_kind(5) != '{') {
+        return 0;
+    }
+    if (loop_kind(6) != 137 | loop_kind(7) != '(' |
+        loop_kind(9) != '[' | loop_kind(11) != ']' |
+        loop_kind(12) != 143 | loop_kind(14) != '[' |
+        loop_kind(16) != ']' | loop_kind(17) != ')') {
+        return 0;
+    }
+    if (loop_kind(18) != '{' | loop_kind(19) != 141 |
+        loop_kind(21) != ';' | loop_kind(22) != '}') {
+        return 0;
+    }
+    if (loop_kind(24) != '=' | loop_kind(26) != '+' |
+        loop_kind(28) != ';' | loop_kind(29) != '}') {
+        return 0;
+    }
+    if (loop_kind(20) != 131 | loop_kind(27) != 131) {
+        return 0;
+    }
+    loop_token(20);
+    if (token_value != 0) {
+        return 0;
+    }
+    loop_token(27);
+    if (token_value != 1) {
+        return 0;
+    }
+    if (loop_kind(1) != 130 | loop_kind(3) != 130 |
+        loop_kind(8) != 130 | loop_kind(10) != 130 |
+        loop_kind(13) != 130 | loop_kind(15) != 130 |
+        loop_kind(23) != 130 | loop_kind(25) != 130) {
+        return 0;
+    }
+    if (loop_same(1, 10) == 0 | loop_same(1, 15) == 0 |
+        loop_same(1, 23) == 0 | loop_same(1, 25) == 0) {
+        return 0;
+    }
+
+    index_id = loop_lookup(1);
+    if (index_id == 255) {
+        return 0;
+    }
+    index_area = saved_area;
+    if (index_area == 2) {
+        if (local_type[index_id] != 1) {
+            return 0;
+        }
+    } else {
+        if (global_kind[index_id] != 1 | global_type[index_id] != 1) {
+            return 0;
+        }
+    }
+    bound_id = loop_lookup(3);
+    if (bound_id == 255) {
+        return 0;
+    }
+    bound_area = saved_area;
+    if (bound_area == 2) {
+        if (local_type[bound_id] != 1) {
+            return 0;
+        }
+    } else {
+        if (global_kind[bound_id] != 1 | global_type[bound_id] != 1) {
+            return 0;
+        }
+    }
+    left_id = loop_lookup(8);
+    if (left_id == 255) {
+        return 0;
+    }
+    left_area = saved_area;
+    if (left_area == 2) {
+        if (local_type[left_id] != 4) {
+            return 0;
+        }
+    } else {
+        if (global_kind[left_id] != 1 | global_type[left_id] != 4) {
+            return 0;
+        }
+    }
+    right_id = loop_lookup(13);
+    if (right_id == 255) {
+        return 0;
+    }
+    right_area = saved_area;
+    if (right_area == 2) {
+        if (local_type[right_id] != 4) {
+            return 0;
+        }
+    } else {
+        if (global_kind[right_id] != 1 | global_type[right_id] != 4) {
+            return 0;
+        }
+    }
+
+    loop_label = label_counter;
+    label_counter = label_counter + 1;
+    done_label = label_counter;
+    label_counter = label_counter + 1;
+    equal_label = label_counter;
+    label_counter = label_counter + 1;
+
+    loop_pointer_base(left_area, left_id, "NC_TMP");
+    loop_pointer_base(right_area, right_id, "NC_PTR");
+    emit_label(loop_label);
+    emit_symbol_operand("ldy", index_area, index_id, 0);
+    emit_symbol_operand("cpy", bound_area, bound_id, 0);
+    emit_jump_label("bcs", done_label);
+    loop_indirect("lda", "NC_TMP");
+    loop_indirect("cmp", "NC_PTR");
+    emit_jump_label("beq", equal_label);
+    emit_immediate("lda", 0);
+    emit_immediate("ldx", 0);
+    emit_zero("rts");
+    emit_label(equal_label);
+    emit_symbol_operand("inc", index_area, index_id, 0);
+    emit_jump_label("jmp", loop_label);
+    emit_label(done_label);
+    ax_pending = 0;
+    return compiler_error == 0;
+}
+
 char copy_pending_global(char symbol)
 {
     char i;
@@ -2850,6 +3026,11 @@ char statement_while()
         }
         if (loop_copy() != 0) {
             /* The whole cursor-copy loop was selected before emission. */
+            loop_data[2] = 0;
+            return scan_token();
+        }
+        if (loop_compare_bytes() != 0) {
+            /* The pointer scan's early exit and back edge are now complete. */
             loop_data[2] = 0;
             return scan_token();
         }
