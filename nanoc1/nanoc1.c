@@ -1959,34 +1959,21 @@ char emit_index_address(char area, char symbol, char kind, char element_type)
 char emit_index_load(char area, char symbol, char kind, char element_type, char index_type)
 {
     if (kind == 2 & element_type == 1 & index_type == 1) {
-        if (emit_pop_ax() == 0) {
-            return 0;
-        }
-        if (emit_zero((fixed_text + 467)) == 0) {
-            return 0;
-        }
-        if (emit_instruction((fixed_text + 431)) == 0) {
-            return 0;
-        }
-        if (write_char(' ') == 0) {
-            return 0;
-        }
-        if (emit_global_name(symbol) == 0) {
-            return 0;
-        }
-        if (write_char(',') == 0) {
-            return 0;
-        }
-        if (write_char('y') == 0) {
-            return 0;
-        }
-        if (write_newline() == 0) {
-            return 0;
-        }
-        if (emit_immediate((fixed_text + 435), 0) == 0) {
-            return 0;
-        }
-        return hold_ax();
+        /*
+         * Output errors are sticky in compiler_error. Each output helper
+         * becomes a no-op after failure, so one check at the end suffices.
+         */
+        emit_pop_ax();
+        emit_zero((fixed_text + 467));
+        emit_instruction((fixed_text + 431));
+        write_char(' ');
+        emit_global_name(symbol);
+        write_char(',');
+        write_char('y');
+        write_newline();
+        emit_immediate((fixed_text + 435), 0);
+        hold_ax();
+        return compiler_error == 0;
     }
     if (emit_index_address(area, symbol, kind, element_type) == 0) {
         return 0;
