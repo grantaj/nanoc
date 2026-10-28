@@ -321,13 +321,13 @@ char compiler_error;
 char loop_data[1488];
 
 /* fixed symbol model: flat names keep Phase 1 data structures obvious */
-char global_name[5632];
-char global_name_len[176];
-char global_kind[176];
-char global_type[176];
-unsigned global_array_len[176];
-char global_param_start[176];
-char global_param_count[176];
+char global_name[6656];
+char global_name_len[208];
+char global_kind[208];
+char global_type[208];
+unsigned global_array_len[208];
+char global_param_start[208];
+char global_param_count[208];
 char global_count;
 
 char local_name[1024];
@@ -336,7 +336,7 @@ char local_type[32];
 char local_count;
 char current_func;
 
-char param_type[128];
+char param_type[160];
 char param_count;
 
 char pending_name[32];
@@ -1426,7 +1426,7 @@ int add_global_saved(char kind, char type)
 {
     int id;
 
-    if (global_count >= 176) {
+    if (global_count >= 208) {
         compiler_error = 6;
         return -1;
     }
@@ -3492,7 +3492,7 @@ char parse_function(char function_id)
             if (slot < 0) {
                 return 0;
             }
-            if (param_count >= 128) {
+            if (param_count >= 160) {
                 compiler_error = 6;
                 return 0;
             }
