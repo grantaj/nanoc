@@ -5,7 +5,9 @@ set -eu
 
 VASM=${VASM:-vasm6502_oldstyle}
 VICE=${VICE:-x64sc}
-BUILD_DIR=${BUILD_DIR:-build-development}
+# The Phase 1 compiler's device-8 job path is deliberately BUILD/N1JOB.
+# This development profile runs in an independent CI job, so reuse build/.
+BUILD_DIR=build
 ROOT=$(pwd)
 OUT_DIR="$ROOT/$BUILD_DIR/nanoc0-integration"
 mkdir -p "$OUT_DIR"
