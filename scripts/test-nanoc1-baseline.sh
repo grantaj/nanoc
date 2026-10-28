@@ -181,6 +181,12 @@ case_source n1-operator-depth TESTS/NANOC1/OPERATOR-DEPTH.C reject none
 case_source n1-ass BOOTSTRAP/ASS.C accept compile
 compiler_asm="$OUT_DIR/NANOC1.ASM"
 if [ ! -f "$compiler_asm" ]; then compiler_asm="$OUT_DIR/nanoc1.asm"; fi
+if [ ! -f "$compiler_asm" ]; then compiler_asm="$OUT_DIR/NANOC1DEV.ASM"; fi
+if [ ! -f "$compiler_asm" ]; then compiler_asm="$OUT_DIR/nanoc1dev.asm"; fi
+if [ ! -f "$compiler_asm" ]; then
+    echo "FAIL nanoc1 baseline: missing exact seed compiler assembly" >&2
+    exit 1
+fi
 compiler_source=$(wc -c < "$compiler_asm")
 compiler_loaded=$(($(wc -c < "$COMPILER") - 2))
 ass_source=$(wc -c < "$OUT_DIR/n1-ass.asm")
