@@ -81,7 +81,10 @@ NANOC1_SEED_ASM="$source" VICE="$VICE" VASM="$VASM" BUILD_DIR="$BUILD_DIR" \
 # probe; never execute an image whose code/BSS regions overlap.
 printf '%s' 'NANOC1/NANOC1.C' > "$ROOT/$BUILD_DIR/n1job"
 rm -f "$OUT_DIR/N1OUT.ASM" "$OUT_DIR/n1out.asm"
-VICE_PRELOAD_PRG="$OUT_DIR/nanoc1.prg" VICE_TIMEOUT=360 \
+# The C compiler is now larger and native self-compilation can exceed six
+# minutes. This is a correctness and size probe, not a runtime benchmark.
+# Keep the budget independent from the per-program semantic corpus.
+VICE_PRELOAD_PRG="$OUT_DIR/nanoc1.prg" VICE_TIMEOUT=720 \
     VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
     VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_compile.prg" n1-self-compile
