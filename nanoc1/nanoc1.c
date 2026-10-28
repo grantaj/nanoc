@@ -3260,64 +3260,36 @@ char parse_unit()
 
 char emit_finish_program()
 {
-    if (write_text((fixed_text + 212)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 567)) == 0) {
-        return 0;
-    }
-    if (write_hex_word(bss_offset) == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
-    /*
-     * Runtime code may refer to __nc_bss_bytes, so emit it only after that
-     * constant is known. User code can freely make forward JSR references to
-     * the runtime helpers; ass already resolves those ordinary label fixups.
-     */
-    if (emit_include((fixed_text + 153)) == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 227)) == 0) {
-        return 0;
-    }
-    if (write_char(':') == 0) {
-        return 0;
-    }
-    if (write_newline() == 0) {
-        return 0;
-    }
-    if (emit_text_operand((fixed_text + 535), (fixed_text + 238)) == 0) {
-        return 0;
-    }
     if (main_symbol >= 0) {
         if (global_param_count[main_symbol] != 0) {
             compiler_error = 5;
             return 0;
         }
-        if (emit_instruction((fixed_text + 535)) == 0) {
-            return 0;
-        }
-        if (write_char(' ') == 0) {
-            return 0;
-        }
-        if (emit_function_name(main_symbol) == 0) {
-            return 0;
-        }
-        if (write_newline() == 0) {
-            return 0;
-        }
-    } else {
-        if (emit_immediate((fixed_text + 431), 0) == 0) {
-            return 0;
-        }
-        if (emit_immediate((fixed_text + 435), 0) == 0) {
-            return 0;
-        }
     }
-    return emit_zero((fixed_text + 539));
+    write_text((fixed_text + 212));
+    write_text((fixed_text + 567));
+    write_hex_word(bss_offset);
+    write_newline();
+    /*
+     * The BSS limit precedes the runtime include and entry point.
+     * Ordinary forward JSR references are resolved by the assembler.
+     */
+    emit_include((fixed_text + 153));
+    write_text((fixed_text + 227));
+    write_char(':');
+    write_newline();
+    emit_text_operand((fixed_text + 535), (fixed_text + 238));
+    if (main_symbol >= 0) {
+        emit_instruction((fixed_text + 535));
+        write_char(' ');
+        emit_function_name(main_symbol);
+        write_newline();
+    } else {
+        emit_immediate((fixed_text + 431), 0);
+        emit_immediate((fixed_text + 435), 0);
+    }
+    emit_zero((fixed_text + 539));
+    return compiler_error == 0;
 }
 
 char compile_file(char *source_name, char source_length, char *output_name, char output_length)
