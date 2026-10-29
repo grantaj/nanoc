@@ -92,6 +92,7 @@ from tape_frontend import TapeBuilder
 from direct_address import DirectAddressBackend
 from register_first import RegisterFirstBackend
 from compare_native import NativeCompareBackend
+from inplace_update import InplaceUpdateBackend
 from pointer_home import PointerHomeBackend
 import os
 from scratch_allocator import allocate
@@ -101,7 +102,7 @@ assembly=[];size_records=[];global_tempmax=0
 for f in funcs:
  name=f.decl.name
  t=TapeBuilder((S/'whole_corpus'/(name+'.c')).read_text()).build()
- b=(PointerHomeBackend if os.environ.get("POINTER_HOME") else NativeCompareBackend if os.environ.get("NATIVE_COMPARE") else RegisterFirstBackend if os.environ.get("REG_FIRST") else DirectAddressBackend)(t,arrays)
+ b=(InplaceUpdateBackend if os.environ.get("NATIVE_INPLACE") else PointerHomeBackend if os.environ.get("POINTER_HOME") else NativeCompareBackend if os.environ.get("NATIVE_COMPARE") else RegisterFirstBackend if os.environ.get("REG_FIRST") else DirectAddressBackend)(t,arrays)
  raw=b.run();packed,info=allocate(t,b,raw)
  global_tempmax=max(global_tempmax,info['packed_bytes'])
  if info['packed_bytes']>8:raise AssertionError('ZP scratch overflow '+name)
