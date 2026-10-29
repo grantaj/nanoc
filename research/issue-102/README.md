@@ -1,25 +1,30 @@
-# Issue #102 research recovery checkpoint (2026-10-29)
+# Issue #102: recovered experimental 6502 backend
 
-This directory preserves the **verbatim final experimental report** from the crashed agent's ChatGPT Library. The report describes the 8,945-byte physically linked `bootstrap/ass.c` image, against the 6,905-byte handwritten native assembler.
+**Status:** Preserved, independently reproduced research prototype; **not** integrated into production `nanoc1.c`. This branch is an archival and review checkpoint, not a production implementation PR.
 
-**IMPORTANT: source code has not been recovered into this branch.** This is a report-only checkpoint. Neither this branch nor any open PR contains the complete experimental typed-tape/backend, 6502 machine selector, native compare and outlining source. The report's test claims were made by the previous research agent and have **not** been independently rerun from this branch.
+## Contents
 
-## Original research artifacts
+- [Original, byte-exact experimental ZIP](nanoc_remaining_gap_codegen_experiment.zip): complete previously generated 2.45 MB workspace, including all code, generated assembly, fixtures and binary images, as uploaded after the previous agent crashed. ZIP SHA-256: `3466aa5cf0335340c04e0a87260a572ed7961602475c5aae86a338959597ea30`; Git blob SHA-1: `b981eee81d334cf7fdd0508948dd1d5ba037c4db`.
+- [Inspectable experimental sources](experiment/): 188 unpacked Python/C/shell/Markdown/JSON/CSV/patch/text files. Intermediate machine-code listings, binary oracles and non-source outputs remain in the canonical ZIP.
+- [Original experimental report](REMAINING_GAP_REPORT.md).
+- [Independent recovery validation](VALIDATION.md), including exact reproduction, expected checks and caveats.
 
-The original archives are still visible under the user's ChatGPT Library `/nanoc/`, especially:
+The original ZIP is intentionally **unmodified**. The extracted `experiment/reproduce_native_compare.sh` adds an explicit `PYTHONHASHSEED=0` pin, because Python iteration ordering changed 147 encoded bytes between otherwise passing builds. With that seed, the regenerated 8,947-byte PRG matches the archived `CANDIDATE.PRG` byte-for-byte.
 
-- `nanoc_remaining_gap_codegen_experiment.zip` (634,855 bytes; created 2026-10-29 08:22 UTC), containing the final backend and `reproduce_native_compare.sh`.
-- `CANDIDATE.PRG` (8,947 bytes including 2-byte load header).
-- `REMAINING_GAP_REPORT.md` (copied here).
-- `nanoc_outlined_machine_experiment.zip` and `nanoc_machine_value_home_planner.zip` (earlier reproduction checkpoints).
+## Independent reproduction
 
-The ZIP was **not** in git as of this recovery attempt. An attempted Library raw-byte materialization returned `This Project file does not have an authorized raw-byte materialization path`; text retrieval of the report succeeded. Do not claim the source has been saved to GitHub.
+```sh
+unzip nanoc_remaining_gap_codegen_experiment.zip -d /tmp/nanoc102-recovery
+cd /tmp/nanoc102-recovery/nanoc_machine_value_home_planner
+PYTHONHASHSEED=0 sh reproduce_native_compare.sh
+```
 
-## Recovery gate
+Expected: `FINAL 8945 bytes 44 functions 45 segments 29 cases`. The test also reports `PASS 9120` differential comparison executions. See [VALIDATION.md](VALIDATION.md).
 
-1. Export or re-attach the exact final ZIP (do not recreate it from the report), inspect its manifest and checksums, and commit the complete research sources and fixtures on a separate experimental branch.
-2. Execute `sh reproduce_native_compare.sh` in a clean extraction and independently verify 44/44 assembler functions, 45/45 encoded segments, 29/29 linked test programs, 9,120/9,120 comparison cases and the 8,945-byte physically loaded image.
-3. Keep research-only Python tools distinct from production native `nanoc1.c`. The original archive's ZP `$30`–`$3f` mapping is hypothetical; no native VICE/KERNAL/IRQ safety is established.
-4. Continue #102 from its genuine code-generation objective: comparing the remaining 2,040 bytes with the handwritten 6,905-byte assembler. Do not conflate 16-KiB fit with compiler quality, and do not merge draft PR #112 as the replacement generator.
+The benchmark is the actual handwritten `ass` image **6,905 B**. The generated research program **8,945 B** is 1.295× that size, with **2,040 B still to explain**. The 16 KiB code region is only a runtime feasibility constraint, not the optimisation target.
 
-Authoritative issue: https://github.com/grantaj/nanoc/issues/102
+## Safety and development separation
+
+The research backend is **host Python**, testing 6502 output, not the Phase-1 C native compiler. Its 16-byte zero-page `$30-$3f` pool is hypothetical and is **not** proven safe across C64 KERNAL, IRQ and device-8 operations. Executions are in a research 6502 interpreter, **not VICE**. Whole-program instruction outlining introduces JSR/RTS depth and has its own preconditions. Do not substitute this binary for the production assembler or merge the research emitter into `nanoc1.c` without a native correctness and memory-safety plan.
+
+Keep draft [PR #112](https://github.com/grantaj/nanoc/pull/112) distinct; its limited loop selector is not this backend. The authoritative architecture/quality target is [issue #102](https://github.com/grantaj/nanoc/issues/102).

@@ -1,5 +1,7 @@
 #!/bin/sh
 set -eu
+# Pin set/dict traversal for byte-for-byte reproducible 6502 placement.
+export PYTHONHASHSEED=0
 cd "$(dirname "$0")"
 export PYTHONPATH="$PWD/full_corpus:$PWD"
 export REG_FIRST=1 NATIVE_COMPARE=1 ZP_BASE=0x30 ZP_BUDGET=16
