@@ -208,6 +208,14 @@ main:
 	ora #FAIL_COMPILE_NANOC1
 	jmp finish
 .nanoc1Ready:
+    ; The larger-seed development rung stops after the real nanoc0 has
+    ; generated exact nanoc1 assembly. The resident assembler cannot
+    ; assemble a >24 KiB image without overlapping its own workspace.
+    ; Host vasm assembles that file later; a separate 6510 run executes it.
+    ifdef NANOC_SEED_ONLY
+        lda #TEST_PASS
+        jmp finish
+    endif
 	;;; The low-resident assembler is still intact below $4000. Reuse the same
 	;;; $4000-$9fff staging/target window that built nanoc0; the first C compiler
 	;;; deliberately replaces the assembly compiler at the handoff.
