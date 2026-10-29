@@ -158,6 +158,97 @@ if ! grep -Eq '^[[:space:]]*lda[[:space:]]+[(]NC_PTR[)],y' "$OUT_DIR/n1-index-wi
 fi
 echo 'PASS #102: int/unsigned offsets 256/257 use full 16-bit address'
 
+# The same width distinction applies to pointer-valued bases: Y handles a
+# char index, while 256 must use the complete address calculation.
+case_source n1-pointer-index-y TESTS/NANOC1/POINTER-INDEX-Y.C accept run 90 0
+if ! grep -Eq '^[[:space:]]*lda[[:space:]]+[(]NC_PTR[)],y' "$OUT_DIR/n1-pointer-index-y.asm"; then
+    echo 'FAIL #102: char-indexed pointer load did not use indirect,Y' >&2
+    exit 1
+fi
+echo 'PASS #102: char-indexed pointer uses indirect,Y; wide index executes without wrap'
+
+
+# A bounded complete while region must select the Y-carried copy algorithm.
+# This same native fixture verifies that unmatched loops replay correctly.
+case_source n1-loop-copy TESTS/NANOC1/LOOP-COPY.C accept run 90 0
+if ! grep -Eq '^[[:space:]]*cpy[[:space:]]+__g[[:xdigit:]][[:xdigit:]]' "$OUT_DIR/n1-loop-copy.asm"; then
+    echo 'FAIL #102: loop did not select Y-byte bound comparison' >&2
+    exit 1
+fi
+if ! grep -Eq '^[[:space:]]*iny' "$OUT_DIR/n1-loop-copy.asm"; then
+    echo 'FAIL #102: loop did not carry the cursor in Y' >&2
+    exit 1
+fi
+if ! grep -Eq '^[[:space:]]*sty[[:space:]]+__g[[:xdigit:]][[:xdigit:]]' "$OUT_DIR/n1-loop-copy.asm"; then
+    echo 'FAIL #102: loop did not store the final induction variable' >&2
+    exit 1
+fi
+echo 'PASS #102: selected loop algorithm carries Y over the back edge'
+
+# The control has identical semantics but spells the induction add as 1+i.
+# It forces the ordinary compiler path and gives a concrete size comparison.
+case_source n1-loop-copy-fallback TESTS/NANOC1/LOOP-COPY-FALLBACK.C accept run 90 0
+selected=$(($(wc -c < "$OUT_DIR/n1-loop-copy.prg") - 2))
+fallback=$(($(wc -c < "$OUT_DIR/n1-loop-copy-fallback.prg") - 2))
+if [ "$selected" -ge "$fallback" ]; then
+    echo "FAIL #102: selected machine loop $selected bytes not smaller than fallback $fallback" >&2
+    exit 1
+fi
+echo "PASS #102: selected copy program $selected bytes vs legacy emitter $fallback bytes"
+
+# This header selector also applies to real pointer-using loops like ass.c.
+# Y is reloaded at the header, so arbitrary body operations may clobber Y.
+case_source n1-byte-bound TESTS/NANOC1/LOOP-BYTE-BOUND.C accept run 90 0
+case_source n1-byte-bound-fallback TESTS/NANOC1/LOOP-BYTE-BOUND-FALLBACK.C accept run 90 0
+if ! grep -Eq '^[[:space:]]*cpy[[:space:]]+__v' "$OUT_DIR/n1-byte-bound.asm"; then
+    echo 'FAIL #102: byte bound did not select native CPY header' >&2
+    exit 1
+fi
+bounded=$(($(wc -c < "$OUT_DIR/n1-byte-bound.prg") - 2))
+ordinary=$(($(wc -c < "$OUT_DIR/n1-byte-bound-fallback.prg") - 2))
+if [ "$bounded" -ge "$ordinary" ]; then
+    echo "FAIL #102: byte-bound machine header $bounded not smaller than legacy $ordinary" >&2
+    exit 1
+fi
+echo "PASS #102: byte-bound native program $bounded bytes vs ordinary $ordinary bytes"
+
+# The loop body is deliberately longer than a 6502 conditional-branch range.
+# Its byte-bound header must select a local BCC skip followed by a full JMP.
+case_source n1-loop-long-body TESTS/NANOC1/LOOP-LONG-BODY.C accept run 90 0
+if ! awk '
+    $1 == "cpy" && $2 ~ /^__g/ {
+        if (getline <= 0 || $1 != "bcc") exit 1
+        if (getline <= 0 || $1 != "jmp") exit 1
+        found = 1
+    }
+    END { if (!found) exit 1 }
+' "$OUT_DIR/n1-loop-long-body.asm"; then
+    echo "FAIL #102: wide loop body has an unsafe relative branch at its header" >&2
+    exit 1
+fi
+echo "PASS #102: byte-bound exit uses a local skip and full-address JMP"
+
+# Two pointer-indexed byte streams are one loop machine operation:
+# hoist both pointers into the zero-page words, then use indirect,Y compares.
+# Exercise the real 6510, including page crossing, empty scans and mismatches.
+case_source n1-loop-pointer-compare TESTS/NANOC1/LOOP-POINTER-COMPARE.C accept run 90 0
+if ! grep -Eq '^[[:space:]]*cmp[[:space:]]+[(]NC_PTR[)],y' "$OUT_DIR/n1-loop-pointer-compare.asm"; then
+    echo 'FAIL #102: pointer comparison did not select cached zero-page cursor' >&2
+    exit 1
+fi
+if ! grep -Eq '^[[:space:]]*lda[[:space:]]+[(]NC_TMP[)],y' "$OUT_DIR/n1-loop-pointer-compare.asm"; then
+    echo 'FAIL #102: left pointer was not loaded through cached zero-page cursor' >&2
+    exit 1
+fi
+case_source n1-loop-pointer-compare-fallback TESTS/NANOC1/LOOP-POINTER-COMPARE-FALLBACK.C accept run 90 0
+selected=$(($(wc -c < "$OUT_DIR/n1-loop-pointer-compare.prg") - 2))
+fallback=$(($(wc -c < "$OUT_DIR/n1-loop-pointer-compare-fallback.prg") - 2))
+if [ "$selected" -ge "$fallback" ]; then
+    echo "FAIL #102: cached pointer scan $selected not smaller than direct emitter $fallback" >&2
+    exit 1
+fi
+echo "PASS #102: cached pointer scan $selected bytes vs direct emitter $fallback bytes"
+
 rm -f "$OUT_DIR/DTEST" "$OUT_DIR/dtest" "$OUT_DIR/SMOKE.ASM" "$OUT_DIR/smoke.asm"
 case_source n1-runtime TESTS/NANOC0-RUNTIME/RUNTIME.C accept run 0 0
 if [ -f "$OUT_DIR/DTEST" ]; then dtest="$OUT_DIR/DTEST"; else dtest="$OUT_DIR/dtest"; fi
@@ -179,6 +270,12 @@ case_source n1-operator-depth TESTS/NANOC1/OPERATOR-DEPTH.C reject none
 
 # Whole-program stress: no alternate assembler source and no C rewrite.
 case_source n1-ass BOOTSTRAP/ASS.C accept compile
+if ! grep -Eq '^[[:space:]]*cmp[[:space:]]+[(]NC_PTR[)],y' "$OUT_DIR/n1-ass.asm"; then
+    echo 'FAIL #102: actual ass.c did not use the whole-loop pointer scan' >&2
+    exit 1
+fi
+echo 'PASS #102: ass.c selects cached-pointer scan in same_text'
+
 # The strict runner writes NANOC1.ASM; the development runner passes its
 # own NANOC1DEV.ASM explicitly. Never use an artifact from the other profile:
 # a shared build directory may contain a perfectly valid but stale seed.

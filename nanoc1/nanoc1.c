@@ -309,14 +309,27 @@ char hold_valid;
 unsigned source_line;
 char compiler_error;
 
+/*
+ * Bounded semantic lookahead for one while region, no AST:
+ *   0 count, 1 replay position, 2 replay active, 3 complete
+ *   4..5 text pool used; entries begin at 16, seven bytes each:
+ *   kind, type, length, value low/high, text offset low/high.
+ *   64 entries use 448 bytes; spelling pool begins at 464 (1024 bytes).
+ * A non-matching or oversized region replays the original tokens through
+ * the existing semantic compiler. Nothing is committed while previewing.
+ */
+char loop_data[1488];
+/* Emission mnemonics absent from fixed_text; no extra compiler literals. */
+char loop_ops[16] = {'c','p','y',0,'b','c','s',0,'c','m','p',0,'i','n','c',0};
+
 /* fixed symbol model: flat names keep Phase 1 data structures obvious */
-char global_name[5632];
-char global_name_len[176];
-char global_kind[176];
-char global_type[176];
-unsigned global_array_len[176];
-char global_param_start[176];
-char global_param_count[176];
+char global_name[6656];
+char global_name_len[208];
+char global_kind[208];
+char global_type[208];
+unsigned global_array_len[208];
+char global_param_start[208];
+char global_param_count[208];
 char global_count;
 
 char local_name[1024];
@@ -325,7 +338,7 @@ char local_type[32];
 char local_count;
 char current_func;
 
-char param_type[128];
+char param_type[160];
 char param_count;
 
 char pending_name[32];
@@ -966,7 +979,7 @@ char scan_operator_token()
     return 1;
 }
 
-char scan_token()
+char scan_real_token()
 {
     token_length = 0;
     token_value = 0;
@@ -991,6 +1004,144 @@ char scan_token()
         return scan_string_token();
     }
     return scan_operator_token();
+}
+
+
+/* The token window stores semantic tokens, not chosen 6502 instructions. */
+char loop_token(char position)
+{
+    unsigned slot;
+    unsigned start;
+    char i;
+
+    slot = 16 + position * 7;
+    token_kind = loop_data[slot];
+    token_type = loop_data[slot + 1];
+    token_length = loop_data[slot + 2];
+    token_value = loop_data[slot + 3] + (loop_data[slot + 4] << 8);
+    start = loop_data[slot + 5] + (loop_data[slot + 6] << 8);
+    i = 0;
+    while (i < token_length) {
+        token_text[i] = loop_data[464 + start + i];
+        i = i + 1;
+    }
+    token_text[token_length] = 0;
+    return 1;
+}
+
+char scan_token()
+{
+    char position;
+
+    if (loop_data[2] != 0) {
+        position = loop_data[1];
+        if (position < loop_data[0]) {
+            loop_data[1] = position + 1;
+            return loop_token(position);
+        }
+        loop_data[2] = 0;
+    }
+    return scan_real_token();
+}
+
+/*
+ * Preview the complete loop body, or as much as fits in the fixed window.
+ * If full, replay all recorded tokens, then continue reading from the
+ * original scanner position. There is never a need to rewind a C64 file.
+ */
+char loop_preview()
+{
+    char depth;
+    char opened;
+    char count;
+    char i;
+    unsigned used;
+    unsigned slot;
+
+    depth = 0;
+    opened = 0;
+    loop_data[0] = 0;
+    loop_data[1] = 0;
+    loop_data[2] = 0;
+    loop_data[3] = 0;
+    loop_data[4] = 0;
+    loop_data[5] = 0;
+    while (1) {
+        count = loop_data[0];
+        used = loop_data[4] + (loop_data[5] << 8);
+        /* Each native scanner token has at most 190 spelling bytes. */
+        if (count >= 64 | used + 192 > 1024) {
+            break;
+        }
+        if (scan_real_token() == 0) {
+            return 0;
+        }
+        slot = 16 + count * 7;
+        loop_data[slot] = token_kind;
+        loop_data[slot + 1] = token_type;
+        loop_data[slot + 2] = token_length;
+        loop_data[slot + 3] = token_value & 255;
+        loop_data[slot + 4] = (token_value >> 8) & 255;
+        loop_data[slot + 5] = used & 255;
+        loop_data[slot + 6] = (used >> 8) & 255;
+        i = 0;
+        while (i < token_length) {
+            loop_data[464 + used + i] = token_text[i];
+            i = i + 1;
+        }
+        used = used + token_length;
+        loop_data[4] = used & 255;
+        loop_data[5] = (used >> 8) & 255;
+        loop_data[0] = count + 1;
+        if (token_kind == '{') {
+            depth = depth + 1;
+            opened = 1;
+        }
+        if (token_kind == '}') {
+            if (depth > 0) {
+                depth = depth - 1;
+            }
+            if (opened != 0 & depth == 0) {
+                loop_data[3] = 1;
+                break;
+            }
+        }
+        if (token_kind == 128) {
+            break;
+        }
+    }
+    /* Restore the original while token, then replay the preview on demand. */
+    token_kind = 139;
+    token_type = 0;
+    token_length = 0;
+    token_value = 0;
+    loop_data[2] = 1;
+    return 1;
+}
+
+char loop_same(char left, char right)
+{
+    unsigned a;
+    unsigned b;
+    char n;
+    char i;
+
+    a = 16 + left * 7;
+    b = 16 + right * 7;
+    n = loop_data[a + 2];
+    if (n != loop_data[b + 2]) {
+        return 0;
+    }
+    a = loop_data[a + 5] + (loop_data[a + 6] << 8);
+    b = loop_data[b + 5] + (loop_data[b + 6] << 8);
+    i = 0;
+    while (i < n) {
+        if (loop_data[464 + a + i] != loop_data[464 + b + i]) {
+            return 0;
+        }
+        i = i + 1;
+    }
+    return 1;
 }
 
 char save_token_name()
@@ -1086,6 +1237,340 @@ char lookup_name()
     return 255;
 }
 
+/* Fixed-width semantic entry: the kind occupies the first of seven bytes. */
+char loop_kind(char position)
+{
+    return loop_data[16 + position * 7];
+}
+
+char loop_lookup(char position)
+{
+    loop_token(position);
+    return lookup_name();
+}
+
+/* Emit one absolute,Y array operation chosen from the semantic loop. */
+char loop_array_instruction(char *op, char symbol)
+{
+    emit_instruction(op);
+    write_char(' ');
+    emit_global_name(symbol);
+    write_char(',');
+    write_char('y');
+    write_newline();
+    return compiler_error == 0;
+}
+
+/*
+ * Whole-loop machine selector for the first provably safe cursor algorithm:
+ * while (i < n) { dst[i] = src[i]; i = i + 1; }
+ * All four symbols are checked; i,n are byte scalars, src,dst fixed byte
+ * arrays. No calls, aliases through pointers, or interior control edges.
+ * The selected machine trajectory retains Y across the *back edge* and
+ * writes i once on exit. Other loops use the unchanged general parser.
+ */
+char loop_copy()
+{
+    char i_id;
+    char i_area;
+    char n_id;
+    char n_area;
+    char src_id;
+    char dst_id;
+    unsigned start_label;
+    unsigned end_label;
+
+    if (loop_data[3] == 0 | loop_data[0] != 23) {
+        return 0;
+    }
+    if (loop_kind(0) != '(' | loop_kind(2) != '<') {
+        return 0;
+    }
+    if (loop_kind(4) != ')' | loop_kind(5) != '{') {
+        return 0;
+    }
+    if (loop_kind(7) != '[' | loop_kind(9) != ']') {
+        return 0;
+    }
+    if (loop_kind(10) != '=' | loop_kind(12) != '[') {
+        return 0;
+    }
+    if (loop_kind(14) != ']' | loop_kind(15) != ';') {
+        return 0;
+    }
+    if (loop_kind(17) != '=' | loop_kind(19) != '+') {
+        return 0;
+    }
+    if (loop_kind(21) != ';' | loop_kind(22) != '}') {
+        return 0;
+    }
+    if (loop_kind(20) != 131) {
+        return 0;
+    }
+    loop_token(20);
+    if (token_value != 1) {
+        return 0;
+    }
+    if (loop_kind(1) != 130 | loop_kind(3) != 130) {
+        return 0;
+    }
+    if (loop_kind(6) != 130 | loop_kind(8) != 130) {
+        return 0;
+    }
+    if (loop_kind(11) != 130 | loop_kind(13) != 130) {
+        return 0;
+    }
+    if (loop_kind(16) != 130 | loop_kind(18) != 130) {
+        return 0;
+    }
+    if (loop_same(1, 8) == 0 | loop_same(1, 13) == 0) {
+        return 0;
+    }
+    if (loop_same(1, 16) == 0 | loop_same(1, 18) == 0) {
+        return 0;
+    }
+
+    i_id = loop_lookup(1);
+    if (i_id == 255) {
+        return 0;
+    }
+    i_area = saved_area;
+    if (i_area == 2) {
+        if (local_type[i_id] != 1) {
+            return 0;
+        }
+    } else {
+        if (global_kind[i_id] != 1 | global_type[i_id] != 1) {
+            return 0;
+        }
+    }
+    n_id = loop_lookup(3);
+    if (n_id == 255) {
+        return 0;
+    }
+    n_area = saved_area;
+    if (n_area == 2) {
+        if (local_type[n_id] != 1) {
+            return 0;
+        }
+    } else {
+        if (global_kind[n_id] != 1 | global_type[n_id] != 1) {
+            return 0;
+        }
+    }
+    dst_id = loop_lookup(6);
+    if (dst_id == 255 | saved_area != 1) {
+        return 0;
+    }
+    if (global_kind[dst_id] != 2 | global_type[dst_id] != 1) {
+        return 0;
+    }
+    src_id = loop_lookup(11);
+    if (src_id == 255 | saved_area != 1) {
+        return 0;
+    }
+    if (global_kind[src_id] != 2 | global_type[src_id] != 1) {
+        return 0;
+    }
+
+    /* The loop has no path out of its own straight-line induction step. */
+    start_label = label_counter;
+    label_counter = label_counter + 1;
+    end_label = label_counter;
+    label_counter = label_counter + 1;
+    emit_symbol_operand("ldy", i_area, i_id, 0);
+    emit_label(start_label);
+    emit_symbol_operand("cpy", n_area, n_id, 0);
+    emit_jump_label("bcs", end_label);
+    loop_array_instruction("lda", src_id);
+    loop_array_instruction("sta", dst_id);
+    emit_zero("iny");
+    emit_jump_label("jmp", start_label);
+    emit_label(end_label);
+    emit_symbol_operand("sty", i_area, i_id, 0);
+    ax_pending = 0;
+    return compiler_error == 0;
+}
+
+
+/*
+ * A byte-compare loop has two read-only pointer operands and one mutable
+ * cursor. This region is a tiny 6502 machine operation sequence, not a
+ * sequence of independent pointer-index expressions:
+ *
+ * while (i < n) {
+ *     if (a[i] != b[i]) { return 0; }
+ *     i = i + 1;
+ * }
+ *
+ * Keep both pointers in the two ZP words and use Y for every byte access.
+ * Unlike the copy loop, update i in memory each iteration: the pointers may
+ * legally refer to i, so later reads must observe its new value. There are
+ * no calls or pointer writes which could invalidate the cached addresses.
+ */
+char loop_ptr_base(char area, char symbol, char *scratch)
+{
+    emit_symbol_operand((fixed_text + 431), area, symbol, 0);
+    emit_scratch((fixed_text + 443), scratch, 0);
+    emit_symbol_operand((fixed_text + 431), area, symbol, 1);
+    emit_scratch((fixed_text + 443), scratch, 1);
+    return compiler_error == 0;
+}
+
+char loop_ind(char *op, char *scratch)
+{
+    emit_instruction(op);
+    write_char(' ');
+    write_char('(');
+    write_text(scratch);
+    write_char(')');
+    write_char(',');
+    write_char('y');
+    write_newline();
+    return compiler_error == 0;
+}
+
+char loop_cmp_bytes()
+{
+    char ix;
+    char ia;
+    char bn;
+    char ba;
+    char li;
+    char la;
+    char ri;
+    char ra;
+    unsigned loop_label;
+    unsigned done_label;
+    unsigned equal_label;
+
+    if (loop_data[3] == 0 | loop_data[0] != 30) {
+        return 0;
+    }
+    if (loop_kind(0) != '(' | loop_kind(2) != '<' |
+        loop_kind(4) != ')' | loop_kind(5) != '{') {
+        return 0;
+    }
+    if (loop_kind(6) != 137 | loop_kind(7) != '(' |
+        loop_kind(9) != '[' | loop_kind(11) != ']' |
+        loop_kind(12) != 143 | loop_kind(14) != '[' |
+        loop_kind(16) != ']' | loop_kind(17) != ')') {
+        return 0;
+    }
+    if (loop_kind(18) != '{' | loop_kind(19) != 141 |
+        loop_kind(21) != ';' | loop_kind(22) != '}') {
+        return 0;
+    }
+    if (loop_kind(24) != '=' | loop_kind(26) != '+' |
+        loop_kind(28) != ';' | loop_kind(29) != '}') {
+        return 0;
+    }
+    if (loop_kind(20) != 131 | loop_kind(27) != 131) {
+        return 0;
+    }
+    loop_token(20);
+    if (token_value != 0) {
+        return 0;
+    }
+    loop_token(27);
+    if (token_value != 1) {
+        return 0;
+    }
+    if (loop_kind(1) != 130 | loop_kind(3) != 130 |
+        loop_kind(8) != 130 | loop_kind(10) != 130 |
+        loop_kind(13) != 130 | loop_kind(15) != 130 |
+        loop_kind(23) != 130 | loop_kind(25) != 130) {
+        return 0;
+    }
+    if (loop_same(1, 10) == 0 | loop_same(1, 15) == 0 |
+        loop_same(1, 23) == 0 | loop_same(1, 25) == 0) {
+        return 0;
+    }
+
+    ix = loop_lookup(1);
+    if (ix == 255) {
+        return 0;
+    }
+    ia = saved_area;
+    if (ia == 2) {
+        if (local_type[ix] != 1) {
+            return 0;
+        }
+    } else {
+        if (global_kind[ix] != 1 | global_type[ix] != 1) {
+            return 0;
+        }
+    }
+    bn = loop_lookup(3);
+    if (bn == 255) {
+        return 0;
+    }
+    ba = saved_area;
+    if (ba == 2) {
+        if (local_type[bn] != 1) {
+            return 0;
+        }
+    } else {
+        if (global_kind[bn] != 1 | global_type[bn] != 1) {
+            return 0;
+        }
+    }
+    li = loop_lookup(8);
+    if (li == 255) {
+        return 0;
+    }
+    la = saved_area;
+    if (la == 2) {
+        if (local_type[li] != 4) {
+            return 0;
+        }
+    } else {
+        if (global_kind[li] != 1 | global_type[li] != 4) {
+            return 0;
+        }
+    }
+    ri = loop_lookup(13);
+    if (ri == 255) {
+        return 0;
+    }
+    ra = saved_area;
+    if (ra == 2) {
+        if (local_type[ri] != 4) {
+            return 0;
+        }
+    } else {
+        if (global_kind[ri] != 1 | global_type[ri] != 4) {
+            return 0;
+        }
+    }
+
+    loop_label = label_counter;
+    label_counter = label_counter + 1;
+    done_label = label_counter;
+    label_counter = label_counter + 1;
+    equal_label = label_counter;
+    label_counter = label_counter + 1;
+
+    loop_ptr_base(la, li, (fixed_text + 198));
+    loop_ptr_base(ra, ri, (fixed_text + 205));
+    emit_label(loop_label);
+    emit_symbol_operand((fixed_text + 439), ia, ix, 0);
+    emit_symbol_operand((loop_ops + 0), ba, bn, 0);
+    emit_jump_label((loop_ops + 4), done_label);
+    loop_ind((fixed_text + 431), (fixed_text + 198));
+    loop_ind((loop_ops + 8), (fixed_text + 205));
+    emit_jump_label((fixed_text + 523), equal_label);
+    emit_immediate((fixed_text + 431), 0);
+    emit_immediate((fixed_text + 435), 0);
+    emit_zero((fixed_text + 539));
+    emit_label(equal_label);
+    emit_symbol_operand((loop_ops + 12), ia, ix, 0);
+    emit_jump_label((fixed_text + 531), loop_label);
+    emit_label(done_label);
+    ax_pending = 0;
+    return compiler_error == 0;
+}
+
 char copy_pending_global(char symbol)
 {
     char i;
@@ -1122,7 +1607,7 @@ int add_global_saved(char kind, char type)
 {
     int id;
 
-    if (global_count >= 176) {
+    if (global_count >= 208) {
         compiler_error = 6;
         return -1;
     }
@@ -1924,6 +2409,25 @@ char emit_index_load(char area, char symbol, char kind, char element_type, char 
         hold_ax();
         return compiler_error == 0;
     }
+    /*
+     * A byte index into a char* is already the 6502's indirect,Y addressing
+     * mode. Preserve the evaluated index in Y, load the pointer word once,
+     * then read directly. A wide index still takes the full 16-bit path.
+     */
+    if (kind != 2 & element_type == 1 & index_type == 1) {
+        emit_pop_ax();
+        emit_zero((fixed_text + 467));
+        emit_symbol_operand((fixed_text + 431), area, symbol, 0);
+        emit_scratch((fixed_text + 443), (fixed_text + 205), 0);
+        emit_symbol_operand((fixed_text + 431), area, symbol, 1);
+        emit_scratch((fixed_text + 443), (fixed_text + 205), 1);
+        emit_instruction((fixed_text + 431));
+        write_text((fixed_text + 555));
+        write_newline();
+        emit_immediate((fixed_text + 435), 0);
+        hold_ax();
+        return compiler_error == 0;
+    }
     if (emit_index_address(area, symbol, kind, element_type) == 0) {
         return 0;
     }
@@ -2532,6 +3036,98 @@ char statement_while()
 {
     unsigned loop_label;
     unsigned done_label;
+    unsigned body_label;
+    char ix;
+    char ia;
+    char bn;
+    char ba;
+    char index_ok;
+    char bound_ok;
+
+    if (loop_data[2] == 0) {
+        if (loop_preview() == 0) {
+            return 0;
+        }
+        if (loop_copy() != 0) {
+            /* The whole cursor-copy loop was selected before emission. */
+            loop_data[2] = 0;
+            return scan_token();
+        }
+        if (loop_cmp_bytes() != 0) {
+            /* The pointer scan's early exit and back edge are now complete. */
+            loop_data[2] = 0;
+            return scan_token();
+        }
+
+        /*
+         * A general char-bound while region can use a byte comparison at
+         * its loop header, even with calls or pointer writes in its body.
+         * Reload Y every iteration: we make no back-edge liveness claim.
+         * The original parser still owns every statement in that body.
+         */
+        if (loop_data[0] >= 6 & loop_kind(0) == '(') {
+            if (loop_kind(1) == 130 & loop_kind(2) == '<') {
+                if (loop_kind(3) == 130 & loop_kind(4) == ')') {
+                    if (loop_kind(5) == '{') {
+                        ix = loop_lookup(1);
+                        ia = saved_area;
+                        index_ok = 0;
+                        if (ix != 255) {
+                            if (ia == 2) {
+                                index_ok = local_type[ix] == 1;
+                            } else {
+                                index_ok = global_kind[ix] == 1 & global_type[ix] == 1;
+                            }
+                        }
+                        bn = loop_lookup(3);
+                        ba = saved_area;
+                        bound_ok = 0;
+                        if (bn != 255) {
+                            if (ba == 2) {
+                                bound_ok = local_type[bn] == 1;
+                            } else {
+                                bound_ok = global_kind[bn] == 1 & global_type[bn] == 1;
+                            }
+                        }
+                        if (index_ok != 0 & bound_ok != 0) {
+                            loop_label = label_counter;
+                            label_counter = label_counter + 1;
+                            done_label = label_counter;
+                            label_counter = label_counter + 1;
+                            body_label = label_counter;
+                            label_counter = label_counter + 1;
+                            emit_label(loop_label);
+                            emit_symbol_operand((fixed_text + 439), ia, ix, 0);
+                            emit_symbol_operand("cpy", ba, bn, 0);
+                            /*
+                             * The body may contain arbitrary statements.
+                             * An ordinary 6502 BCS cannot reach the end of
+                             * a large loop; invert the test locally, then
+                             * use a full-address JMP for the exit.
+                             */
+                            emit_jump_label("bcc", body_label);
+                            emit_jump_label("jmp", done_label);
+                            emit_label(body_label);
+                            if (compiler_error != 0) {
+                                return 0;
+                            }
+                            /* Replay starts at the body-opening brace. */
+                            loop_data[1] = 5;
+                            if (scan_token() == 0) {
+                                return 0;
+                            }
+                            if (push_control(4, loop_label, done_label) == 0) {
+                                return 0;
+                            }
+                            return scan_token();
+                        }
+                    }
+                }
+            }
+        }
+        /* Unknown region: replay its original tokens, semantics unchanged. */
+        token_kind = 139;
+    }
 
     loop_label = label_counter;
     label_counter = label_counter + 1;
@@ -3175,7 +3771,7 @@ char parse_function(char function_id)
             if (slot < 0) {
                 return 0;
             }
-            if (param_count >= 128) {
+            if (param_count >= 160) {
                 compiler_error = 6;
                 return 0;
             }

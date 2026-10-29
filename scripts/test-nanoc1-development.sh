@@ -81,7 +81,10 @@ NANOC1_SEED_ASM="$source" VICE="$VICE" VASM="$VASM" BUILD_DIR="$BUILD_DIR" \
 # probe; never execute an image whose code/BSS regions overlap.
 printf '%s' 'NANOC1/NANOC1.C' > "$ROOT/$BUILD_DIR/n1job"
 rm -f "$OUT_DIR/N1OUT.ASM" "$OUT_DIR/n1out.asm"
-VICE_PRELOAD_PRG="$OUT_DIR/nanoc1.prg" VICE_TIMEOUT=360 \
+# The C compiler is now larger and native self-compilation can exceed six
+# minutes. This is a correctness and size probe, not a runtime benchmark.
+# Keep the budget independent from the per-program semantic corpus.
+VICE_PRELOAD_PRG="$OUT_DIR/nanoc1.prg" VICE_TIMEOUT=720 \
     VICE_FS_DIR="$ROOT" VICE_FS_DIR_9="$OUT_DIR" \
     VICE="$VICE" BUILD_DIR="$BUILD_DIR" \
     sh tests/run-test.sh "$BUILD_DIR/test_nanoc1_compile.prg" n1-self-compile
@@ -95,6 +98,21 @@ if [ -f "$OUT_DIR/N1OUT.ASM" ]; then
 else
     next="$OUT_DIR/n1out.asm"
 fi
+# This strict second-generation size probe deliberately does not enable
+# assembler branch relaxation. Native nanoc1 must generate correct 6502
+# control flow itself, including far exits from large while bodies.
+# Assembling is not evidence of executable fit in the target C64 map.
 "$VASM" -I"$ROOT/ass" -Fbin -cbm-prg -o "$OUT_DIR/nanoc2-size.prg" "$next"
+set -- $(od -An -tu1 -N2 "$OUT_DIR/nanoc2-size.prg")
+second_origin=$(( $1 + 256 * $2 ))
 second=$(($(wc -c < "$OUT_DIR/nanoc2-size.prg") - 2))
-echo "PASS #108: exact-source self-compile; seed=$loaded bytes, next-generation=$second bytes (fit not assumed)"
+if [ "$second_origin" -ne 2048 ]; then
+    echo "FAIL #108: expected next-generation origin 0x0800, got $second_origin" >&2
+    exit 1
+fi
+if [ "$second" -gt 63488 ]; then
+    # This is a measurement, not an executable image. Self-hosting must
+    # eventually solve the image fit, but it is not an optimisation gate.
+    echo "SIZE DIAGNOSTIC: second generation $second B exceeds safe 0x0800-0xffff image window (63488 B)" >&2
+fi
+echo "PASS #108: exact-source self-compile; seed=$loaded B, next-generation=$second B (strict 6502 branches, NOT executable fit)"
