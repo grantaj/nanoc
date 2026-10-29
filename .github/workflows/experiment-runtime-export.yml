@@ -1,0 +1,23 @@
+name: Export exact target runtime for #102
+on:
+  pull_request:
+    paths:
+      - .github/workflows/experiment-runtime-export.yml
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: target-runtime-source
+          path: |
+            nanoc0/target/io-common.asm
+            nanoc0/target/io-open.asm
+            nanoc0/target/io-read.asm
+            nanoc0/target/io-close.asm
+            nanoc1/target/runtime.asm
+            nanoc1/target/header.asm
+            nanoc0/target/compare16.asm
+            nanoc0/target/mul16.asm
+          if-no-files-found: error
