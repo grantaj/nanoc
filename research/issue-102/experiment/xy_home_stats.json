@@ -1,0 +1,516 @@
+{
+  "selected": [
+    {
+      "function": "upper_char",
+      "variable": "__L_upper_char_c",
+      "register": "x",
+      "predicted_saving": 7
+    },
+    {
+      "function": "apply_byte_prefix",
+      "variable": "__L_apply_byte_prefix_prefix",
+      "register": "x",
+      "predicted_saving": 1
+    },
+    {
+      "function": "hex_nibble",
+      "variable": "__L_hex_nibble_c",
+      "register": "y",
+      "predicted_saving": 7
+    },
+    {
+      "function": "append_fixup",
+      "variable": "__L_append_fixup_prefix",
+      "register": "x",
+      "predicted_saving": 1
+    },
+    {
+      "function": "stage_byte",
+      "variable": "__L_stage_byte_value",
+      "register": "x",
+      "predicted_saving": 1
+    },
+    {
+      "function": "short_mode_for_index",
+      "variable": "__L_short_mode_for_index_index",
+      "register": "x",
+      "predicted_saving": 3
+    },
+    {
+      "function": "long_mode_for_index",
+      "variable": "__L_long_mode_for_index_index",
+      "register": "x",
+      "predicted_saving": 3
+    },
+    {
+      "function": "assemble_data_list",
+      "variable": "__L_assemble_data_list_c",
+      "register": "x",
+      "predicted_saving": 3
+    },
+    {
+      "function": "reset_assembler",
+      "variable": "__L_reset_assembler_directory_length",
+      "register": "x",
+      "predicted_saving": 1
+    }
+  ],
+  "candidates": [
+    {
+      "function": "upper_char",
+      "variable": "__L_upper_char_c",
+      "register": "x",
+      "uses": 5,
+      "calls": 0,
+      "predicted_saving": 7
+    },
+    {
+      "function": "upper_char",
+      "variable": "__L_upper_char_c",
+      "register": "y",
+      "uses": 5,
+      "calls": 0,
+      "predicted_saving": 7
+    },
+    {
+      "function": "apply_byte_prefix",
+      "variable": "__L_apply_byte_prefix_prefix",
+      "register": "x",
+      "uses": 2,
+      "calls": 0,
+      "predicted_saving": 1
+    },
+    {
+      "function": "apply_byte_prefix",
+      "variable": "__L_apply_byte_prefix_prefix",
+      "register": "y",
+      "uses": 2,
+      "calls": 0,
+      "predicted_saving": 1
+    },
+    {
+      "function": "hex_nibble",
+      "variable": "__L_hex_nibble_c",
+      "register": "y",
+      "uses": 9,
+      "calls": 1,
+      "predicted_saving": 7
+    },
+    {
+      "function": "append_fixup",
+      "variable": "__L_append_fixup_prefix",
+      "register": "x",
+      "uses": 2,
+      "calls": 0,
+      "predicted_saving": 1
+    },
+    {
+      "function": "define_constant",
+      "variable": "__L_define_constant_length",
+      "register": "y",
+      "uses": 2,
+      "calls": 2,
+      "predicted_saving": -15
+    },
+    {
+      "function": "parse_value",
+      "variable": "__L_parse_value_status",
+      "register": "x",
+      "uses": 8,
+      "calls": 3,
+      "predicted_saving": -11
+    },
+    {
+      "function": "parse_value",
+      "variable": "__L_parse_value_first_kind",
+      "register": "x",
+      "uses": 2,
+      "calls": 3,
+      "predicted_saving": -23
+    },
+    {
+      "function": "parse_value",
+      "variable": "__L_parse_value_operation",
+      "register": "x",
+      "uses": 5,
+      "calls": 3,
+      "predicted_saving": -17
+    },
+    {
+      "function": "parse_value",
+      "variable": "__L_parse_value_second_kind",
+      "register": "x",
+      "uses": 2,
+      "calls": 3,
+      "predicted_saving": -23
+    },
+    {
+      "function": "stage_byte",
+      "variable": "__L_stage_byte_value",
+      "register": "x",
+      "uses": 2,
+      "calls": 0,
+      "predicted_saving": 1
+    },
+    {
+      "function": "stage_plain_word_reference",
+      "variable": "__L_stage_plain_word_reference_status",
+      "register": "x",
+      "uses": 6,
+      "calls": 2,
+      "predicted_saving": -7
+    },
+    {
+      "function": "stage_resolved_instruction",
+      "variable": "__L_stage_resolved_instruction_width",
+      "register": "x",
+      "uses": 4,
+      "calls": 3,
+      "predicted_saving": -19
+    },
+    {
+      "function": "stage_resolved_instruction",
+      "variable": "__L_stage_resolved_instruction_status",
+      "register": "x",
+      "uses": 6,
+      "calls": 3,
+      "predicted_saving": -15
+    },
+    {
+      "function": "stage_resolved_relative",
+      "variable": "__L_stage_resolved_relative_status",
+      "register": "y",
+      "uses": 3,
+      "calls": 3,
+      "predicted_saving": -21
+    },
+    {
+      "function": "stage_unresolved_instruction",
+      "variable": "__L_stage_unresolved_instruction_prefix",
+      "register": "x",
+      "uses": 4,
+      "calls": 7,
+      "predicted_saving": -51
+    },
+    {
+      "function": "stage_unresolved_instruction",
+      "variable": "__L_stage_unresolved_instruction_width",
+      "register": "x",
+      "uses": 3,
+      "calls": 7,
+      "predicted_saving": -53
+    },
+    {
+      "function": "stage_unresolved_instruction",
+      "variable": "__L_stage_unresolved_instruction_status",
+      "register": "x",
+      "uses": 12,
+      "calls": 7,
+      "predicted_saving": -35
+    },
+    {
+      "function": "stage_unresolved_instruction",
+      "variable": "__L_stage_unresolved_instruction_kind",
+      "register": "x",
+      "uses": 3,
+      "calls": 7,
+      "predicted_saving": -53
+    },
+    {
+      "function": "short_mode_for_index",
+      "variable": "__L_short_mode_for_index_index",
+      "register": "x",
+      "uses": 3,
+      "calls": 0,
+      "predicted_saving": 3
+    },
+    {
+      "function": "short_mode_for_index",
+      "variable": "__L_short_mode_for_index_index",
+      "register": "y",
+      "uses": 3,
+      "calls": 0,
+      "predicted_saving": 3
+    },
+    {
+      "function": "long_mode_for_index",
+      "variable": "__L_long_mode_for_index_index",
+      "register": "x",
+      "uses": 3,
+      "calls": 0,
+      "predicted_saving": 3
+    },
+    {
+      "function": "long_mode_for_index",
+      "variable": "__L_long_mode_for_index_index",
+      "register": "y",
+      "uses": 3,
+      "calls": 0,
+      "predicted_saving": 3
+    },
+    {
+      "function": "assemble_mode_value",
+      "variable": "__L_assemble_mode_value_length",
+      "register": "y",
+      "uses": 2,
+      "calls": 5,
+      "predicted_saving": -39
+    },
+    {
+      "function": "assemble_mode_value",
+      "variable": "__L_assemble_mode_value_mode",
+      "register": "y",
+      "uses": 4,
+      "calls": 5,
+      "predicted_saving": -35
+    },
+    {
+      "function": "assemble_mode_value",
+      "variable": "__L_assemble_mode_value_status",
+      "register": "y",
+      "uses": 5,
+      "calls": 5,
+      "predicted_saving": -33
+    },
+    {
+      "function": "assemble_direct_value",
+      "variable": "__L_assemble_direct_value_index",
+      "register": "y",
+      "uses": 4,
+      "calls": 10,
+      "predicted_saving": -75
+    },
+    {
+      "function": "assemble_direct_value",
+      "variable": "__L_assemble_direct_value_mnemonic",
+      "register": "y",
+      "uses": 4,
+      "calls": 10,
+      "predicted_saving": -75
+    },
+    {
+      "function": "assemble_direct_value",
+      "variable": "__L_assemble_direct_value_length",
+      "register": "y",
+      "uses": 2,
+      "calls": 10,
+      "predicted_saving": -79
+    },
+    {
+      "function": "assemble_direct_value",
+      "variable": "__L_assemble_direct_value_status",
+      "register": "y",
+      "uses": 6,
+      "calls": 10,
+      "predicted_saving": -71
+    },
+    {
+      "function": "assemble_direct_value",
+      "variable": "__L_assemble_direct_value_short_mode",
+      "register": "y",
+      "uses": 5,
+      "calls": 10,
+      "predicted_saving": -73
+    },
+    {
+      "function": "assemble_direct_value",
+      "variable": "__L_assemble_direct_value_long_mode",
+      "register": "y",
+      "uses": 4,
+      "calls": 10,
+      "predicted_saving": -75
+    },
+    {
+      "function": "assemble_direct_value",
+      "variable": "__L_assemble_direct_value_mode",
+      "register": "y",
+      "uses": 4,
+      "calls": 10,
+      "predicted_saving": -75
+    },
+    {
+      "function": "stage_data_value",
+      "variable": "__L_stage_data_value_width",
+      "register": "x",
+      "uses": 4,
+      "calls": 8,
+      "predicted_saving": -59
+    },
+    {
+      "function": "stage_data_value",
+      "variable": "__L_stage_data_value_status",
+      "register": "x",
+      "uses": 14,
+      "calls": 8,
+      "predicted_saving": -39
+    },
+    {
+      "function": "stage_data_value",
+      "variable": "__L_stage_data_value_kind",
+      "register": "x",
+      "uses": 3,
+      "calls": 8,
+      "predicted_saving": -61
+    },
+    {
+      "function": "stage_data_value",
+      "variable": "__L_stage_data_value_width",
+      "register": "y",
+      "uses": 4,
+      "calls": 8,
+      "predicted_saving": -59
+    },
+    {
+      "function": "stage_data_value",
+      "variable": "__L_stage_data_value_status",
+      "register": "y",
+      "uses": 14,
+      "calls": 8,
+      "predicted_saving": -39
+    },
+    {
+      "function": "stage_data_value",
+      "variable": "__L_stage_data_value_kind",
+      "register": "y",
+      "uses": 3,
+      "calls": 8,
+      "predicted_saving": -61
+    },
+    {
+      "function": "assemble_data_list",
+      "variable": "__L_assemble_data_list_width",
+      "register": "x",
+      "uses": 2,
+      "calls": 1,
+      "predicted_saving": -7
+    },
+    {
+      "function": "assemble_data_list",
+      "variable": "__L_assemble_data_list_c",
+      "register": "x",
+      "uses": 7,
+      "calls": 1,
+      "predicted_saving": 3
+    },
+    {
+      "function": "assemble_data_list",
+      "variable": "__L_assemble_data_list_item_end",
+      "register": "x",
+      "uses": 4,
+      "calls": 1,
+      "predicted_saving": -3
+    },
+    {
+      "function": "assemble_data_list",
+      "variable": "__L_assemble_data_list_status",
+      "register": "x",
+      "uses": 3,
+      "calls": 1,
+      "predicted_saving": -5
+    },
+    {
+      "function": "assemble_string",
+      "variable": "__L_assemble_string_length",
+      "register": "x",
+      "uses": 4,
+      "calls": 2,
+      "predicted_saving": -11
+    },
+    {
+      "function": "assemble_string",
+      "variable": "__L_assemble_string_status",
+      "register": "x",
+      "uses": 3,
+      "calls": 2,
+      "predicted_saving": -13
+    },
+    {
+      "function": "process_label",
+      "variable": "__L_process_label_length",
+      "register": "x",
+      "uses": 3,
+      "calls": 1,
+      "predicted_saving": -5
+    },
+    {
+      "function": "process_label",
+      "variable": "__L_process_label_status",
+      "register": "x",
+      "uses": 2,
+      "calls": 1,
+      "predicted_saving": -7
+    },
+    {
+      "function": "process_symbol",
+      "variable": "__L_process_symbol_argument_length",
+      "register": "x",
+      "uses": 3,
+      "calls": 3,
+      "predicted_saving": -21
+    },
+    {
+      "function": "process_symbol",
+      "variable": "__L_process_symbol_name_length",
+      "register": "x",
+      "uses": 2,
+      "calls": 3,
+      "predicted_saving": -23
+    },
+    {
+      "function": "process_symbol",
+      "variable": "__L_process_symbol_status",
+      "register": "x",
+      "uses": 6,
+      "calls": 3,
+      "predicted_saving": -15
+    },
+    {
+      "function": "process_instruction_like",
+      "variable": "__L_process_instruction_like_argument_length",
+      "register": "x",
+      "uses": 6,
+      "calls": 9,
+      "predicted_saving": -63
+    },
+    {
+      "function": "process_instruction_like",
+      "variable": "__L_process_instruction_like_name_length",
+      "register": "x",
+      "uses": 5,
+      "calls": 9,
+      "predicted_saving": -65
+    },
+    {
+      "function": "process_instruction_like",
+      "variable": "__L_process_instruction_like_argument_length",
+      "register": "y",
+      "uses": 6,
+      "calls": 9,
+      "predicted_saving": -63
+    },
+    {
+      "function": "process_instruction_like",
+      "variable": "__L_process_instruction_like_name_length",
+      "register": "y",
+      "uses": 5,
+      "calls": 9,
+      "predicted_saving": -65
+    },
+    {
+      "function": "reset_assembler",
+      "variable": "__L_reset_assembler_directory_length",
+      "register": "x",
+      "uses": 2,
+      "calls": 0,
+      "predicted_saving": 1
+    },
+    {
+      "function": "reset_assembler",
+      "variable": "__L_reset_assembler_directory_length",
+      "register": "y",
+      "uses": 2,
+      "calls": 0,
+      "predicted_saving": 1
+    }
+  ]
+}

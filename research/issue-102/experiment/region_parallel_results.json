@@ -1,0 +1,297 @@
+{
+  "passed": 29,
+  "cases": 29,
+  "seconds": 3.6487060540000016,
+  "results": [
+    {
+      "name": "simple_code",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 8,
+      "expected_size": 8,
+      "steps": 380202,
+      "elapsed": 0.41
+    },
+    {
+      "name": "all_data",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 14,
+      "expected_size": 14,
+      "steps": 370887,
+      "elapsed": 0.46
+    },
+    {
+      "name": "comment",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 2,
+      "expected_size": 2,
+      "steps": 366705,
+      "elapsed": 0.47
+    },
+    {
+      "name": "labels",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 7,
+      "expected_size": 7,
+      "steps": 380014,
+      "elapsed": 0.48
+    },
+    {
+      "name": "symbol_const",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 4,
+      "expected_size": 4,
+      "steps": 370767,
+      "elapsed": 0.47
+    },
+    {
+      "name": "forward_word",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 5,
+      "expected_size": 5,
+      "steps": 371107,
+      "elapsed": 0.46
+    },
+    {
+      "name": "symbol_arith",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 4,
+      "expected_size": 4,
+      "steps": 369427,
+      "elapsed": 0.53
+    },
+    {
+      "name": "forward_abs",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 6,
+      "expected_size": 6,
+      "steps": 376906,
+      "elapsed": 0.55
+    },
+    {
+      "name": "forward_branch",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 5,
+      "expected_size": 5,
+      "steps": 375687,
+      "elapsed": 0.45
+    },
+    {
+      "name": "char_literal",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 2,
+      "expected_size": 2,
+      "steps": 365115,
+      "elapsed": 0.4
+    },
+    {
+      "name": "undefined_label",
+      "ok": true,
+      "status": 6,
+      "expected_status": 6,
+      "size": 2,
+      "expected_size": 2,
+      "steps": 365574,
+      "elapsed": 0.46
+    },
+    {
+      "name": "wrong_opcode",
+      "ok": true,
+      "status": 5,
+      "expected_status": 5,
+      "size": 0,
+      "expected_size": 0,
+      "steps": 366216,
+      "elapsed": 0.49
+    },
+    {
+      "name": "zero_page",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 4,
+      "expected_size": 4,
+      "steps": 375244,
+      "elapsed": 0.48
+    },
+    {
+      "name": "bad_data",
+      "ok": true,
+      "status": 6,
+      "expected_status": 6,
+      "size": 1,
+      "expected_size": 1,
+      "steps": 364945,
+      "elapsed": 0.55
+    },
+    {
+      "name": "indirect",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 4,
+      "expected_size": 4,
+      "steps": 371962,
+      "elapsed": 0.48
+    },
+    {
+      "name": "long_indexed",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 6,
+      "expected_size": 6,
+      "steps": 375144,
+      "elapsed": 0.52
+    },
+    {
+      "name": "random00",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 26,
+      "expected_size": 26,
+      "steps": 409582,
+      "elapsed": 0.4
+    },
+    {
+      "name": "multiple_labels",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 2,
+      "expected_size": 2,
+      "steps": 369028,
+      "elapsed": 0.47
+    },
+    {
+      "name": "random01",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 17,
+      "expected_size": 17,
+      "steps": 398568,
+      "elapsed": 0.42
+    },
+    {
+      "name": "random02",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 13,
+      "expected_size": 13,
+      "steps": 387746,
+      "elapsed": 0.47
+    },
+    {
+      "name": "random04",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 16,
+      "expected_size": 16,
+      "steps": 392005,
+      "elapsed": 0.42
+    },
+    {
+      "name": "random03",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 20,
+      "expected_size": 20,
+      "steps": 398108,
+      "elapsed": 0.56
+    },
+    {
+      "name": "random05",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 16,
+      "expected_size": 16,
+      "steps": 386890,
+      "elapsed": 0.53
+    },
+    {
+      "name": "random06",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 22,
+      "expected_size": 22,
+      "steps": 399387,
+      "elapsed": 0.47
+    },
+    {
+      "name": "random08",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 11,
+      "expected_size": 11,
+      "steps": 377584,
+      "elapsed": 0.36
+    },
+    {
+      "name": "random07",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 21,
+      "expected_size": 21,
+      "steps": 401600,
+      "elapsed": 0.53
+    },
+    {
+      "name": "random10",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 19,
+      "expected_size": 19,
+      "steps": 393982,
+      "elapsed": 0.41
+    },
+    {
+      "name": "random09",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 25,
+      "expected_size": 25,
+      "steps": 404654,
+      "elapsed": 0.48
+    },
+    {
+      "name": "random11",
+      "ok": true,
+      "status": 0,
+      "expected_status": 0,
+      "size": 22,
+      "expected_size": 22,
+      "steps": 408920,
+      "elapsed": 0.42
+    }
+  ]
+}

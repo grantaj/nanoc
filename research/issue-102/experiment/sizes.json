@@ -1,0 +1,398 @@
+[
+  {
+    "name": "upper_char",
+    "bytes": 35,
+    "temps": 1,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "same_text",
+    "bytes": 76,
+    "temps": 1,
+    "packed_bytes": 1,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "apply_byte_prefix",
+    "bytes": 19,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "hex_nibble",
+    "bytes": 112,
+    "temps": 3,
+    "packed_bytes": 4,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "append_fixup",
+    "bytes": 213,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "relative_byte",
+    "bytes": 82,
+    "temps": 1,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "trim_fixups",
+    "bytes": 99,
+    "temps": 2,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "resolve_fixups_for_symbol",
+    "bytes": 617,
+    "temps": 10,
+    "packed_bytes": 6,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 2
+  },
+  {
+    "name": "scope_for_name",
+    "bytes": 62,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "find_symbol",
+    "bytes": 307,
+    "temps": 3,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "allocate_symbol",
+    "bytes": 384,
+    "temps": 4,
+    "packed_bytes": 3,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "intern_label",
+    "bytes": 132,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "define_constant",
+    "bytes": 142,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "patch_word_chain",
+    "bytes": 219,
+    "temps": 6,
+    "packed_bytes": 5,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "define_label",
+    "bytes": 311,
+    "temps": 1,
+    "packed_bytes": 2,
+    "address_hits": 1,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "parse_atom",
+    "bytes": 832,
+    "temps": 10,
+    "packed_bytes": 4,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 4
+  },
+  {
+    "name": "parse_value",
+    "bytes": 592,
+    "temps": 6,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 4
+  },
+  {
+    "name": "find_mnemonic",
+    "bytes": 230,
+    "temps": 6,
+    "packed_bytes": 3,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "find_opcode",
+    "bytes": 50,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "stage_byte",
+    "bytes": 76,
+    "temps": 1,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "stage_plain_word_reference",
+    "bytes": 167,
+    "temps": 2,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "stage_resolved_instruction",
+    "bytes": 136,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "stage_resolved_relative",
+    "bytes": 122,
+    "temps": 2,
+    "packed_bytes": 4,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "stage_unresolved_instruction",
+    "bytes": 315,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "short_mode_for_index",
+    "bytes": 32,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "long_mode_for_index",
+    "bytes": 32,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "assemble_mode_value",
+    "bytes": 220,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "assemble_direct_value",
+    "bytes": 461,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "assemble_instruction",
+    "bytes": 1167,
+    "temps": 16,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 5
+  },
+  {
+    "name": "stage_data_value",
+    "bytes": 351,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "assemble_data_list",
+    "bytes": 292,
+    "temps": 1,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "assemble_string",
+    "bytes": 194,
+    "temps": 2,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "open_include",
+    "bytes": 589,
+    "temps": 8,
+    "packed_bytes": 3,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 2
+  },
+  {
+    "name": "read_source_line",
+    "bytes": 209,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "close_source_tree",
+    "bytes": 74,
+    "temps": 3,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "scan_argument",
+    "bytes": 246,
+    "temps": 1,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "process_label",
+    "bytes": 138,
+    "temps": 1,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "process_symbol",
+    "bytes": 208,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "process_instruction_like",
+    "bytes": 323,
+    "temps": 4,
+    "packed_bytes": 1,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 0
+  },
+  {
+    "name": "process_source_line",
+    "bytes": 537,
+    "temps": 9,
+    "packed_bytes": 4,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 4
+  },
+  {
+    "name": "reset_assembler",
+    "bytes": 78,
+    "temps": 0,
+    "packed_bytes": 0,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 8
+  },
+  {
+    "name": "all_symbols_defined",
+    "bytes": 97,
+    "temps": 1,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "all_fixups_resolved",
+    "bytes": 97,
+    "temps": 1,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 1
+  },
+  {
+    "name": "ass_assemble",
+    "bytes": 294,
+    "temps": 8,
+    "packed_bytes": 2,
+    "address_hits": 0,
+    "index_hits": 0,
+    "a_residency_savings": 2
+  }
+]

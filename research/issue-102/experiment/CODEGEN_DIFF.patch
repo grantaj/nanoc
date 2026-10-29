@@ -1,0 +1,136 @@
+--- baseline/full_corpus/backend.py
++++ experiment/full_corpus/backend.py
+@@ -187,7 +187,11 @@
+        fn,*args=a
+        for j,v in enumerate(args):
+          dest='__call_'+fn+'_'+str(j)
+-         self.copy_val(v,dest,self.t.values[v])
++         # The callee's declared parameter type determines the ABI slot
++         # width, not the source expression type. This performs C's
++         # implicit char/word conversion at the call boundary.
++         param_kind=self.t.call_params[fn][j]
++         self.copy_val(v,dest,param_kind)
+        self.emit('jsr',fn);self.emit('sta','__v%d'%d)
+        if self.width(k)==2:self.emit('stx','__v%d+1'%d)
+     elif c=='store':self.copy_val(a[1],a[0],self.t.types[a[0]])
+@@ -213,7 +217,8 @@
+     elif c=='return':
+        self.emit('lda',self.val(a[0]));
+        if self.width(self.t.rtype)==2:self.emit('ldx',self.val(a[0],True))
+-       else:self.emit('ldx','#$00')
++       # A-only ABI for u8 functions; any wide consumer obtains zero-extension
++       # from its typed call result, never from an unspecified X register.
+        self.emit('rts')
+     else:raise NotImplementedError('op '+c)
+  def run(self):
+--- baseline/full_corpus/backend2.py
++++ experiment/full_corpus/backend2.py
+@@ -41,7 +41,10 @@
+         uc=uses[o.result]
+         if not uc or any(nb!=b.name for nb,_ in uc):continue
+         last=max(j for _,j in uc)
+-        between=b.ops[i+1:last+1]
++        # The consuming operation does not occur *between* snapshot and use.
++        # In particular, passing a snapshot to a CALL must not make the
++        # load eager merely because the consumer is itself effectful.
++        between=b.ops[i+1:last]
+         # In this C subset, scalar store to another named non-overlapping
+         # object does not change a direct scalar load. Calls and pointer
+         # stores may change any accessible scalar, so are barriers.
+--- baseline/full_corpus/tape_frontend.py
++++ experiment/full_corpus/tape_frontend.py
+@@ -23,11 +23,12 @@
+         self.fns={x.decl.name:x for x in tree.ext if isinstance(x,c_ast.FuncDef)}
+         if len(self.fns)!=1:raise ValueError('one function')
+         self.fn=next(iter(self.fns.values()))
+-        self.types={};self.arrays={};self.calls={}
++        self.types={};self.arrays={};self.calls={};self.call_params={}
+         for x in tree.ext:
+             if not isinstance(x,c_ast.Decl):continue
+             if isinstance(x.type,c_ast.FuncDecl):
+                 self.calls[x.name]=self.dtype(x.type.type)
++                self.call_params[x.name]=[self.dtype(p.type) for p in (x.type.args.params if x.type.args else [])]
+             else:
+                 self.types[x.name]=self.dtype(x.type)
+                 if isinstance(x.type,c_ast.ArrayDecl):
+--- baseline/full_corpus/placement_backend.py
++++ experiment/full_corpus/placement_backend.py
+@@ -45,7 +45,8 @@
+                     self.sinks[v]=('store',name)
+                     self.skipped.add(id(next_))
+                     self.forwarded['store_'+o.code]+=1
+-                elif next_.code=='return' and next_.args[0]==v and o.code=='call':
++                elif (next_.code=='return' and next_.args[0]==v and o.code=='call' and
++                      self.width(self.t.rtype)==self.width(o.type)):
+                     self.sinks[v]=('return',None)
+                     self.skipped.add(id(next_))
+                     self.forwarded['return_call']+=1
+@@ -73,7 +74,7 @@
+                 finally:
+                     self.placement_active=None
+                 if mode=='return':
+-                    if self.width(self.t.rtype)==1:self.emit('ldx','#$00')
++                    # Byte-return ABI: A is the entire result, X is caller-clobbered.
+                     self.emit('rts')
+                 return
+         return super().op(o)
+@@ -114,6 +115,7 @@
+                 fn=call.args[0]
+                 for j,v in enumerate(call.args[1:]):
+                     if counts[v]!=1 or v in self.sinks or v in getattr(self,'read_alias',{}):continue
++                    if self.width(self.t.call_params[fn][j])!=self.width(self.t.values[v]):continue
+                     prod=self.defs[v];start=where.get(v,-1)
+                     if start<0 or start>=i:continue
+                     if prod.code not in ('read','+','-'):continue
+--- baseline/link_model.py
++++ experiment/link_model.py
+@@ -89,7 +89,7 @@
+ # Reconstruct per-function namespaced output from per-function packed backend.
+ from pycparser import c_ast
+ from tape_frontend import TapeBuilder
+-from const_fold import FoldedBackend
++from address_plan import AddressPlanBackend
+ from scratch_allocator import allocate
+ from execute6502 import relax
+ arrays=json.loads((S/'whole_corpus'/'arrays.json').read_text())
+@@ -97,7 +97,7 @@
+ for f in funcs:
+  name=f.decl.name
+  t=TapeBuilder((S/'whole_corpus'/(name+'.c')).read_text()).build()
+- b=FoldedBackend(t,arrays)
++ b=AddressPlanBackend(t,arrays)
+  raw=b.run();packed,info=allocate(t,b,raw)
+  global_tempmax=max(global_tempmax,info['packed_bytes'])
+  if info['packed_bytes']>8:raise AssertionError('ZP scratch overflow '+name)
+@@ -118,7 +118,7 @@
+  for k,v in t.strings.items():
+   assembly.append(strs[k]+':')
+   assembly.append('    byte '+','.join(str(x) for x in v))
+- size_records.append({'name':name,'bytes':info['instruction_bytes'],'temps':info['temporary_values'],'packed_bytes':info['packed_bytes']})
++ size_records.append({'name':name,'bytes':info['instruction_bytes'],'temps':info['temporary_values'],'packed_bytes':info['packed_bytes'],'address_hits':b.address_hits,'index_hits':b.index_hits})
+ 
+ # A precisely specified startup entry, invoked with an externally provided
+ # source filename and expected 6502 result register ABI A/X.
+--- baseline/verify_all.sh
++++ experiment/verify_all.sh
+@@ -3,6 +3,10 @@
+ cd "$(dirname "$0")"
+ export PYTHONPATH="$PWD/full_corpus:$PWD"
+ sh reproduce.sh
++python test_typed_call_abi.py
++python test_address_proofs.py
++python test_indexed_abi.py
++python test_byte_abi.py
+ python test_general_machine_rules.py
+ python test_word_comparisons_new.py
+ python - <<'PY'
+@@ -10,7 +14,7 @@
+ import json
+ p=Path('.')
+ loaded=len((p/'compact_image.prg').read_bytes())-2
+-assert loaded==14363,(loaded,'unexpected code-generation drift')
++assert loaded==12464,(loaded,'unexpected code-generation drift')
+ assert json.loads((p/'end_to_end.json').read_text())['passed']==29
+-print('PASS: exact 14,363-byte linked image and all test gates')
++print('PASS: exact 12,464-byte linked image and all test gates')
+ PY

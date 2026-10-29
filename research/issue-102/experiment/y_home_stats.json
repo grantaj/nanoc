@@ -1,0 +1,197 @@
+{
+  "selected": [
+    {
+      "name": "upper_char",
+      "variable": "__L_upper_char_c",
+      "estimated_saving": 7
+    },
+    {
+      "name": "apply_byte_prefix",
+      "variable": "__L_apply_byte_prefix_prefix",
+      "estimated_saving": 1
+    },
+    {
+      "name": "hex_nibble",
+      "variable": "__L_hex_nibble_c",
+      "estimated_saving": 7
+    },
+    {
+      "name": "short_mode_for_index",
+      "variable": "__L_short_mode_for_index_index",
+      "estimated_saving": 3
+    },
+    {
+      "name": "long_mode_for_index",
+      "variable": "__L_long_mode_for_index_index",
+      "estimated_saving": 3
+    },
+    {
+      "name": "reset_assembler",
+      "variable": "__L_reset_assembler_directory_length",
+      "estimated_saving": 1
+    }
+  ],
+  "candidates": [
+    {
+      "name": "upper_char",
+      "var": "__L_upper_char_c",
+      "original_uses": 5,
+      "saving": 7,
+      "jsr": 0
+    },
+    {
+      "name": "apply_byte_prefix",
+      "var": "__L_apply_byte_prefix_prefix",
+      "original_uses": 2,
+      "saving": 1,
+      "jsr": 0
+    },
+    {
+      "name": "hex_nibble",
+      "var": "__L_hex_nibble_c",
+      "original_uses": 9,
+      "saving": 7,
+      "jsr": 1
+    },
+    {
+      "name": "define_constant",
+      "var": "__L_define_constant_length",
+      "original_uses": 2,
+      "saving": -15,
+      "jsr": 2
+    },
+    {
+      "name": "stage_resolved_relative",
+      "var": "__L_stage_resolved_relative_status",
+      "original_uses": 3,
+      "saving": -21,
+      "jsr": 3
+    },
+    {
+      "name": "short_mode_for_index",
+      "var": "__L_short_mode_for_index_index",
+      "original_uses": 3,
+      "saving": 3,
+      "jsr": 0
+    },
+    {
+      "name": "long_mode_for_index",
+      "var": "__L_long_mode_for_index_index",
+      "original_uses": 3,
+      "saving": 3,
+      "jsr": 0
+    },
+    {
+      "name": "assemble_mode_value",
+      "var": "__L_assemble_mode_value_length",
+      "original_uses": 2,
+      "saving": -39,
+      "jsr": 5
+    },
+    {
+      "name": "assemble_mode_value",
+      "var": "__L_assemble_mode_value_mode",
+      "original_uses": 4,
+      "saving": -35,
+      "jsr": 5
+    },
+    {
+      "name": "assemble_mode_value",
+      "var": "__L_assemble_mode_value_status",
+      "original_uses": 5,
+      "saving": -33,
+      "jsr": 5
+    },
+    {
+      "name": "assemble_direct_value",
+      "var": "__L_assemble_direct_value_index",
+      "original_uses": 4,
+      "saving": -75,
+      "jsr": 10
+    },
+    {
+      "name": "assemble_direct_value",
+      "var": "__L_assemble_direct_value_mnemonic",
+      "original_uses": 4,
+      "saving": -75,
+      "jsr": 10
+    },
+    {
+      "name": "assemble_direct_value",
+      "var": "__L_assemble_direct_value_length",
+      "original_uses": 2,
+      "saving": -79,
+      "jsr": 10
+    },
+    {
+      "name": "assemble_direct_value",
+      "var": "__L_assemble_direct_value_status",
+      "original_uses": 6,
+      "saving": -71,
+      "jsr": 10
+    },
+    {
+      "name": "assemble_direct_value",
+      "var": "__L_assemble_direct_value_short_mode",
+      "original_uses": 5,
+      "saving": -73,
+      "jsr": 10
+    },
+    {
+      "name": "assemble_direct_value",
+      "var": "__L_assemble_direct_value_long_mode",
+      "original_uses": 4,
+      "saving": -75,
+      "jsr": 10
+    },
+    {
+      "name": "assemble_direct_value",
+      "var": "__L_assemble_direct_value_mode",
+      "original_uses": 4,
+      "saving": -75,
+      "jsr": 10
+    },
+    {
+      "name": "stage_data_value",
+      "var": "__L_stage_data_value_width",
+      "original_uses": 4,
+      "saving": -59,
+      "jsr": 8
+    },
+    {
+      "name": "stage_data_value",
+      "var": "__L_stage_data_value_status",
+      "original_uses": 14,
+      "saving": -39,
+      "jsr": 8
+    },
+    {
+      "name": "stage_data_value",
+      "var": "__L_stage_data_value_kind",
+      "original_uses": 3,
+      "saving": -61,
+      "jsr": 8
+    },
+    {
+      "name": "process_instruction_like",
+      "var": "__L_process_instruction_like_argument_length",
+      "original_uses": 6,
+      "saving": -63,
+      "jsr": 9
+    },
+    {
+      "name": "process_instruction_like",
+      "var": "__L_process_instruction_like_name_length",
+      "original_uses": 5,
+      "saving": -65,
+      "jsr": 9
+    },
+    {
+      "name": "reset_assembler",
+      "var": "__L_reset_assembler_directory_length",
+      "original_uses": 2,
+      "saving": 1,
+      "jsr": 0
+    }
+  ]
+}

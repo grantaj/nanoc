@@ -1,0 +1,182 @@
+{
+  "dead_private_store": 45,
+  "elided_redundant_lda": 79,
+  "functions": {
+    "upper_char": {
+      "old_lines": 22,
+      "new_lines": 19
+    },
+    "same_text": {
+      "old_lines": 43,
+      "new_lines": 43
+    },
+    "apply_byte_prefix": {
+      "old_lines": 13,
+      "new_lines": 12
+    },
+    "hex_nibble": {
+      "old_lines": 60,
+      "new_lines": 56
+    },
+    "append_fixup": {
+      "old_lines": 105,
+      "new_lines": 105
+    },
+    "relative_byte": {
+      "old_lines": 42,
+      "new_lines": 42
+    },
+    "trim_fixups": {
+      "old_lines": 52,
+      "new_lines": 52
+    },
+    "resolve_fixups_for_symbol": {
+      "old_lines": 299,
+      "new_lines": 296
+    },
+    "scope_for_name": {
+      "old_lines": 38,
+      "new_lines": 37
+    },
+    "find_symbol": {
+      "old_lines": 150,
+      "new_lines": 150
+    },
+    "allocate_symbol": {
+      "old_lines": 181,
+      "new_lines": 180
+    },
+    "intern_label": {
+      "old_lines": 61,
+      "new_lines": 60
+    },
+    "define_constant": {
+      "old_lines": 63,
+      "new_lines": 62
+    },
+    "patch_word_chain": {
+      "old_lines": 106,
+      "new_lines": 105
+    },
+    "define_label": {
+      "old_lines": 140,
+      "new_lines": 139
+    },
+    "parse_atom": {
+      "old_lines": 404,
+      "new_lines": 401
+    },
+    "parse_value": {
+      "old_lines": 263,
+      "new_lines": 253
+    },
+    "find_mnemonic": {
+      "old_lines": 114,
+      "new_lines": 112
+    },
+    "find_opcode": {
+      "old_lines": 31,
+      "new_lines": 29
+    },
+    "stage_byte": {
+      "old_lines": 39,
+      "new_lines": 39
+    },
+    "stage_plain_word_reference": {
+      "old_lines": 79,
+      "new_lines": 77
+    },
+    "stage_resolved_instruction": {
+      "old_lines": 64,
+      "new_lines": 61
+    },
+    "stage_resolved_relative": {
+      "old_lines": 52,
+      "new_lines": 51
+    },
+    "stage_unresolved_instruction": {
+      "old_lines": 129,
+      "new_lines": 124
+    },
+    "short_mode_for_index": {
+      "old_lines": 21,
+      "new_lines": 19
+    },
+    "long_mode_for_index": {
+      "old_lines": 21,
+      "new_lines": 19
+    },
+    "assemble_mode_value": {
+      "old_lines": 92,
+      "new_lines": 88
+    },
+    "assemble_direct_value": {
+      "old_lines": 184,
+      "new_lines": 178
+    },
+    "assemble_instruction": {
+      "old_lines": 535,
+      "new_lines": 527
+    },
+    "stage_data_value": {
+      "old_lines": 153,
+      "new_lines": 145
+    },
+    "assemble_data_list": {
+      "old_lines": 140,
+      "new_lines": 132
+    },
+    "assemble_string": {
+      "old_lines": 98,
+      "new_lines": 95
+    },
+    "open_include": {
+      "old_lines": 287,
+      "new_lines": 285
+    },
+    "read_source_line": {
+      "old_lines": 107,
+      "new_lines": 105
+    },
+    "close_source_tree": {
+      "old_lines": 37,
+      "new_lines": 35
+    },
+    "scan_argument": {
+      "old_lines": 123,
+      "new_lines": 116
+    },
+    "process_label": {
+      "old_lines": 66,
+      "new_lines": 65
+    },
+    "process_symbol": {
+      "old_lines": 93,
+      "new_lines": 89
+    },
+    "process_instruction_like": {
+      "old_lines": 130,
+      "new_lines": 126
+    },
+    "process_source_line": {
+      "old_lines": 254,
+      "new_lines": 246
+    },
+    "reset_assembler": {
+      "old_lines": 31,
+      "new_lines": 31
+    },
+    "all_symbols_defined": {
+      "old_lines": 51,
+      "new_lines": 51
+    },
+    "all_fixups_resolved": {
+      "old_lines": 51,
+      "new_lines": 51
+    },
+    "ass_assemble": {
+      "old_lines": 134,
+      "new_lines": 126
+    }
+  }
+}
