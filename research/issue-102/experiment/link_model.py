@@ -92,6 +92,7 @@ from tape_frontend import TapeBuilder
 from direct_address import DirectAddressBackend
 from register_first import RegisterFirstBackend
 from compare_native import NativeCompareBackend
+from range_index import IndexRangeBackend
 from pointer_home import PointerHomeBackend
 import os
 from scratch_allocator import allocate
@@ -101,7 +102,7 @@ assembly=[];size_records=[];global_tempmax=0
 for f in funcs:
  name=f.decl.name
  t=TapeBuilder((S/'whole_corpus'/(name+'.c')).read_text()).build()
- b=(PointerHomeBackend if os.environ.get("POINTER_HOME") else NativeCompareBackend if os.environ.get("NATIVE_COMPARE") else RegisterFirstBackend if os.environ.get("REG_FIRST") else DirectAddressBackend)(t,arrays)
+ b=(PointerHomeBackend if os.environ.get("POINTER_HOME") else IndexRangeBackend if os.environ.get("RANGE_INDEX") else NativeCompareBackend if os.environ.get("NATIVE_COMPARE") else RegisterFirstBackend if os.environ.get("REG_FIRST") else DirectAddressBackend)(t,arrays)
  raw=b.run();packed,info=allocate(t,b,raw)
  global_tempmax=max(global_tempmax,info['packed_bytes'])
  if info['packed_bytes']>8:raise AssertionError('ZP scratch overflow '+name)
@@ -122,7 +123,7 @@ for f in funcs:
  for k,v in t.strings.items():
   assembly.append(strs[k]+':')
   assembly.append('    byte '+','.join(str(x) for x in v))
- size_records.append({'name':name,'bytes':info['instruction_bytes'],'temps':info['temporary_values'],'packed_bytes':info['packed_bytes'],'address_hits':b.address_hits,'index_hits':b.index_hits,'a_residency_savings':getattr(b,'avoided_a_loads',0)})
+ size_records.append({'name':name,'bytes':info['instruction_bytes'],'temps':info['temporary_values'],'packed_bytes':info['packed_bytes'],'address_hits':b.address_hits,'index_hits':b.index_hits,'range_y':len(getattr(b,'range_evidence',[])),'a_residency_savings':getattr(b,'avoided_a_loads',0)})
 
 # A precisely specified startup entry, invoked with an externally provided
 # source filename and expected 6502 result register ABI A/X.

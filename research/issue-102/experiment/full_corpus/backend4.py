@@ -18,7 +18,7 @@ class IndexedBackend(ConsumerBackend):
        ix=self.defs[index]
        fast_index=(self.t.values[index] in ('u8','bool') or
                   ix.code=='const' and 0<=ix.args[0]<=255)
-       if fast_index and kind=='u8':
+       if (fast_index or getattr(self,'y_safe',lambda op:False)(o)) and kind=='u8':
           self.emit('ldy',self.val(index))
           if arr:
              self.emit('lda',arr+',y')

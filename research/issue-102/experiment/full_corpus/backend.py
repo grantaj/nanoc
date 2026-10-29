@@ -171,7 +171,7 @@ class Backend:
        element=self.arrays[arr][0] if arr else 'u8'
        offset=self.defs[index]
        narrow=(self.t.values[index] in ('u8','bool') or offset.code=='const' and 0<=offset.args[0]<=255)
-       if narrow and element=='u8':
+       if (narrow or getattr(self,'y_safe',lambda op:False)(o)) and element=='u8':
            self.emit('ldy',self.val(index))
            if arr:self.emit('lda',self.val(value));self.emit('sta',arr+',y')
            else:
