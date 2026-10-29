@@ -1,0 +1,15 @@
+name: Export exact ass.c for #102 research
+on:
+  pull_request:
+    paths:
+      - .github/workflows/experiment-ass-c-export.yml
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exact-ass-c-source
+          path: bootstrap/ass.c
+          if-no-files-found: error
