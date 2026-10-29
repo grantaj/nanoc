@@ -1,0 +1,297 @@
+{
+  "cases": 29,
+  "passed": 29,
+  "seconds": 14.92,
+  "results": [
+    {
+      "name": "simple_code",
+      "ok": true,
+      "steps": 380994,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 8,
+      "expected_bytes": 8,
+      "match": true
+    },
+    {
+      "name": "all_data",
+      "ok": true,
+      "steps": 371442,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 14,
+      "expected_bytes": 14,
+      "match": true
+    },
+    {
+      "name": "labels",
+      "ok": true,
+      "steps": 380860,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 7,
+      "expected_bytes": 7,
+      "match": true
+    },
+    {
+      "name": "comment",
+      "ok": true,
+      "steps": 367100,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 2,
+      "expected_bytes": 2,
+      "match": true
+    },
+    {
+      "name": "symbol_const",
+      "ok": true,
+      "steps": 371762,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 4,
+      "expected_bytes": 4,
+      "match": true
+    },
+    {
+      "name": "symbol_arith",
+      "ok": true,
+      "steps": 370190,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 4,
+      "expected_bytes": 4,
+      "match": true
+    },
+    {
+      "name": "forward_word",
+      "ok": true,
+      "steps": 371716,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 5,
+      "expected_bytes": 5,
+      "match": true
+    },
+    {
+      "name": "forward_abs",
+      "ok": true,
+      "steps": 377650,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 6,
+      "expected_bytes": 6,
+      "match": true
+    },
+    {
+      "name": "forward_branch",
+      "ok": true,
+      "steps": 376368,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 5,
+      "expected_bytes": 5,
+      "match": true
+    },
+    {
+      "name": "char_literal",
+      "ok": true,
+      "steps": 365353,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 2,
+      "expected_bytes": 2,
+      "match": true
+    },
+    {
+      "name": "wrong_opcode",
+      "ok": true,
+      "steps": 366515,
+      "status": 5,
+      "expected_status": 5,
+      "bytes": 0,
+      "expected_bytes": 0,
+      "match": true
+    },
+    {
+      "name": "undefined_label",
+      "ok": true,
+      "steps": 365866,
+      "status": 6,
+      "expected_status": 6,
+      "bytes": 2,
+      "expected_bytes": 2,
+      "match": true
+    },
+    {
+      "name": "bad_data",
+      "ok": true,
+      "steps": 365188,
+      "status": 6,
+      "expected_status": 6,
+      "bytes": 1,
+      "expected_bytes": 1,
+      "match": true
+    },
+    {
+      "name": "zero_page",
+      "ok": true,
+      "steps": 375731,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 4,
+      "expected_bytes": 4,
+      "match": true
+    },
+    {
+      "name": "indirect",
+      "ok": true,
+      "steps": 372507,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 4,
+      "expected_bytes": 4,
+      "match": true
+    },
+    {
+      "name": "long_indexed",
+      "ok": true,
+      "steps": 375763,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 6,
+      "expected_bytes": 6,
+      "match": true
+    },
+    {
+      "name": "multiple_labels",
+      "ok": true,
+      "steps": 369477,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 2,
+      "expected_bytes": 2,
+      "match": true
+    },
+    {
+      "name": "random00",
+      "ok": true,
+      "steps": 411989,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 26,
+      "expected_bytes": 26,
+      "match": true
+    },
+    {
+      "name": "random01",
+      "ok": true,
+      "steps": 400604,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 17,
+      "expected_bytes": 17,
+      "match": true
+    },
+    {
+      "name": "random02",
+      "ok": true,
+      "steps": 389128,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 13,
+      "expected_bytes": 13,
+      "match": true
+    },
+    {
+      "name": "random03",
+      "ok": true,
+      "steps": 400135,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 20,
+      "expected_bytes": 20,
+      "match": true
+    },
+    {
+      "name": "random04",
+      "ok": true,
+      "steps": 393404,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 16,
+      "expected_bytes": 16,
+      "match": true
+    },
+    {
+      "name": "random05",
+      "ok": true,
+      "steps": 388529,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 16,
+      "expected_bytes": 16,
+      "match": true
+    },
+    {
+      "name": "random06",
+      "ok": true,
+      "steps": 401636,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 22,
+      "expected_bytes": 22,
+      "match": true
+    },
+    {
+      "name": "random07",
+      "ok": true,
+      "steps": 403476,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 21,
+      "expected_bytes": 21,
+      "match": true
+    },
+    {
+      "name": "random08",
+      "ok": true,
+      "steps": 378839,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 11,
+      "expected_bytes": 11,
+      "match": true
+    },
+    {
+      "name": "random09",
+      "ok": true,
+      "steps": 406703,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 25,
+      "expected_bytes": 25,
+      "match": true
+    },
+    {
+      "name": "random10",
+      "ok": true,
+      "steps": 395668,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 19,
+      "expected_bytes": 19,
+      "match": true
+    },
+    {
+      "name": "random11",
+      "ok": true,
+      "steps": 411035,
+      "status": 0,
+      "expected_status": 0,
+      "bytes": 22,
+      "expected_bytes": 22,
+      "match": true
+    }
+  ]
+}

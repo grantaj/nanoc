@@ -1,0 +1,386 @@
+[
+  {
+    "name": "__L_process_source_line_cursor",
+    "function": "process_source_line",
+    "old": 51235,
+    "zp": 17,
+    "size": 1,
+    "refs": 26
+  },
+  {
+    "name": "__L_assemble_instruction_argument_length",
+    "function": "assemble_instruction",
+    "old": 51169,
+    "zp": 18,
+    "size": 1,
+    "refs": 21
+  },
+  {
+    "name": "__L_assemble_instruction_argument",
+    "function": "assemble_instruction",
+    "old": 51167,
+    "zp": 19,
+    "size": 2,
+    "refs": 34
+  },
+  {
+    "name": "source_line_length",
+    "function": null,
+    "old": 29956,
+    "zp": 21,
+    "size": 1,
+    "refs": 17
+  },
+  {
+    "name": "source_depth",
+    "function": null,
+    "old": 30218,
+    "zp": 22,
+    "size": 2,
+    "refs": 30
+  },
+  {
+    "name": "__L_parse_value_position",
+    "function": "parse_value",
+    "old": 51087,
+    "zp": 24,
+    "size": 1,
+    "refs": 14
+  },
+  {
+    "name": "__L_assemble_data_list_cursor",
+    "function": "assemble_data_list",
+    "old": 51188,
+    "zp": 18,
+    "size": 1,
+    "refs": 14
+  },
+  {
+    "name": "captured_addend",
+    "function": null,
+    "old": 50970,
+    "zp": 25,
+    "size": 2,
+    "refs": 26
+  },
+  {
+    "name": "atom_used",
+    "function": null,
+    "old": 50977,
+    "zp": 27,
+    "size": 1,
+    "refs": 13
+  },
+  {
+    "name": "value_result",
+    "function": null,
+    "old": 50966,
+    "zp": 28,
+    "size": 2,
+    "refs": 23
+  },
+  {
+    "name": "ass_image_length",
+    "function": null,
+    "old": 29696,
+    "zp": 30,
+    "size": 2,
+    "refs": 20
+  },
+  {
+    "name": "__L_resolve_fixups_for_symbol_i",
+    "function": "resolve_fixups_for_symbol",
+    "old": 51010,
+    "zp": 18,
+    "size": 2,
+    "refs": 20
+  },
+  {
+    "name": "captured_prefix",
+    "function": null,
+    "old": 50972,
+    "zp": 32,
+    "size": 1,
+    "refs": 10
+  },
+  {
+    "name": "__L_scan_argument_i",
+    "function": "scan_argument",
+    "old": 51212,
+    "zp": 18,
+    "size": 1,
+    "refs": 10
+  },
+  {
+    "name": "__L_stage_unresolved_instruction_status",
+    "function": "stage_unresolved_instruction",
+    "old": 51137,
+    "zp": 24,
+    "size": 1,
+    "refs": 8
+  },
+  {
+    "name": "__L_scan_argument_quote",
+    "function": "scan_argument",
+    "old": 51213,
+    "zp": 19,
+    "size": 1,
+    "refs": 8
+  },
+  {
+    "name": "__L_open_include_i",
+    "function": "open_include",
+    "old": 51204,
+    "zp": 18,
+    "size": 1,
+    "refs": 8
+  },
+  {
+    "name": "__L_find_opcode_mnemonic",
+    "function": "find_opcode",
+    "old": 51101,
+    "zp": 24,
+    "size": 1,
+    "refs": 8
+  },
+  {
+    "name": "__L_assemble_data_list_length",
+    "function": "assemble_data_list",
+    "old": 51186,
+    "zp": 19,
+    "size": 1,
+    "refs": 8
+  },
+  {
+    "name": "__L_open_include_argument",
+    "function": "open_include",
+    "old": 51198,
+    "zp": 19,
+    "size": 2,
+    "refs": 14
+  },
+  {
+    "name": "__L_stage_resolved_instruction_opcode",
+    "function": "stage_resolved_instruction",
+    "old": 51113,
+    "zp": 24,
+    "size": 1,
+    "refs": 7
+  },
+  {
+    "name": "__L_stage_data_value_status",
+    "function": "stage_data_value",
+    "old": 51180,
+    "zp": 20,
+    "size": 1,
+    "refs": 7
+  },
+  {
+    "name": "__L_open_include_output",
+    "function": "open_include",
+    "old": 51203,
+    "zp": 24,
+    "size": 1,
+    "refs": 7
+  },
+  {
+    "name": "__L_define_constant_symbol",
+    "function": "define_constant",
+    "old": 51054,
+    "zp": 18,
+    "size": 2,
+    "refs": 12
+  },
+  {
+    "name": "__L_scan_argument_last",
+    "function": "scan_argument",
+    "old": 51214,
+    "zp": 20,
+    "size": 1,
+    "refs": 6
+  },
+  {
+    "name": "__L_same_text_a_length",
+    "function": "same_text",
+    "old": 50983,
+    "zp": 18,
+    "size": 1,
+    "refs": 6
+  },
+  {
+    "name": "__L_read_source_line_c",
+    "function": "read_source_line",
+    "old": 51208,
+    "zp": 17,
+    "size": 2,
+    "refs": 11
+  },
+  {
+    "name": "__L_same_text_b",
+    "function": "same_text",
+    "old": 50984,
+    "zp": 19,
+    "size": 2,
+    "refs": 10
+  },
+  {
+    "name": "__L_patch_word_chain_stage",
+    "function": "patch_word_chain",
+    "old": 51060,
+    "zp": 18,
+    "size": 2,
+    "refs": 10
+  },
+  {
+    "name": "__L_find_mnemonic_candidate",
+    "function": "find_mnemonic",
+    "old": 51099,
+    "zp": 24,
+    "size": 1,
+    "refs": 5
+  },
+  {
+    "name": "__L_assemble_string_argument",
+    "function": "assemble_string",
+    "old": 51193,
+    "zp": 18,
+    "size": 2,
+    "refs": 8
+  },
+  {
+    "name": "__L_all_symbols_defined_i",
+    "function": "all_symbols_defined",
+    "old": 51246,
+    "zp": 17,
+    "size": 2,
+    "refs": 8
+  },
+  {
+    "name": "__L_all_fixups_resolved_i",
+    "function": "all_fixups_resolved",
+    "old": 51248,
+    "zp": 17,
+    "size": 2,
+    "refs": 8
+  },
+  {
+    "name": "__L_scan_argument_start",
+    "function": "scan_argument",
+    "old": 51211,
+    "zp": 24,
+    "size": 1,
+    "refs": 4
+  },
+  {
+    "name": "__L_assemble_string_i",
+    "function": "assemble_string",
+    "old": 51196,
+    "zp": 20,
+    "size": 1,
+    "refs": 4
+  },
+  {
+    "name": "__L_same_text_i",
+    "function": "same_text",
+    "old": 50987,
+    "zp": 24,
+    "size": 1,
+    "refs": 3
+  },
+  {
+    "name": "__L_resolve_fixups_for_symbol_kind",
+    "function": "resolve_fixups_for_symbol",
+    "old": 51012,
+    "zp": 20,
+    "size": 1,
+    "refs": 3
+  },
+  {
+    "name": "__L_process_symbol_name_length",
+    "function": "process_symbol",
+    "old": 51224,
+    "zp": 20,
+    "size": 1,
+    "refs": 3
+  },
+  {
+    "name": "__L_define_label_length",
+    "function": "define_label",
+    "old": 51066,
+    "zp": 24,
+    "size": 1,
+    "refs": 3
+  },
+  {
+    "name": "__L_define_constant_length",
+    "function": "define_constant",
+    "old": 51051,
+    "zp": 24,
+    "size": 1,
+    "refs": 3
+  },
+  {
+    "name": "__L_assemble_string_length",
+    "function": "assemble_string",
+    "old": 51195,
+    "zp": 24,
+    "size": 1,
+    "refs": 3
+  },
+  {
+    "name": "__L_reset_assembler_directory",
+    "function": "reset_assembler",
+    "old": 51243,
+    "zp": 17,
+    "size": 2,
+    "refs": 4
+  },
+  {
+    "name": "__L_reset_assembler_default_origin",
+    "function": "reset_assembler",
+    "old": 51241,
+    "zp": 19,
+    "size": 2,
+    "refs": 4
+  },
+  {
+    "name": "__L_stage_resolved_relative_status",
+    "function": "stage_resolved_relative",
+    "old": 51126,
+    "zp": 24,
+    "size": 1,
+    "refs": 2
+  },
+  {
+    "name": "__L_reset_assembler_directory_length",
+    "function": "reset_assembler",
+    "old": 51245,
+    "zp": 24,
+    "size": 1,
+    "refs": 2
+  },
+  {
+    "name": "__L_read_source_line_handle",
+    "function": "read_source_line",
+    "old": 51210,
+    "zp": 19,
+    "size": 1,
+    "refs": 2
+  },
+  {
+    "name": "__L_short_mode_for_index_index",
+    "function": "short_mode_for_index",
+    "old": 51139,
+    "zp": 24,
+    "size": 1,
+    "refs": 1
+  },
+  {
+    "name": "__L_long_mode_for_index_index",
+    "function": "long_mode_for_index",
+    "old": 51140,
+    "zp": 24,
+    "size": 1,
+    "refs": 1
+  }
+]

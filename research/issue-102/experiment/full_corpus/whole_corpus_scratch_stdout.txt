@@ -1,0 +1,4 @@
+local packed passes 44 failed 0 naive total static temps 673 peak per-function temps 72 max packed 8
+blocked: []
+cross packed passes 44 failed 0 naive total static temps 658 peak per-function temps 71 max packed 8
+blocked: []

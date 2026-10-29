@@ -1,0 +1,48 @@
+functions 44 labels 791 duplicate definitions [] unresolved refs [('ass_assemble', '__call_io_close_0'), ('ass_assemble', '__call_io_open_0'), ('ass_assemble', '__call_io_open_1'), ('ass_assemble', 'io_close'), ('ass_assemble', 'io_open'), ('close_source_tree', '__call_io_close_0'), ('close_source_tree', 'io_close'), ('open_include', '__call_io_open_0'), ('open_include', '__call_io_open_1'), ('open_include', 'io_open'), ('read_source_line', '__call_io_read_0'), ('read_source_line', 'io_read')]
+external refs ['__call_io_close_0', '__call_io_open_0', '__call_io_open_1', '__call_io_read_0', 'io_close', 'io_open', 'io_read']
+symbolic listing lines 7791 characters 214212
+all_fixups_resolved              expected= 121 strict= 121 status=  0 
+all_symbols_defined              expected= 121 strict= 121 status=  0 
+allocate_symbol                  expected= 719 strict= 719 status=  0 
+append_fixup                     expected= 401 strict= 401 status=  0 
+apply_byte_prefix                expected= 139 strict= 139 status=  0 
+ass_assemble                     expected= 467 strict= 467 status=  0 
+assemble_data_list               expected= 310 strict= 310 status=  0 
+assemble_direct_value            expected= 860 strict= 860 status=  0 
+assemble_instruction             expected=1707 strict=1707 status=  0 
+assemble_mode_value              expected= 414 strict= 414 status=  0 
+assemble_string                  expected= 238 strict= 238 status=  0 
+close_source_tree                expected= 120 strict= 120 status=  0 
+define_constant                  expected= 300 strict= 300 status=  0 
+define_label                     expected= 631 strict= 631 status=  0 
+find_mnemonic                    expected= 361 strict= 361 status=  0 
+find_opcode                      expected= 201 strict= 201 status=  0 
+find_symbol                      expected= 494 strict= 494 status=  0 
+hex_nibble                       expected= 147 strict= 147 status=  0 
+intern_label                     expected= 276 strict= 276 status=  0 
+long_mode_for_index              expected=  38 strict=  38 status=  0 
+open_include                     expected= 760 strict= 760 status=  0 
+parse_atom                       expected=1160 strict=1160 status=  0 
+parse_value                      expected= 731 strict= 731 status=  0 
+patch_word_chain                 expected= 436 strict= 436 status=  0 
+process_instruction_like         expected= 547 strict= 547 status=  0 
+process_label                    expected= 195 strict= 195 status=  0 
+process_source_line              expected= 641 strict= 641 status=  0 
+process_symbol                   expected= 291 strict= 291 status=  0 
+read_source_line                 expected= 343 strict= 343 status=  0 
+relative_byte                    expected= 155 strict= 155 status=  0 
+reset_assembler                  expected= 113 strict= 113 status=  0 
+resolve_fixups_for_symbol        expected=1074 strict=1074 status=  0 
+same_text                        expected=  95 strict=  95 status=  0 
+scan_argument                    expected= 250 strict= 250 status=  0 
+scope_for_name                   expected=  99 strict=  99 status=  0 
+short_mode_for_index             expected=  38 strict=  38 status=  0 
+stage_byte                       expected= 144 strict= 144 status=  0 
+stage_data_value                 expected= 610 strict= 610 status=  0 
+stage_plain_word_reference       expected= 361 strict= 361 status=  0 
+stage_resolved_instruction       expected= 267 strict= 267 status=  0 
+stage_resolved_relative          expected= 226 strict= 226 status=  0 
+stage_unresolved_instruction     expected= 478 strict= 478 status=  0 
+trim_fixups                      expected= 145 strict= 145 status=  0 
+upper_char                       expected=  50 strict=  50 status=  0 
+STRICT SUCCESS 44 / 44

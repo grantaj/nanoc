@@ -1,0 +1,583 @@
+{
+  "count": 36,
+  "nominal_bytes_saved": 961,
+  "details": [
+    {
+      "helper": "__outline_01",
+      "nominal_saving": 308,
+      "sequence_bytes": 27,
+      "occurrences": 14,
+      "instructions": [
+        "sta __ap+1",
+        "lda __tmp0",
+        "sta __ix",
+        "lda __tmp1",
+        "sta __ix+1",
+        "clc",
+        "lda __ap",
+        "adc __ix",
+        "sta __ap",
+        "lda __ap+1",
+        "adc __ix+1",
+        "sta __ap+1",
+        "ldy #$00",
+        "lda (__ap),y"
+      ]
+    },
+    {
+      "helper": "__outline_02",
+      "nominal_saving": 84,
+      "sequence_bytes": 14,
+      "occurrences": 9,
+      "instructions": [
+        "sta __tmp0",
+        "lda #$00",
+        "sbc #$00",
+        "sta __tmp1",
+        "lda __L_assemble_instruction_argument",
+        "sta __ap",
+        "lda __L_assemble_instruction_argument+1"
+      ]
+    },
+    {
+      "helper": "__outline_03",
+      "nominal_saving": 71,
+      "sequence_bytes": 18,
+      "occurrences": 6,
+      "instructions": [
+        "rol",
+        "sta __ix+1",
+        "clc",
+        "lda __ix",
+        "adc #<symbol_payload",
+        "sta __ap",
+        "lda __ix+1",
+        "adc #>symbol_payload",
+        "sta __ap+1",
+        "ldy #$00"
+      ]
+    },
+    {
+      "helper": "__outline_04",
+      "nominal_saving": 38,
+      "sequence_bytes": 17,
+      "occurrences": 4,
+      "instructions": [
+        "clc",
+        "lda source_depth",
+        "adc #<source_handle",
+        "sta __ap",
+        "lda source_depth+1",
+        "adc #>source_handle",
+        "sta __ap+1",
+        "ldy #$00"
+      ]
+    },
+    {
+      "helper": "__outline_05",
+      "nominal_saving": 32,
+      "sequence_bytes": 15,
+      "occurrences": 4,
+      "instructions": [
+        "lda __L_assemble_instruction_argument",
+        "clc",
+        "adc #$01",
+        "sta __call_assemble_mode_value_2",
+        "lda __L_assemble_instruction_argument+1",
+        "adc #$00",
+        "sta __call_assemble_mode_value_2+1"
+      ]
+    },
+    {
+      "helper": "__outline_06",
+      "nominal_saving": 27,
+      "sequence_bytes": 34,
+      "occurrences": 2,
+      "instructions": [
+        "sta __call_append_fixup_0",
+        "lda __L_stage_unresolved_instruction_stage",
+        "sta __call_append_fixup_1",
+        "lda __L_stage_unresolved_instruction_stage+1",
+        "sta __call_append_fixup_1+1",
+        "lda __L_stage_unresolved_instruction_symbol",
+        "sta __call_append_fixup_2",
+        "lda __L_stage_unresolved_instruction_symbol+1",
+        "sta __call_append_fixup_2+1",
+        "lda __L_stage_unresolved_instruction_addend",
+        "sta __call_append_fixup_3",
+        "lda __L_stage_unresolved_instruction_addend+1",
+        "sta __call_append_fixup_3+1",
+        "lda __L_stage_unresolved_instruction_prefix"
+      ]
+    },
+    {
+      "helper": "__outline_07",
+      "nominal_saving": 26,
+      "sequence_bytes": 13,
+      "occurrences": 4,
+      "instructions": [
+        "lda __L_process_instruction_like_name",
+        "sta __call_same_text_0",
+        "lda __L_process_instruction_like_name+1",
+        "sta __call_same_text_0+1",
+        "lda __L_process_instruction_like_name_length",
+        "sta __call_same_text_1"
+      ]
+    },
+    {
+      "helper": "__outline_08",
+      "nominal_saving": 20,
+      "sequence_bytes": 27,
+      "occurrences": 2,
+      "instructions": [
+        "lda __L_parse_value_text",
+        "clc",
+        "adc __L_parse_value_position",
+        "sta __call_parse_atom_0",
+        "lda __L_parse_value_text+1",
+        "adc #$00",
+        "sta __call_parse_atom_0+1",
+        "lda __L_parse_value_length",
+        "sec",
+        "sbc __L_parse_value_position",
+        "sta __tmp0",
+        "lda #$00",
+        "sbc #$00",
+        "lda __tmp0"
+      ]
+    },
+    {
+      "helper": "__outline_09",
+      "nominal_saving": 20,
+      "sequence_bytes": 27,
+      "occurrences": 2,
+      "instructions": [
+        "sta __tmp0",
+        "lda #$00",
+        "adc #$00",
+        "sta __tmp1",
+        "clc",
+        "lda __tmp0",
+        "adc #<mnemonic_table",
+        "sta __ap",
+        "lda __tmp1",
+        "adc #>mnemonic_table",
+        "sta __ap+1",
+        "ldy #$00",
+        "lda (__ap),y",
+        "cmp __tmp2"
+      ]
+    },
+    {
+      "helper": "__outline_10",
+      "nominal_saving": 20,
+      "sequence_bytes": 15,
+      "occurrences": 3,
+      "instructions": [
+        "sta (__ap),y",
+        "lda __L_append_fixup_n",
+        "asl",
+        "sta __ix",
+        "lda __L_append_fixup_n+1",
+        "rol",
+        "sta __ix+1",
+        "clc",
+        "lda __ix"
+      ]
+    },
+    {
+      "helper": "__outline_11",
+      "nominal_saving": 20,
+      "sequence_bytes": 15,
+      "occurrences": 3,
+      "instructions": [
+        "clc",
+        "lda __L_resolve_fixups_for_symbol_stage",
+        "adc #<ass_image",
+        "sta __ap",
+        "lda __L_resolve_fixups_for_symbol_stage+1",
+        "adc #>ass_image",
+        "sta __ap+1",
+        "ldy #$00"
+      ]
+    },
+    {
+      "helper": "__outline_12",
+      "nominal_saving": 20,
+      "sequence_bytes": 9,
+      "occurrences": 5,
+      "instructions": [
+        "sec",
+        "sbc #$01",
+        "sta __tmp0",
+        "lda #$00",
+        "sbc #$00"
+      ]
+    },
+    {
+      "helper": "__outline_13",
+      "nominal_saving": 19,
+      "sequence_bytes": 26,
+      "occurrences": 2,
+      "instructions": [
+        "sta __call_stage_unresolved_instruction_1",
+        "lda captured_symbol",
+        "sta __call_stage_unresolved_instruction_2",
+        "lda captured_symbol+1",
+        "sta __call_stage_unresolved_instruction_2+1",
+        "lda captured_addend",
+        "sta __call_stage_unresolved_instruction_3",
+        "lda captured_addend+1",
+        "sta __call_stage_unresolved_instruction_3+1",
+        "lda captured_prefix"
+      ]
+    },
+    {
+      "helper": "__outline_14",
+      "nominal_saving": 18,
+      "sequence_bytes": 25,
+      "occurrences": 2,
+      "instructions": [
+        "lda source_depth",
+        "sec",
+        "sbc #$01",
+        "sta __tmp0",
+        "lda source_depth+1",
+        "sbc #$00",
+        "sta __tmp1",
+        "lda __tmp0",
+        "sta source_depth",
+        "lda __tmp1",
+        "sta source_depth+1"
+      ]
+    },
+    {
+      "helper": "__outline_15",
+      "nominal_saving": 18,
+      "sequence_bytes": 14,
+      "occurrences": 3,
+      "instructions": [
+        "sta __tmp0",
+        "lda #$00",
+        "adc #$00",
+        "sta __tmp1",
+        "lda __L_open_include_argument",
+        "sta __ap",
+        "lda __L_open_include_argument+1"
+      ]
+    },
+    {
+      "helper": "__outline_16",
+      "nominal_saving": 17,
+      "sequence_bytes": 10,
+      "occurrences": 4,
+      "instructions": [
+        "lda __L_parse_atom_text",
+        "sta __ap",
+        "lda __L_parse_atom_text+1",
+        "sta __ap+1",
+        "lda (__ap),y"
+      ]
+    },
+    {
+      "helper": "__outline_17",
+      "nominal_saving": 16,
+      "sequence_bytes": 13,
+      "occurrences": 3,
+      "instructions": [
+        "lda __L_resolve_fixups_for_symbol_i",
+        "asl",
+        "sta __ix",
+        "lda __L_resolve_fixups_for_symbol_i+1",
+        "rol",
+        "sta __ix+1",
+        "clc",
+        "lda __ix"
+      ]
+    },
+    {
+      "helper": "__outline_18",
+      "nominal_saving": 14,
+      "sequence_bytes": 12,
+      "occurrences": 3,
+      "instructions": [
+        "sta __call_stage_resolved_instruction_1",
+        "lda value_result",
+        "sta __call_stage_resolved_instruction_2",
+        "lda value_result+1",
+        "sta __call_stage_resolved_instruction_2+1"
+      ]
+    },
+    {
+      "helper": "__outline_19",
+      "nominal_saving": 14,
+      "sequence_bytes": 12,
+      "occurrences": 3,
+      "instructions": [
+        "ldy source_line_length",
+        "lda #$00",
+        "sta source_line,y",
+        "lda #$01",
+        "ldx #$00"
+      ]
+    },
+    {
+      "helper": "__outline_20",
+      "nominal_saving": 12,
+      "sequence_bytes": 19,
+      "occurrences": 2,
+      "instructions": [
+        "adc #$00",
+        "sta __tmp1",
+        "clc",
+        "lda __tmp0",
+        "adc #<ass_image",
+        "sta __ap",
+        "lda __tmp1",
+        "adc #>ass_image",
+        "sta __ap+1",
+        "ldy #$00"
+      ]
+    },
+    {
+      "helper": "__outline_21",
+      "nominal_saving": 12,
+      "sequence_bytes": 19,
+      "occurrences": 2,
+      "instructions": [
+        "lda ass_origin",
+        "clc",
+        "adc ass_image_length",
+        "sta __tmp0",
+        "lda ass_origin+1",
+        "adc ass_image_length+1",
+        "sta __tmp1",
+        "lda __tmp0"
+      ]
+    },
+    {
+      "helper": "__outline_22",
+      "nominal_saving": 12,
+      "sequence_bytes": 11,
+      "occurrences": 3,
+      "instructions": [
+        "sta atom_value+1",
+        "lda #$00",
+        "sta atom_kind",
+        "lda VALUE_OK"
+      ]
+    },
+    {
+      "helper": "__outline_23",
+      "nominal_saving": 11,
+      "sequence_bytes": 18,
+      "occurrences": 2,
+      "instructions": [
+        "rol",
+        "sta __ix+1",
+        "clc",
+        "lda __ix",
+        "adc #<symbol_name_offset",
+        "sta __ap",
+        "lda __ix+1",
+        "adc #>symbol_name_offset",
+        "sta __ap+1",
+        "ldy #$00"
+      ]
+    },
+    {
+      "helper": "__outline_24",
+      "nominal_saving": 10,
+      "sequence_bytes": 17,
+      "occurrences": 2,
+      "instructions": [
+        "asl __mw",
+        "rol __mw+1",
+        "clc",
+        "lda __tmp2",
+        "adc __mw",
+        "sta __tmp2",
+        "lda __tmp3",
+        "adc __mw+1",
+        "sta __tmp3"
+      ]
+    },
+    {
+      "helper": "__outline_25",
+      "nominal_saving": 10,
+      "sequence_bytes": 10,
+      "occurrences": 3,
+      "instructions": [
+        "sta __tmp0",
+        "lda #$00",
+        "sbc #$00",
+        "sta __tmp1",
+        "lda __tmp0"
+      ]
+    },
+    {
+      "helper": "__outline_26",
+      "nominal_saving": 10,
+      "sequence_bytes": 10,
+      "occurrences": 3,
+      "instructions": [
+        "lda __L_find_mnemonic_name",
+        "sta __ap",
+        "lda __L_find_mnemonic_name+1",
+        "sta __ap+1",
+        "lda (__ap),y"
+      ]
+    },
+    {
+      "helper": "__outline_27",
+      "nominal_saving": 9,
+      "sequence_bytes": 16,
+      "occurrences": 2,
+      "instructions": [
+        "asl __tmp1",
+        "rol __tmp2",
+        "asl __tmp1",
+        "rol __tmp2",
+        "asl __tmp1",
+        "rol __tmp2",
+        "asl __tmp1",
+        "rol __tmp2"
+      ]
+    },
+    {
+      "helper": "__outline_28",
+      "nominal_saving": 9,
+      "sequence_bytes": 16,
+      "occurrences": 2,
+      "instructions": [
+        "ldy __L_assemble_data_list_cursor",
+        "lda __L_assemble_data_list_argument",
+        "sta __ap",
+        "lda __L_assemble_data_list_argument+1",
+        "sta __ap+1",
+        "lda (__ap),y",
+        "sta __L_assemble_data_list_c"
+      ]
+    },
+    {
+      "helper": "__outline_29",
+      "nominal_saving": 8,
+      "sequence_bytes": 15,
+      "occurrences": 2,
+      "instructions": [
+        "lda fixup_count",
+        "sec",
+        "sbc #$01",
+        "sta __tmp0",
+        "lda fixup_count+1",
+        "sbc #$00",
+        "sta __tmp1"
+      ]
+    },
+    {
+      "helper": "__outline_30",
+      "nominal_saving": 8,
+      "sequence_bytes": 15,
+      "occurrences": 2,
+      "instructions": [
+        "clc",
+        "lda __L_resolve_fixups_for_symbol_i",
+        "adc #<fixup_kind",
+        "sta __ap",
+        "lda __L_resolve_fixups_for_symbol_i+1",
+        "adc #>fixup_kind",
+        "sta __ap+1",
+        "ldy #$00"
+      ]
+    },
+    {
+      "helper": "__outline_31",
+      "nominal_saving": 8,
+      "sequence_bytes": 15,
+      "occurrences": 2,
+      "instructions": [
+        "clc",
+        "lda __L_patch_word_chain_stage",
+        "adc #<ass_image",
+        "sta __ap",
+        "lda __L_patch_word_chain_stage+1",
+        "adc #>ass_image",
+        "sta __ap+1",
+        "ldy #$00"
+      ]
+    },
+    {
+      "helper": "__outline_32",
+      "nominal_saving": 8,
+      "sequence_bytes": 15,
+      "occurrences": 2,
+      "instructions": [
+        "clc",
+        "lda __L_define_label_symbol",
+        "adc #<symbol_kind",
+        "sta __ap",
+        "lda __L_define_label_symbol+1",
+        "adc #>symbol_kind",
+        "sta __ap+1",
+        "ldy #$00"
+      ]
+    },
+    {
+      "helper": "__outline_33",
+      "nominal_saving": 8,
+      "sequence_bytes": 15,
+      "occurrences": 2,
+      "instructions": [
+        "sta __tmp3",
+        "lda __tmp2",
+        "sta __L_parse_atom_value",
+        "lda __tmp3",
+        "sta __L_parse_atom_value+1",
+        "inc atom_used",
+        "inc __L_parse_atom_i"
+      ]
+    },
+    {
+      "helper": "__outline_34",
+      "nominal_saving": 8,
+      "sequence_bytes": 15,
+      "occurrences": 2,
+      "instructions": [
+        "lda __L_assemble_instruction_opcode",
+        "sta __call_stage_resolved_instruction_0",
+        "lda MODE_ACCUMULATOR",
+        "sta __call_stage_resolved_instruction_1",
+        "lda #$00",
+        "sta __call_stage_resolved_instruction_2",
+        "sta __call_stage_resolved_instruction_2+1"
+      ]
+    },
+    {
+      "helper": "__outline_35",
+      "nominal_saving": 8,
+      "sequence_bytes": 15,
+      "occurrences": 2,
+      "instructions": [
+        "lda __L_process_instruction_like_argument",
+        "sta __call_assemble_data_list_0",
+        "lda __L_process_instruction_like_argument+1",
+        "sta __call_assemble_data_list_0+1",
+        "lda __L_process_instruction_like_argument_length",
+        "sta __call_assemble_data_list_1"
+      ]
+    },
+    {
+      "helper": "__outline_36",
+      "nominal_saving": 8,
+      "sequence_bytes": 9,
+      "occurrences": 3,
+      "instructions": [
+        "lda (__ap),y",
+        "sta __tmp0",
+        "iny",
+        "lda (__ap),y",
+        "sta __tmp1"
+      ]
+    }
+  ]
+}

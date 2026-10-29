@@ -1,0 +1,103 @@
+ 1/44 upper_char                      ok        50     50 
+ 2/44 same_text                       ok        95     95 
+ 3/44 apply_byte_prefix               ok       139    139 
+ 4/44 hex_nibble                      ok       147    147 
+ 5/44 append_fixup                    ok       401    401 
+ 6/44 relative_byte                   ok       155    155 
+ 7/44 trim_fixups                     ok       148    145 
+ 8/44 resolve_fixups_for_symbol       ok      1109   1074 
+ 9/44 scope_for_name                  ok       102     99 
+10/44 find_symbol                     ok       497    494 
+11/44 allocate_symbol                 ok       719    719 
+12/44 intern_label                    ok       279    276 
+13/44 define_constant                 ok       300    300 
+14/44 patch_word_chain                ok       436    436 
+15/44 define_label                    ok       634    631 
+16/44 parse_atom                      ok      1377   1160 
+17/44 parse_value                     ok       755    731 
+18/44 find_mnemonic                   ok       361    361 
+19/44 find_opcode                     ok       207    201 
+20/44 stage_byte                      ok       144    144 
+21/44 stage_plain_word_reference      ok       361    361 
+22/44 stage_resolved_instruction      ok       267    267 
+23/44 stage_resolved_relative         ok       226    226 
+24/44 stage_unresolved_instruction    ok       478    478 
+25/44 short_mode_for_index            ok        38     38 
+26/44 long_mode_for_index             ok        38     38 
+27/44 assemble_mode_value             ok       414    414 
+28/44 assemble_direct_value           ok       860    860 
+29/44 assemble_instruction            ok      1760   1707 
+30/44 stage_data_value                ok       610    610 
+31/44 assemble_data_list              ok       310    310 
+32/44 assemble_string                 ok       244    238 
+33/44 open_include                    ok       775    760 
+34/44 read_source_line                ok       343    343 
+35/44 close_source_tree               ok       120    120 
+36/44 scan_argument                   ok       250    250 
+37/44 process_label                   ok       198    195 
+38/44 process_symbol                  ok       294    291 
+39/44 process_instruction_like        ok       559    547 
+40/44 process_source_line             ok       710    641 
+41/44 reset_assembler                 ok       113    113 
+42/44 all_symbols_defined             ok       141    121 
+43/44 all_fixups_resolved             ok       141    121 
+44/44 ass_assemble                    ok       473    467 
+\nSUMMARY Counter({'ok': 44}) Counter({'ok': 44}) Counter({'ok': 44})
+bytes of fully lowered (LOCAL only) 17778
+functions 44 labels 791 duplicate definitions [] unresolved refs [('ass_assemble', '__call_io_close_0'), ('ass_assemble', '__call_io_open_0'), ('ass_assemble', '__call_io_open_1'), ('ass_assemble', 'io_close'), ('ass_assemble', 'io_open'), ('close_source_tree', '__call_io_close_0'), ('close_source_tree', 'io_close'), ('open_include', '__call_io_open_0'), ('open_include', '__call_io_open_1'), ('open_include', 'io_open'), ('read_source_line', '__call_io_read_0'), ('read_source_line', 'io_read')]
+external refs ['__call_io_close_0', '__call_io_open_0', '__call_io_open_1', '__call_io_read_0', 'io_close', 'io_open', 'io_read']
+symbolic listing lines 7791 characters 214212
+functions 44 labels 791 duplicate definitions [] unresolved refs [('ass_assemble', '__call_io_close_0'), ('ass_assemble', '__call_io_open_0'), ('ass_assemble', '__call_io_open_1'), ('ass_assemble', 'io_close'), ('ass_assemble', 'io_open'), ('close_source_tree', '__call_io_close_0'), ('close_source_tree', 'io_close'), ('open_include', '__call_io_open_0'), ('open_include', '__call_io_open_1'), ('open_include', 'io_open'), ('read_source_line', '__call_io_read_0'), ('read_source_line', 'io_read')]
+external refs ['__call_io_close_0', '__call_io_open_0', '__call_io_open_1', '__call_io_read_0', 'io_close', 'io_open', 'io_read']
+symbolic listing lines 7791 characters 214212
+all_fixups_resolved              expected= 121 strict= 121 status=  0 
+all_symbols_defined              expected= 121 strict= 121 status=  0 
+allocate_symbol                  expected= 719 strict= 719 status=  0 
+append_fixup                     expected= 401 strict= 401 status=  0 
+apply_byte_prefix                expected= 139 strict= 139 status=  0 
+ass_assemble                     expected= 467 strict= 467 status=  0 
+assemble_data_list               expected= 310 strict= 310 status=  0 
+assemble_direct_value            expected= 860 strict= 860 status=  0 
+assemble_instruction             expected=1707 strict=1707 status=  0 
+assemble_mode_value              expected= 414 strict= 414 status=  0 
+assemble_string                  expected= 238 strict= 238 status=  0 
+close_source_tree                expected= 120 strict= 120 status=  0 
+define_constant                  expected= 300 strict= 300 status=  0 
+define_label                     expected= 631 strict= 631 status=  0 
+find_mnemonic                    expected= 361 strict= 361 status=  0 
+find_opcode                      expected= 201 strict= 201 status=  0 
+find_symbol                      expected= 494 strict= 494 status=  0 
+hex_nibble                       expected= 147 strict= 147 status=  0 
+intern_label                     expected= 276 strict= 276 status=  0 
+long_mode_for_index              expected=  38 strict=  38 status=  0 
+open_include                     expected= 760 strict= 760 status=  0 
+parse_atom                       expected=1160 strict=1160 status=  0 
+parse_value                      expected= 731 strict= 731 status=  0 
+patch_word_chain                 expected= 436 strict= 436 status=  0 
+process_instruction_like         expected= 547 strict= 547 status=  0 
+process_label                    expected= 195 strict= 195 status=  0 
+process_source_line              expected= 641 strict= 641 status=  0 
+process_symbol                   expected= 291 strict= 291 status=  0 
+read_source_line                 expected= 343 strict= 343 status=  0 
+relative_byte                    expected= 155 strict= 155 status=  0 
+reset_assembler                  expected= 113 strict= 113 status=  0 
+resolve_fixups_for_symbol        expected=1074 strict=1074 status=  0 
+same_text                        expected=  95 strict=  95 status=  0 
+scan_argument                    expected= 250 strict= 250 status=  0 
+scope_for_name                   expected=  99 strict=  99 status=  0 
+short_mode_for_index             expected=  38 strict=  38 status=  0 
+stage_byte                       expected= 144 strict= 144 status=  0 
+stage_data_value                 expected= 610 strict= 610 status=  0 
+stage_plain_word_reference       expected= 361 strict= 361 status=  0 
+stage_resolved_instruction       expected= 267 strict= 267 status=  0 
+stage_resolved_relative          expected= 226 strict= 226 status=  0 
+stage_unresolved_instruction     expected= 478 strict= 478 status=  0 
+trim_fixups                      expected= 145 strict= 145 status=  0 
+upper_char                       expected=  50 strict=  50 status=  0 
+STRICT SUCCESS 44 / 44
+local packed passes 44 failed 0 naive total static temps 673 peak per-function temps 72 max packed 8
+blocked: []
+cross packed passes 44 failed 0 naive total static temps 658 peak per-function temps 71 max packed 8
+blocked: []
+stage_byte exact C versus emitted 6502 612 passed
+apply_byte_prefix exact C versus emitted 6502 1426 total passed
