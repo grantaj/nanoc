@@ -1,0 +1,66 @@
+--- full_corpus/ass.c
++++ full_corpus/ass.c
+@@ -119,6 +119,7 @@
+  * giving the host implementation extra target memory.
+  */
+ char ass_image[11264];
++char *ass_image_cursor;
+ int ass_image_length;
+ unsigned ass_origin;
+ 
+@@ -788,7 +789,8 @@
+     if (ass_image_length >= 11264) {
+         return ASSEMBLE_WORK_FULL;
+     }
+-    ass_image[ass_image_length] = value & 255;
++    ass_image_cursor[0] = value & 255;
++    ass_image_cursor = ass_image_cursor + 1;
+     ass_image_length = ass_image_length + 1;
+     return ASSEMBLE_OK;
+ }
+@@ -1696,6 +1698,7 @@
+ char reset_assembler(unsigned default_origin, char *directory, char directory_length)
+ {
+     ass_image_length = 0;
++    ass_image_cursor = ass_image;
+     ass_origin = default_origin & 65535;
+     source_depth = -1;
+     source_directory = directory;
+--- full_corpus/whole_corpus/stage_byte.c
++++ full_corpus/whole_corpus/stage_byte.c
+@@ -30,6 +30,7 @@
+ char opcode_mnemonic[256];
+ char opcode_mode[256];
+ char ass_image[11264];
++char *ass_image_cursor;
+ int ass_image_length;
+ unsigned ass_origin;
+ char source_line[256];
+@@ -132,7 +133,8 @@
+   {
+     return ASSEMBLE_WORK_FULL;
+   }
+-  ass_image[ass_image_length] = value & 255;
++  ass_image_cursor[0] = value & 255;
++  ass_image_cursor = ass_image_cursor + 1;
+   ass_image_length = ass_image_length + 1;
+   return ASSEMBLE_OK;
+ }
+--- full_corpus/whole_corpus/reset_assembler.c
++++ full_corpus/whole_corpus/reset_assembler.c
+@@ -30,6 +30,7 @@
+ char opcode_mnemonic[256];
+ char opcode_mode[256];
+ char ass_image[11264];
++char *ass_image_cursor;
+ int ass_image_length;
+ unsigned ass_origin;
+ char source_line[256];
+@@ -129,6 +130,7 @@
+ char reset_assembler(unsigned default_origin, char *directory, char directory_length)
+ {
+   ass_image_length = 0;
++  ass_image_cursor = ass_image;
+   ass_origin = default_origin & 65535;
+   source_depth = -1;
+   source_directory = directory;

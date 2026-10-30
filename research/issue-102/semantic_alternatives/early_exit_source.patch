@@ -1,0 +1,20 @@
+--- full_corpus/ass.c
++++ full_corpus/ass.c
+@@ -371,6 +371,7 @@
+                 while (j < length) {
+                     if (symbol_name_bytes[offset + j] != name[j]) {
+                         same = 0;
++                        break;
+                     }
+                     j = j + 1;
+                 }
+--- full_corpus/whole_corpus/find_symbol.c
++++ full_corpus/whole_corpus/find_symbol.c
+@@ -153,6 +153,7 @@
+           if (symbol_name_bytes[offset + j] != name[j])
+           {
+             same = 0;
++            break;
+           }
+           j = j + 1;
+         }
