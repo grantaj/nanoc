@@ -96,6 +96,7 @@ from pointer_home import PointerHomeBackend
 import os
 from scratch_allocator import allocate
 from natural6502 import Natural6502,Unsupported
+from natural6502_wide import Natural6502Wide
 from execute6502 import relax
 arrays=json.loads((S/'whole_corpus'/'arrays.json').read_text())
 assembly=[];size_records=[];global_tempmax=0
@@ -104,15 +105,23 @@ for f in funcs:
  t=TapeBuilder((S/'whole_corpus'/(name+'.c')).read_text()).build()
  b=(PointerHomeBackend if os.environ.get("POINTER_HOME") else NativeCompareBackend if os.environ.get("NATIVE_COMPARE") else RegisterFirstBackend if os.environ.get("REG_FIRST") else DirectAddressBackend)(t,arrays)
  raw=b.run();packed,info=allocate(t,b,raw)
- if os.environ.get('NATURAL6502'):
-  try:
-   candidate=Natural6502((S/'whole_corpus'/(name+'.c')).read_text(),arrays)
-   natural,ni=allocate(t,b,candidate.run())
-   if ni['instruction_bytes'] < info['instruction_bytes']:
-    packed,info=natural,ni
-    print('NATURAL',name,ni['instruction_bytes'],flush=True)
-  except Unsupported:
-   pass
+ if os.environ.get('NATURAL6502') or os.environ.get('NATURAL6502_WIDE'):
+  # The second, word/pointer-capable direct emitter extends the original
+  # by-construction byte convention. Independently compare both direct
+  # implementations with the frozen baseline; never force a regression.
+  direct_classes=(Natural6502,Natural6502Wide) if os.environ.get('NATURAL6502_WIDE') else (Natural6502,)
+  for cls in direct_classes:
+   if (cls is Natural6502Wide and 'WIDE_ALLOW' in os.environ and
+       name not in os.environ['WIDE_ALLOW'].split(',')):
+    continue
+   try:
+    candidate=cls((S/'whole_corpus'/(name+'.c')).read_text(),arrays)
+    natural,ni=allocate(t,b,candidate.run())
+    if ni['instruction_bytes'] < info['instruction_bytes']:
+     packed,info=natural,ni
+     print('NATURAL',name,cls.__name__,ni['instruction_bytes'],flush=True)
+   except Unsupported:
+    pass
  global_tempmax=max(global_tempmax,info['packed_bytes'])
  if info['packed_bytes']>8:raise AssertionError('ZP scratch overflow '+name)
  entries={z[:-1] for z in packed.splitlines() if z.endswith(':')}
