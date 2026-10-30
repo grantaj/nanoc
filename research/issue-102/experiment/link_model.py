@@ -93,16 +93,32 @@ from direct_address import DirectAddressBackend
 from register_first import RegisterFirstBackend
 from compare_native import NativeCompareBackend
 from pointer_home import PointerHomeBackend
+from machine_strategy import MachineStrategyBackend
 import os
 from scratch_allocator import allocate
 from execute6502 import relax
 arrays=json.loads((S/'whole_corpus'/'arrays.json').read_text())
 assembly=[];size_records=[];global_tempmax=0
+strategy_records=[]
 for f in funcs:
  name=f.decl.name
  t=TapeBuilder((S/'whole_corpus'/(name+'.c')).read_text()).build()
  b=(PointerHomeBackend if os.environ.get("POINTER_HOME") else NativeCompareBackend if os.environ.get("NATIVE_COMPARE") else RegisterFirstBackend if os.environ.get("REG_FIRST") else DirectAddressBackend)(t,arrays)
  raw=b.run();packed,info=allocate(t,b,raw)
+ if os.environ.get('MACHINE_STRATEGY'):
+  # Independent generator evaluates the exact same input source. The old
+  # backend is a separate *complete-function candidate*, not its superclass.
+  t_new=TapeBuilder((S/'whole_corpus'/(name+'.c')).read_text()).build()
+  candidate=MachineStrategyBackend(t_new,arrays)
+  cand_raw=candidate.run();cand_packed,cand_info=allocate(t_new,candidate,cand_raw)
+  mode=os.environ['MACHINE_STRATEGY']
+  choose=(mode=='only' or
+          (mode.startswith('force:') and name in mode[6:].split(',')) or
+          (mode=='choose' and cand_info['instruction_bytes']<info['instruction_bytes']))
+  strategy_records.append(dict(function=name, baseline_bytes=info['instruction_bytes'],
+        machine_bytes=cand_info['instruction_bytes'], selected='machine' if choose else 'baseline',
+        recipes=dict(candidate.decisions)))
+  if choose:t,b,packed,info=t_new,candidate,cand_packed,cand_info
  global_tempmax=max(global_tempmax,info['packed_bytes'])
  if info['packed_bytes']>8:raise AssertionError('ZP scratch overflow '+name)
  entries={z[:-1] for z in packed.splitlines() if z.endswith(':')}
@@ -122,7 +138,7 @@ for f in funcs:
  for k,v in t.strings.items():
   assembly.append(strs[k]+':')
   assembly.append('    byte '+','.join(str(x) for x in v))
- size_records.append({'name':name,'bytes':info['instruction_bytes'],'temps':info['temporary_values'],'packed_bytes':info['packed_bytes'],'address_hits':b.address_hits,'index_hits':b.index_hits,'a_residency_savings':getattr(b,'avoided_a_loads',0)})
+ size_records.append({'name':name,'bytes':info['instruction_bytes'],'temps':info['temporary_values'],'packed_bytes':info['packed_bytes'],'address_hits':getattr(b,'address_hits',0),'index_hits':getattr(b,'index_hits',0),'a_residency_savings':getattr(b,'avoided_a_loads',0)})
 
 # A precisely specified startup entry, invoked with an externally provided
 # source filename and expected 6502 result register ABI A/X.
@@ -159,5 +175,6 @@ P.joinpath('initialized.json').write_text(json.dumps({n:list(v) for n,v in initi
 P.joinpath('symbols.json').write_text(json.dumps(symbols,indent=2))
 P.joinpath('local_storage.json').write_text(json.dumps(local_storage,indent=2))
 P.joinpath('sizes.json').write_text(json.dumps(size_records,indent=2))
+if os.environ.get('MACHINE_STRATEGY'):P.joinpath('machine_strategy_choices.json').write_text(json.dumps(strategy_records,indent=2))
 P.joinpath('layout.json').write_text(json.dumps({'bss_base':BSS_BASE,'bss_end':bss_next,'bss_bytes':bss_next-BSS_BASE,'bss_limit':BSS_LIMIT,'functions':len(funcs),'initialized_bytes':sum(map(len,initialized.values())),'functions_instruction_bytes':sum(x['bytes'] for x in size_records),'max_packed_scratch':global_tempmax,'zp':ZP,'extern':extern},indent=2))
 print(json.dumps(json.loads(P.joinpath('layout.json').read_text()),indent=2))
