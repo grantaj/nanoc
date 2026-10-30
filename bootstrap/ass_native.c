@@ -1577,6 +1577,85 @@ int scan_argument(char start)
     return last - start;
 }
 
+
+/*
+ * Like ass/parser.asm, source text stays in the caller-owned line buffer.
+ * A statement is a transient pair of pointer/length views. Only a label
+ * leaves the rest of its line for another call to next_statement.
+ *
+ * Statement types: 0 end of line, 1 label, 2 assignment, 3 instruction/data.
+ */
+char source_cursor;
+char *statement_name;
+char statement_name_length;
+char *statement_argument;
+char statement_argument_length;
+
+char skip_source_space(char cursor)
+{
+    while (cursor < source_line_length) {
+        if (source_line[cursor] == ' ') {
+            cursor = cursor + 1;
+        } else {
+            if (source_line[cursor] == 9) {
+                cursor = cursor + 1;
+            } else {
+                break;
+            }
+        }
+    }
+    return cursor;
+}
+
+/* Scan one statement and leave names/arguments as views into source_line. */
+char next_statement()
+{
+    char start;
+
+    source_cursor = skip_source_space(source_cursor);
+    if (source_cursor >= source_line_length) {
+        return 0;
+    }
+    if (source_line[source_cursor] == ';') {
+        return 0;
+    }
+
+    start = source_cursor;
+    while (source_cursor < source_line_length) {
+        if (source_line[source_cursor] == ' ') {
+            break;
+        }
+        if (source_line[source_cursor] == 9) {
+            break;
+        }
+        source_cursor = source_cursor + 1;
+    }
+
+    statement_name = source_line + start;
+    statement_name_length = source_cursor - start;
+
+    if (statement_name[statement_name_length - 1] == ':') {
+        statement_name_length = statement_name_length - 1;
+        return 1;
+    }
+
+    source_cursor = skip_source_space(source_cursor);
+    if (source_cursor < source_line_length) {
+        if (source_line[source_cursor] == '=') {
+            source_cursor = skip_source_space(source_cursor + 1);
+            statement_argument = source_line + source_cursor;
+            statement_argument_length = scan_argument(source_cursor);
+            source_cursor = source_line_length;
+            return 2;
+        }
+    }
+
+    statement_argument = source_line + source_cursor;
+    statement_argument_length = scan_argument(source_cursor);
+    source_cursor = source_line_length;
+    return 3;
+}
+
 char process_label(char *name, char length)
 {
     char status;
@@ -1666,114 +1745,40 @@ char process_instruction_like(
     return assemble_instruction(name, name_length, argument, argument_length);
 }
 
+/* Parse the line once, dispatching each label before any trailing statement. */
 char process_source_line()
 {
-    char cursor;
-    char name_start;
-    char name_length;
-    char argument_start;
-    char argument_length;
+    char kind;
     char status;
 
-    cursor = 0;
-
-    while (cursor < source_line_length) {
-        while (cursor < source_line_length) {
-            if (source_line[cursor] == ' ') {
-                cursor = cursor + 1;
-            } else {
-                if (source_line[cursor] == 9) {
-                    cursor = cursor + 1;
-                } else {
-                    break;
-                }
-            }
-        }
-
-        if (cursor >= source_line_length) {
+    source_cursor = 0;
+    while (1) {
+        kind = next_statement();
+        if (kind == 0) {
             return ASSEMBLE_OK;
         }
-        if (source_line[cursor] == ';') {
-            return ASSEMBLE_OK;
-        }
-
-        name_start = cursor;
-        while (cursor < source_line_length) {
-            if (source_line[cursor] == ' ') {
-                break;
-            }
-            if (source_line[cursor] == 9) {
-                break;
-            }
-            cursor = cursor + 1;
-        }
-        name_length = cursor - name_start;
-        if (name_length == 0) {
-            return ASSEMBLE_BAD_STATEMENT;
-        }
-
-        if (source_line[name_start + name_length - 1] == ':') {
-            status = process_label(source_line + name_start, name_length - 1);
-            if (status != ASSEMBLE_OK) {
-                return status;
-            }
-            /*
-             * A label consumes only its own lexeme.  Continue so
-             * "label: word 0" remains one line and two statements.
-             */
+        if (kind == 1) {
+            status = process_label(statement_name, statement_name_length);
         } else {
-            while (cursor < source_line_length) {
-                if (source_line[cursor] == ' ') {
-                    cursor = cursor + 1;
-                } else {
-                    if (source_line[cursor] == 9) {
-                        cursor = cursor + 1;
-                    } else {
-                        break;
-                    }
+            if (kind == 2) {
+                if (statement_argument_length == 0) {
+                    return ASSEMBLE_BAD_SYMBOL;
                 }
+                status = process_symbol(
+                    statement_name, statement_name_length,
+                    statement_argument, statement_argument_length
+                );
+            } else {
+                status = process_instruction_like(
+                    statement_name, statement_name_length,
+                    statement_argument, statement_argument_length
+                );
             }
-
-            if (cursor < source_line_length) {
-                if (source_line[cursor] == '=') {
-                    cursor = cursor + 1;
-                    while (cursor < source_line_length) {
-                        if (source_line[cursor] == ' ') {
-                            cursor = cursor + 1;
-                        } else {
-                            if (source_line[cursor] == 9) {
-                                cursor = cursor + 1;
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                    argument_start = cursor;
-                    argument_length = scan_argument(argument_start);
-                    if (argument_length == 0) {
-                        return ASSEMBLE_BAD_SYMBOL;
-                    }
-                    return process_symbol(
-                        source_line + name_start,
-                        name_length,
-                        source_line + argument_start,
-                        argument_length
-                    );
-                }
-            }
-
-            argument_start = cursor;
-            argument_length = scan_argument(argument_start);
-            return process_instruction_like(
-                source_line + name_start,
-                name_length,
-                source_line + argument_start,
-                argument_length
-            );
+        }
+        if (status != ASSEMBLE_OK) {
+            return status;
         }
     }
-
-    return ASSEMBLE_OK;
 }
 
 /* ---------------- Whole assembly ---------------- */
