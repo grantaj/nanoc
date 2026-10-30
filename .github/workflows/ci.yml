@@ -33,6 +33,7 @@ jobs:
           python3 tests/native-ass/test_native.py
           python3 tests/native-ass/test_instruction_value.py
           python3 tests/native-ass/test_source_scanner.py
+          python3 tests/native-ass/test_source_file.py
 
       - name: Run C64-native tests
         run: make test

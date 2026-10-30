@@ -131,6 +131,7 @@ char source_line[256];
 char source_line_length;
 char source_path[256];
 char source_handle[5];
+char source_eof_pending[5];
 int source_depth;
 char *source_directory;
 char source_directory_length;
@@ -1401,16 +1402,32 @@ char assemble_string(char *argument, char length)
     return stage_byte(0);
 }
 
-/* ---------------- Source traversal ---------------- */
+/* ---------------- Native-style source traversal ---------------- */
 
-char open_include(char *argument, char length)
+/*
+ * Source files remain open on one small stack. EOF is owned by its file:
+ * the final unterminated line must be processed before closing that file,
+ * and an include on that line may temporarily push another input.
+ *
+ * An io_read result of -1 means the host/C64 adapter has reached EOF;
+ * other negative results are I/O errors. This is deliberately not a KERNAL
+ * READST emulator: the native C64 adapter owns CHKIN, READST and EOI.
+ */
+char *source_open_name;
+char source_open_length;
+
+/*
+ * Construct an include filename only if a directory prefix or ../ handling
+ * requires one. With no prefix, the filename is a view of the source line.
+ * This follows prepareIncludeName's ownership without copying common names.
+ */
+char prepare_include_name(char *argument, char length)
 {
-    char input_start;
-    char input_length;
+    char start;
+    char count;
+    char prefix;
     char output;
     char i;
-    char parent_path;
-    int handle;
 
     if (length < 3) {
         return ASSEMBLE_BAD_STATEMENT;
@@ -1421,100 +1438,156 @@ char open_include(char *argument, char length)
     if (argument[length - 1] != '"') {
         return ASSEMBLE_BAD_STATEMENT;
     }
-    if (source_depth >= 4) {
-        return ASSEMBLE_INCLUDE_DEPTH;
-    }
 
-    input_start = 1;
-    input_length = length - 2;
-    output = 0;
-    parent_path = 0;
+    start = 1;
+    count = length - 2;
+    prefix = source_directory_length;
 
-    if (input_length >= 3) {
-        if (argument[input_start] == '.') {
-            if (argument[input_start + 1] == '.') {
-                if (argument[input_start + 2] == '/') {
-                    parent_path = 1;
-                    input_start = input_start + 3;
-                    input_length = input_length - 3;
+    if (count >= 3) {
+        if (argument[1] == '.') {
+            if (argument[2] == '.') {
+                if (argument[3] == '/') {
+                    start = 4;
+                    count = count - 3;
+                    prefix = 0;
                 }
             }
         }
     }
 
-    if (parent_path == 0) {
-        i = 0;
-        while (i < source_directory_length) {
-            source_path[output] = source_directory[i];
-            output = output + 1;
-            i = i + 1;
-        }
-    }
-
-    if (output + input_length > 255) {
+    if (prefix + (int)count > 255) {
         return ASSEMBLE_BAD_STATEMENT;
     }
 
+    if (prefix == 0) {
+        if (start == 1) {
+            source_open_name = argument + 1;
+            source_open_length = count;
+            return ASSEMBLE_OK;
+        }
+    }
+
+    output = 0;
     i = 0;
-    while (i < input_length) {
-        source_path[output] = argument[input_start + i];
+    while (i < prefix) {
+        source_path[output] = source_directory[i];
+        output = output + 1;
+        i = i + 1;
+    }
+    i = 0;
+    while (i < count) {
+        source_path[output] = argument[start + i];
         output = output + 1;
         i = i + 1;
     }
 
-    handle = io_open(source_path, output);
+    source_open_name = source_path;
+    source_open_length = output;
+    return ASSEMBLE_OK;
+}
+
+char open_root_source(char *name, char length)
+{
+    int handle;
+
+    handle = io_open(name, length);
+    if (handle < 0) {
+        return ASSEMBLE_IO_ERROR;
+    }
+    source_depth = 0;
+    source_handle[0] = handle;
+    source_eof_pending[0] = 0;
+    return ASSEMBLE_OK;
+}
+
+char open_include(char *argument, char length)
+{
+    int handle;
+    char status;
+
+    if (source_depth >= 4) {
+        return ASSEMBLE_INCLUDE_DEPTH;
+    }
+
+    status = prepare_include_name(argument, length);
+    if (status != ASSEMBLE_OK) {
+        return status;
+    }
+    handle = io_open(source_open_name, source_open_length);
     if (handle < 0) {
         return ASSEMBLE_IO_ERROR;
     }
 
     source_depth = source_depth + 1;
     source_handle[source_depth] = handle;
+    source_eof_pending[source_depth] = 0;
     return ASSEMBLE_OK;
 }
 
+/* Close just the current source, revealing its already-positioned parent. */
+char finish_source_file()
+{
+    io_close(source_handle[source_depth]);
+    source_depth = source_depth - 1;
+    return ASSEMBLE_OK;
+}
+
+/*
+ * One call returns one logical line (1), the end of the root file (0),
+ * an input error (-1), or a full-line overflow (-2).
+ * Child EOF is handled here, not by the statement-processing driver.
+ */
 int read_source_line()
 {
     int c;
     char handle;
 
-    source_line_length = 0;
-    handle = source_handle[source_depth];
+    while (source_depth >= 0) {
+        if (source_eof_pending[source_depth] != 0) {
+            source_eof_pending[source_depth] = 0;
+            finish_source_file();
+        } else {
+            source_line_length = 0;
+            handle = source_handle[source_depth];
 
-    while (1) {
-        c = io_read(handle);
-        if (c < 0) {
-            if (c == -1) {
-                if (source_line_length != 0) {
+            while (1) {
+                c = io_read(handle);
+                if (c < 0) {
+                    if (c != -1) {
+                        return -1;
+                    }
+                    source_eof_pending[source_depth] = 1;
+                    if (source_line_length != 0) {
+                        source_line[source_line_length] = 0;
+                        return 1;
+                    }
+                    break;
+                }
+
+                if (c == 13) {
                     source_line[source_line_length] = 0;
                     return 1;
                 }
-                return 0;
+                if (c == 10) {
+                    source_line[source_line_length] = 0;
+                    return 1;
+                }
+
+                if (source_line_length >= 255) {
+                    return -2;
+                }
+                source_line[source_line_length] = c;
+                source_line_length = source_line_length + 1;
             }
-            return -1;
         }
-
-        if (c == 13) {
-            source_line[source_line_length] = 0;
-            return 1;
-        }
-        if (c == 10) {
-            source_line[source_line_length] = 0;
-            return 1;
-        }
-
-        if (source_line_length >= 255) {
-            return -2;
-        }
-        source_line[source_line_length] = c;
-        source_line_length = source_line_length + 1;
     }
+    return 0;
 }
 
 char close_source_tree()
 {
     while (source_depth >= 0) {
-        io_close(source_handle[source_depth]);
-        source_depth = source_depth - 1;
+        finish_source_file();
     }
     return ASSEMBLE_OK;
 }
@@ -1837,40 +1910,32 @@ char ass_assemble_core(
     unsigned default_origin
 )
 {
-    int handle;
     int line_status;
     char status;
 
     reset_assembler(default_origin, directory, directory_length);
-
-    handle = io_open(root_name, root_name_length);
-    if (handle < 0) {
-        return ASSEMBLE_IO_ERROR;
+    status = open_root_source(root_name, root_name_length);
+    if (status != ASSEMBLE_OK) {
+        return status;
     }
 
-    source_depth = 0;
-    source_handle[0] = handle;
-
-    while (source_depth >= 0) {
+    while (1) {
         line_status = read_source_line();
+        if (line_status == 0) {
+            break;
+        }
+        if (line_status != 1) {
+            close_source_tree();
+            if (line_status == -2) {
+                return ASSEMBLE_LINE_TOO_LONG;
+            }
+            return ASSEMBLE_IO_ERROR;
+        }
 
-        if (line_status == 1) {
-            status = process_source_line();
-            if (status != ASSEMBLE_OK) {
-                close_source_tree();
-                return status;
-            }
-        } else {
-            if (line_status == 0) {
-                io_close(source_handle[source_depth]);
-                source_depth = source_depth - 1;
-            } else {
-                close_source_tree();
-                if (line_status == -2) {
-                    return ASSEMBLE_LINE_TOO_LONG;
-                }
-                return ASSEMBLE_IO_ERROR;
-            }
+        status = process_source_line();
+        if (status != ASSEMBLE_OK) {
+            close_source_tree();
+            return status;
         }
     }
 
