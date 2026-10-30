@@ -89,6 +89,13 @@ if bss_next>BSS_LIMIT:raise ValueError(f'BSS overflow: {bss_next:04x} > {BSS_LIM
 # Reconstruct per-function namespaced output from per-function packed backend.
 from pycparser import c_ast
 from tape_frontend import TapeBuilder
+from simple6502_constants import immutable_scalars,apply_constants
+IMMUTABLE = immutable_scalars(unit)
+import os
+SIMPLE_6502 = bool(os.environ.get("SIMPLE_6502"))
+if SIMPLE_6502:
+ for name in IMMUTABLE:
+  initialized.pop(name, None)  # no runtime load or address escape
 from direct_address import DirectAddressBackend
 from register_first import RegisterFirstBackend
 from compare_native import NativeCompareBackend
@@ -101,6 +108,7 @@ assembly=[];size_records=[];global_tempmax=0
 for f in funcs:
  name=f.decl.name
  t=TapeBuilder((S/'whole_corpus'/(name+'.c')).read_text()).build()
+ if SIMPLE_6502: apply_constants(t, IMMUTABLE)
  b=(PointerHomeBackend if os.environ.get("POINTER_HOME") else NativeCompareBackend if os.environ.get("NATIVE_COMPARE") else RegisterFirstBackend if os.environ.get("REG_FIRST") else DirectAddressBackend)(t,arrays)
  raw=b.run();packed,info=allocate(t,b,raw)
  global_tempmax=max(global_tempmax,info['packed_bytes'])
