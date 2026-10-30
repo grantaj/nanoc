@@ -1025,144 +1025,69 @@ char long_mode_for_index(char index)
     return MODE_ABSOLUTE;
 }
 
-char assemble_mode_value(char mnemonic, char mode, char *text, char length)
+/* ---------------- Native instruction pipeline ---------------- */
+/*
+ * Like ass/instruction.asm, first classify a zero-copy operand view into its
+ * addressing form. No value is parsed, interned, or emitted at this stage.
+ * A direct operand deliberately keeps its X/Y suffix and defers width choice
+ * until its value is known, just as selectDirectMode does in the ASM version.
+ *
+ * This is one static workspace, not a C structure or an expression tree.
+ * The assembler is nonrecursive and processes one statement at a time.
+ */
+char instruction_mnemonic;
+char instruction_mode;
+char instruction_opcode;
+char instruction_index;
+char instruction_deferred;
+char *instruction_text;
+char instruction_length;
+
+/* Validate a fixed addressing mode and retain its opcode. */
+char instruction_known_mode(char mode)
 {
     int opcode;
-    char status;
 
-    opcode = find_opcode(mnemonic, mode);
+    opcode = find_opcode(instruction_mnemonic, mode);
     if (opcode < 0) {
         return ASSEMBLE_BAD_INSTRUCTION;
     }
-
-    status = parse_value(text, length);
-    if (status == VALUE_OK) {
-        if (mode == MODE_RELATIVE) {
-            return stage_resolved_relative(opcode, value_result);
-        }
-        return stage_resolved_instruction(opcode, mode, value_result);
-    }
-    if (status == VALUE_UNRESOLVED) {
-        return stage_unresolved_instruction(
-            opcode,
-            mode,
-            captured_symbol,
-            captured_addend,
-            captured_prefix
-        );
-    }
-    if (status == VALUE_SYMBOL_FULL) {
-        return ASSEMBLE_SYMBOL_FULL;
-    }
-    if (status == VALUE_SCOPE_ERROR) {
-        return ASSEMBLE_SCOPE_ERROR;
-    }
-    return ASSEMBLE_BAD_INSTRUCTION;
+    instruction_mode = mode;
+    instruction_opcode = opcode;
+    instruction_deferred = 0;
+    return ASSEMBLE_OK;
 }
 
-char assemble_direct_value(char mnemonic, char *text, char length, char index)
-{
-    char status;
-    char short_mode;
-    char long_mode;
-    int short_opcode;
-    int long_opcode;
-    char mode;
-    int opcode;
-
-    if (index == 0) {
-        opcode = find_opcode(mnemonic, MODE_RELATIVE);
-        if (opcode >= 0) {
-            return assemble_mode_value(mnemonic, MODE_RELATIVE, text, length);
-        }
-    }
-
-    status = parse_value(text, length);
-    if (status != VALUE_OK) {
-        if (status != VALUE_UNRESOLVED) {
-            if (status == VALUE_SYMBOL_FULL) {
-                return ASSEMBLE_SYMBOL_FULL;
-            }
-            if (status == VALUE_SCOPE_ERROR) {
-                return ASSEMBLE_SCOPE_ERROR;
-            }
-            return ASSEMBLE_BAD_INSTRUCTION;
-        }
-    }
-
-    short_mode = short_mode_for_index(index);
-    long_mode = long_mode_for_index(index);
-    short_opcode = find_opcode(mnemonic, short_mode);
-    long_opcode = find_opcode(mnemonic, long_mode);
-
-    if (status == VALUE_OK) {
-        if (value_result <= 255) {
-            if (short_opcode >= 0) {
-                return stage_resolved_instruction(short_opcode, short_mode, value_result);
-            }
-        }
-        if (long_opcode >= 0) {
-            return stage_resolved_instruction(long_opcode, long_mode, value_result);
-        }
-        return ASSEMBLE_BAD_INSTRUCTION;
-    }
-
-    mode = long_mode;
-    opcode = long_opcode;
-
-    if (captured_prefix != VALUE_PREFIX_NONE) {
-        mode = short_mode;
-        opcode = short_opcode;
-    } else {
-        if (long_opcode < 0) {
-            mode = short_mode;
-            opcode = short_opcode;
-        }
-    }
-
-    if (opcode < 0) {
-        return ASSEMBLE_BAD_INSTRUCTION;
-    }
-    return stage_unresolved_instruction(
-        opcode,
-        mode,
-        captured_symbol,
-        captured_addend,
-        captured_prefix
-    );
-}
-
-char assemble_instruction(char *name, char name_length, char *argument, char argument_length)
+/* Only punctuation changes the source view; it is never copied. */
+char parse_instruction(char *name, char name_length,
+                       char *argument, char argument_length)
 {
     int mnemonic;
     int opcode;
-    char index;
-    char core_length;
+    char last;
 
     mnemonic = find_mnemonic(name, name_length);
     if (mnemonic < 0) {
         return ASSEMBLE_BAD_INSTRUCTION;
     }
+    instruction_mnemonic = mnemonic;
+    instruction_index = 0;
+    instruction_deferred = 0;
+    instruction_text = argument;
+    instruction_length = argument_length;
 
     if (argument_length == 0) {
-        opcode = find_opcode(mnemonic, MODE_IMPLIED);
+        opcode = find_opcode(instruction_mnemonic, MODE_IMPLIED);
         if (opcode >= 0) {
-            return stage_resolved_instruction(opcode, MODE_IMPLIED, 0);
+            return instruction_known_mode(MODE_IMPLIED);
         }
-        opcode = find_opcode(mnemonic, MODE_ACCUMULATOR);
-        if (opcode >= 0) {
-            return stage_resolved_instruction(opcode, MODE_ACCUMULATOR, 0);
-        }
-        return ASSEMBLE_BAD_INSTRUCTION;
+        return instruction_known_mode(MODE_ACCUMULATOR);
     }
 
     if (argument_length == 1) {
         if (upper_char(argument[0]) == 'A') {
-            opcode = find_opcode(mnemonic, MODE_ACCUMULATOR);
-            if (opcode < 0) {
-                return ASSEMBLE_BAD_INSTRUCTION;
-            }
-            return stage_resolved_instruction(opcode, MODE_ACCUMULATOR, 0);
+            instruction_length = 0;
+            return instruction_known_mode(MODE_ACCUMULATOR);
         }
     }
 
@@ -1170,41 +1095,32 @@ char assemble_instruction(char *name, char name_length, char *argument, char arg
         if (argument_length < 2) {
             return ASSEMBLE_BAD_INSTRUCTION;
         }
-        return assemble_mode_value(
-            mnemonic,
-            MODE_IMMEDIATE,
-            argument + 1,
-            argument_length - 1
-        );
+        instruction_text = argument + 1;
+        instruction_length = argument_length - 1;
+        return instruction_known_mode(MODE_IMMEDIATE);
     }
 
     if (argument[0] == '(') {
         if (argument_length < 3) {
             return ASSEMBLE_BAD_INSTRUCTION;
         }
-
-        if (upper_char(argument[argument_length - 1]) == 'Y') {
+        instruction_text = argument + 1;
+        last = upper_char(argument[argument_length - 1]);
+        if (last == 'Y') {
             if (argument[argument_length - 2] == ',') {
+                if (argument_length < 5) {
+                    return ASSEMBLE_BAD_INSTRUCTION;
+                }
                 if (argument[argument_length - 3] != ')') {
                     return ASSEMBLE_BAD_INSTRUCTION;
                 }
-                core_length = argument_length - 4;
-                if (core_length <= 0) {
-                    return ASSEMBLE_BAD_INSTRUCTION;
-                }
-                return assemble_mode_value(
-                    mnemonic,
-                    MODE_INDIRECT_Y,
-                    argument + 1,
-                    core_length
-                );
+                instruction_length = argument_length - 4;
+                return instruction_known_mode(MODE_INDIRECT_Y);
             }
         }
-
         if (argument[argument_length - 1] != ')') {
             return ASSEMBLE_BAD_INSTRUCTION;
         }
-
         if (upper_char(argument[argument_length - 2]) == 'X') {
             if (argument_length < 5) {
                 return ASSEMBLE_BAD_INSTRUCTION;
@@ -1212,41 +1128,120 @@ char assemble_instruction(char *name, char name_length, char *argument, char arg
             if (argument[argument_length - 3] != ',') {
                 return ASSEMBLE_BAD_INSTRUCTION;
             }
-            core_length = argument_length - 4;
-            return assemble_mode_value(
-                mnemonic,
-                MODE_INDIRECT_X,
-                argument + 1,
-                core_length
-            );
+            instruction_length = argument_length - 4;
+            return instruction_known_mode(MODE_INDIRECT_X);
         }
-
-        core_length = argument_length - 2;
-        return assemble_mode_value(
-            mnemonic,
-            MODE_INDIRECT,
-            argument + 1,
-            core_length
-        );
+        instruction_length = argument_length - 2;
+        return instruction_known_mode(MODE_INDIRECT);
     }
 
-    index = 0;
-    core_length = argument_length;
+    /* Direct operands are dispatched only after value evaluation. */
     if (argument_length >= 3) {
         if (argument[argument_length - 2] == ',') {
-            if (upper_char(argument[argument_length - 1]) == 'X') {
-                index = 1;
-                core_length = argument_length - 2;
+            last = upper_char(argument[argument_length - 1]);
+            if (last == 'X') {
+                instruction_index = 1;
+                instruction_length = argument_length - 2;
             } else {
-                if (upper_char(argument[argument_length - 1]) == 'Y') {
-                    index = 2;
-                    core_length = argument_length - 2;
+                if (last == 'Y') {
+                    instruction_index = 2;
+                    instruction_length = argument_length - 2;
                 }
             }
         }
     }
+    instruction_deferred = 1;
+    return ASSEMBLE_OK;
+}
 
-    return assemble_direct_value(mnemonic, argument, core_length, index);
+/* Choose a direct machine addressing mode, using the decoded value. */
+char select_instruction_mode(char value_status)
+{
+    char short_mode;
+    char long_mode;
+    int short_opcode;
+    int long_opcode;
+
+    if (instruction_index == 0) {
+        if (find_opcode(instruction_mnemonic, MODE_RELATIVE) >= 0) {
+            return instruction_known_mode(MODE_RELATIVE);
+        }
+    }
+
+    short_mode = short_mode_for_index(instruction_index);
+    long_mode = long_mode_for_index(instruction_index);
+    short_opcode = find_opcode(instruction_mnemonic, short_mode);
+    long_opcode = find_opcode(instruction_mnemonic, long_mode);
+
+    if (value_status == VALUE_OK) {
+        if (value_result <= 255) {
+            if (short_opcode >= 0) {
+                return instruction_known_mode(short_mode);
+            }
+        }
+        return instruction_known_mode(long_mode);
+    }
+
+    /* For unresolved names, there can be no automatic zero-page relaxation.
+     * An explicit < or > selects a byte; otherwise use the long mode if it
+     * exists, falling back to the sole available short form. */
+    if (captured_prefix != VALUE_PREFIX_NONE) {
+        return instruction_known_mode(short_mode);
+    }
+    if (long_opcode >= 0) {
+        return instruction_known_mode(long_mode);
+    }
+    return instruction_known_mode(short_mode);
+}
+
+/* One straightforward instruction path: decode syntax, evaluate once, emit. */
+char assemble_instruction(char *name, char name_length,
+                          char *argument, char argument_length)
+{
+    char status;
+    char value_status;
+
+    status = parse_instruction(name, name_length, argument, argument_length);
+    if (status != ASSEMBLE_OK) {
+        return status;
+    }
+    if (instruction_length == 0) {
+        if (instruction_deferred != 0) {
+            return ASSEMBLE_BAD_INSTRUCTION;
+        }
+        return stage_resolved_instruction(instruction_opcode, instruction_mode, 0);
+    }
+
+    value_status = parse_value(instruction_text, instruction_length);
+    if (value_status != VALUE_OK) {
+        if (value_status != VALUE_UNRESOLVED) {
+            if (value_status == VALUE_SYMBOL_FULL) {
+                return ASSEMBLE_SYMBOL_FULL;
+            }
+            if (value_status == VALUE_SCOPE_ERROR) {
+                return ASSEMBLE_SCOPE_ERROR;
+            }
+            return ASSEMBLE_BAD_INSTRUCTION;
+        }
+    }
+
+    if (instruction_deferred != 0) {
+        status = select_instruction_mode(value_status);
+        if (status != ASSEMBLE_OK) {
+            return status;
+        }
+    }
+
+    if (value_status == VALUE_UNRESOLVED) {
+        return stage_unresolved_instruction(instruction_opcode,
+            instruction_mode, captured_symbol, captured_addend,
+            captured_prefix);
+    }
+    if (instruction_mode == MODE_RELATIVE) {
+        return stage_resolved_relative(instruction_opcode, value_result);
+    }
+    return stage_resolved_instruction(instruction_opcode,
+        instruction_mode, value_result);
 }
 
 /* ---------------- Data declarations ---------------- */
