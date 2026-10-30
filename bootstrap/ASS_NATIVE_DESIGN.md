@@ -5,9 +5,12 @@ This is a **new C assembler source**, separate from the existing
 handwritten 6502 assembler in `ass/`, not to force the existing C assembler
 through another increasingly complicated optimiser.
 
-The first tranche deliberately retains the existing C scanner, parsing grammar,
-opcode tables, file input and public `ass_assemble` interface. It changes the
+The initial tranche retained the original C scanner, instruction dispatch,
+opcode tables, file input and public `ass_assemble` interface. It changed the
 *representation and lifetime* of symbols, exceptional fixups and staged output.
+The subsequent instruction/value migration now replaces that instruction
+dispatch with the native `parseInstruction` → `selectDirectMode` → staging
+sequence, while retaining the already native-compatible tiny value grammar.
 It is **not a line-by-line assembly translation**, nor is it complete parity
 with the handwritten assembler's memory map or all of its algorithms.
 
@@ -33,9 +36,9 @@ even though the packed format can fit a different number of records depending
 on name lengths. That cap can be revisited with independent capacity tests.
 
 The public C interface still returns numeric status bytes, not processor flags.
-The parser and instruction dispatch also still follow the older C structure.
-These are **future source changes**, not issues to handwave away as instruction
-selection defects.
+The instruction decoder now follows the native two-stage, zero-copy operand
+view and mode-selection algorithm. The scanner, value atom parser and remaining
+source and I/O algorithms remain subject to future source-level review.
 
 ## Correctness evidence (2026-10-31)
 
@@ -75,12 +78,70 @@ C parser and source handling still differ algorithmically from the native ASM.
    exceptional fixups.
 2. **Streaming output staging: implemented**, with a single pointer cursor and
    explicit assembly PC. Public length is a boundary conversion only.
-3. **Remaining native-algorithm migration:** adjust value/instruction dispatch
-   and error/result paths, port native symbol/fixup access policies including
-   hidden memory windows, and review source scanning/recursion semantics.
-   Migrate complete dataflow paths; don't add redundant representations.
-4. **Target validation:** compile using the actual Phase-1 compiler and run on
+3. **Instruction/value handling: implemented as a follow-up**: classify syntax
+   first into a zero-copy view and mode, parse the one-atom-or-two-atom value
+   once, then choose direct width and stage the fixed value or forward-reference
+   recipe. The value grammar and its captured symbol/addend/prefix were already
+   faithful to `ass/value.asm`, so they were retained rather than rewritten.
+4. **Remaining native-algorithm migration:** handle native source-file scanner,
+   cross-range and hidden-RAM symbol access, and result/carry conventions
+   where the C API permits them. Preserve full dataflow paths and do not add
+   redundant representations.
+5. **Target validation:** compile using the actual Phase-1 compiler and run on
    the actual C64/KERNAL/IRQ environment before calling this production ready.
 
 The goal is a clear, teachable C assembler with the **same basic algorithms** as
 `ass/`, not a pasted ASM transcription and not a new optimiser framework.
+
+## Instruction/value translation checkpoint (2026-10-31)
+
+The second tranche follows the assembly source rather than introducing a
+compiler optimisation.  `parse_instruction` now processes each operand once:
+
+1. Look up the three-byte mnemonic, leaving the original text untouched.
+2. Recognise implied/accumulator, immediate, direct X/Y, `(value,X)`,
+   `(value),Y`, and `(value)` syntax by adjusting a pointer/length *view*.
+3. For fixed addressing modes, check the mnemonic/mode pair immediately.
+   Direct operands defer width selection to `select_instruction_mode`.
+4. Call the existing small `parse_value` **once**. That routine already has
+   the precise `ass/value.asm` grammar (`[<|>] atom [(+|-) atom]`) and the
+   native unresolved recipe: a stable symbol handle, 16-bit addend and byte
+   selector. There is no expression tree or recursion to introduce.
+5. Choose relative, zero-page or absolute addressing using the actual opcode
+   table, then stage the opcode/value or native two-byte reference chain /
+   eight-byte exceptional fixup. The fixed-word, byte and relative staging
+   helpers from the initial tranche remain unchanged.
+
+This supersedes the previous separate `assemble_mode_value` and
+`assemble_direct_value` paths. The initial version mishandled explicit `ASL A`:
+its accumulator operand must not be sent through the value parser. An
+independent instruction-grammar fixture caught and fixed that case before
+commit. A second experiment used one compound C shift-add expression to
+replace decimal `*10`; although algebraically valid, the experimental 6502
+backend miscompiled it, so the checked-in C retains the known-correct modulo
+16-bit multiplication. The handwritten parser's *semantics* are preserved.
+
+### Verified results
+
+| Same native-structured C source architecture | Before outlining | After outlining |
+| --- | ---: | ---: |
+| First tranche, PR #127 | 10,575 B | 9,553 B |
+| With native instruction/value dispatch | **10,378 B** | **9,457 B** |
+
+**197 B** reduction before outlining, **96 B** in the complete linked image.
+The new source is still larger than the original flat-array `ass.c` image
+(8,945 B after outlining). This is **not** evidence of optimal machine code.
+
+Verification: 53/53 lowered/generated functions, 54/54 independently encoded
+segments, all 29 complete interpreted-6502 assembly programs against the host
+C oracle, plus 18/18 *new* machine-executed instruction/value examples. The
+host-compiled original and new C assemblers agree on 29 established complete
+programs, seven local/fixup examples, 200 randomly generated scope/reference
+programs, capacity boundaries and **425** separate deterministic/generated
+instruction/value programs. Failures are compared on status; successful
+programs compare exact output bytes. As before, these are research 6502
+interpreter tests, not real C64/VICE or production `nanoc1` execution.
+
+A remaining structural difference is that status/error reporting uses C bytes,
+not the handwritten carry flag protocol. The symbol ranges also still lack
+hidden-RAM banking. Neither should be silently claimed as translated.
