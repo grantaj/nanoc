@@ -37,8 +37,8 @@ on name lengths. That cap can be revisited with independent capacity tests.
 
 The public C interface still returns numeric status bytes, not processor flags.
 The instruction decoder now follows the native two-stage, zero-copy operand
-view and mode-selection algorithm. The scanner, value atom parser and remaining
-source and I/O algorithms remain subject to future source-level review.
+view and mode-selection algorithm. The scanner now uses transient statement views in the style of `ass/parser.asm`.
+The value atom parser and file I/O still need separate native-source review.
 
 ## Correctness evidence (2026-10-31)
 
@@ -83,7 +83,7 @@ C parser and source handling still differ algorithmically from the native ASM.
    once, then choose direct width and stage the fixed value or forward-reference
    recipe. The value grammar and its captured symbol/addend/prefix were already
    faithful to `ass/value.asm`, so they were retained rather than rewritten.
-4. **Remaining native-algorithm migration:** handle native source-file scanner,
+4. **Remaining native-algorithm migration:** handle native source-file I/O,
    cross-range and hidden-RAM symbol access, and result/carry conventions
    where the C API permits them. Preserve full dataflow paths and do not add
    redundant representations.
@@ -145,3 +145,34 @@ interpreter tests, not real C64/VICE or production `nanoc1` execution.
 A remaining structural difference is that status/error reporting uses C bytes,
 not the handwritten carry flag protocol. The symbol ranges also still lack
 hidden-RAM banking. Neither should be silently claimed as translated.
+
+## Source scanner/statement translation (stacked follow-up)
+
+This tranche translates the statement-scanning discipline of
+`ass/parser.asm` rather than adding another instruction optimisation.
+
+- `next_statement()` reads the caller-owned `source_line` in place and returns
+  one of four statement kinds. `statement_name` and `statement_argument` are
+  pointer/length views, never copied strings.
+- Source whitespace is skipped once by `skip_source_space`. A label consumes
+  only its own lexeme; the next call picks up another label or instruction on
+  the same line. Other statements consume the line.
+- The established `scan_argument` quote/comment/trailing-whitespace logic is
+  retained. Dispatch and evaluation still belong to the assembler.
+- `process_source_line()` now performs only the statement loop and dispatch.
+  The semantic handlers, source-reader, output staging, symbol records,
+  instruction pipeline and old `ass.c` are untouched.
+
+New `tests/native-ass/test_source_scanner.py` supplies 220 differential
+source layouts (20 fixed and 200 generated) to the *real* original and
+native-structured C assemblers, testing quote-protected semicolons, comments,
+CR/LF, multiple labels, whitespace and 255-byte line boundaries. The CI
+workflow now runs this along with the two existing native C differential
+suites. Passing CI demonstrates host-C equivalence over those cases;
+machine-level experimental lowering and final image size must be measured
+separately, not inferred from host-C success.
+
+This is the **statement parser**, not the native file-reader/KERNAL EOI
+translation. `ass/source.asm` has per-channel EOF-pending state and exact
+C64 KERNAL channel restoration; the host `io_read` adapter is not a substitute
+for proving those physical behaviours.
