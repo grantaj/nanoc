@@ -83,8 +83,9 @@ C parser and source handling still differ algorithmically from the native ASM.
    once, then choose direct width and stage the fixed value or forward-reference
    recipe. The value grammar and its captured symbol/addend/prefix were already
    faithful to `ass/value.asm`, so they were retained rather than rewritten.
-4. **Remaining native-algorithm migration:** handle native source-file I/O,
-   cross-range and hidden-RAM symbol access, and result/carry conventions
+4. **Remaining native-algorithm migration:** validate native source-file I/O on
+   real C64 KERNAL channels, then cross-range and hidden-RAM symbol access,
+   and result/carry conventions
    where the C API permits them. Preserve full dataflow paths and do not add
    redundant representations.
 5. **Target validation:** compile using the actual Phase-1 compiler and run on
@@ -176,3 +177,41 @@ This is the **statement parser**, not the native file-reader/KERNAL EOI
 translation. `ass/source.asm` has per-channel EOF-pending state and exact
 C64 KERNAL channel restoration; the host `io_read` adapter is not a substitute
 for proving those physical behaviours.
+
+## Native source-file traversal (stacked follow-up)
+
+This tranche translates the control flow of `ass/source.asm` into the Phase-1
+C assembler. It is separate from the previous statement-parser migration.
+
+- `open_root_source` acquires the root handle and initializes per-depth EOF
+  state. `open_include` validates and prepares the include name, opens its
+  channel, and only then pushes a stack entry. The parent stays open.
+- `prepare_include_name` keeps the common no-directory include as a
+  pointer/length view into the source line. Only directory prefixing or
+  the pre-existing `../` rule requires copying into `source_path`.
+- `read_source_line` owns EOF unwinding. One pending-EOF byte per depth allows
+  the final *unterminated* `include` line to be dispatched before the parent
+  closes. Finishing a child automatically resumes its parent's input handle.
+  CR/LF line termination, the 255-byte buffer limit and I/O error return
+  codes remain as before.
+- The main assembly driver now reads one logical line at a time until the
+  root closes, and its failure path closes all remaining owned inputs.
+  `finish_source_file` and `close_source_tree` centralize cleanup.
+
+`tests/native-ass/test_source_file.py` compares the actual old and new C
+sources on 16 named file-stack fixtures plus an absolute-name zero-directory
+include, including nested/empty/repeated includes, end-of-file without newline,
+both parent and child pending EOF, max-depth success/error, missing input,
+line overflow and cleanup of all five host file handles. The test runs in CI
+alongside the existing C differential suites.
+
+**Important limits.** C's `io_read(handle)` reports EOF after consuming the
+last byte; the handwritten 6510 reader instead observes the KERNAL READST EOI
+bit *on* the last byte. This C tranche preserves the essential per-source
+lifetime and assembly order, but does not prove `CHRIN`/`READST`, `CHKIN`,
+`CLRCHN`, IRQ safety or filename PETSCII behaviour on C64. The host source
+reader also preserves existing lowercase filenames for case-sensitive host
+filesystems rather than inserting the assembly-specific PETSCII conversion.
+Production Phase-1 compiler lowering, physical 6502 interpreter tests and
+linked image size remain unmeasured for this follow-up; old measurements may
+not be reused as new results. Original `ass.c` is unchanged.
