@@ -1,0 +1,13 @@
+{
+  "addresses": {
+    "fixup_stage": "$b594",
+    "fixup_symbol": "$ba94",
+    "fixup_addend": "$bf94"
+  },
+  "tests_per_strategy": 1920,
+  "independent_instructions": 57,
+  "independent_bytes": 114,
+  "shared_offset_instructions": 39,
+  "shared_offset_bytes": 78,
+  "savings_in_fragment_before_outlining": 36
+}

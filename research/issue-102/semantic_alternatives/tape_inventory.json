@@ -1,0 +1,206 @@
+[
+  {
+    "function": "assemble_instruction",
+    "blocks": 70,
+    "ops": 287,
+    "calls": 17,
+    "indexed": [
+      {
+        "block": "yes_13",
+        "op": "read",
+        "array_or_pointer": "argument",
+        "index_type": "s16",
+        "index_producer": "const",
+        "producer_args": "(0,)"
+      },
+      {
+        "block": "join_15",
+        "op": "read",
+        "array_or_pointer": "argument",
+        "index_type": "s16",
+        "index_producer": "const",
+        "producer_args": "(0,)"
+      },
+      {
+        "block": "join_24",
+        "op": "read",
+        "array_or_pointer": "argument",
+        "index_type": "s16",
+        "index_producer": "const",
+        "producer_args": "(0,)"
+      },
+      {
+        "block": "join_33",
+        "op": "read",
+        "array_or_pointer": "argument",
+        "index_type": "s16",
+        "index_producer": "-",
+        "producer_args": "(79, 80)"
+      },
+      {
+        "block": "yes_34",
+        "op": "read",
+        "array_or_pointer": "argument",
+        "index_type": "s16",
+        "index_producer": "-",
+        "producer_args": "(87, 88)"
+      },
+      {
+        "block": "yes_37",
+        "op": "read",
+        "array_or_pointer": "argument",
+        "index_type": "s16",
+        "index_producer": "-",
+        "producer_args": "(94, 95)"
+      },
+      {
+        "block": "join_36",
+        "op": "read",
+        "array_or_pointer": "argument",
+        "index_type": "s16",
+        "index_producer": "-",
+        "producer_args": "(116, 117)"
+      },
+      {
+        "block": "join_48",
+        "op": "read",
+        "array_or_pointer": "argument",
+        "index_type": "s16",
+        "index_producer": "-",
+        "producer_args": "(124, 125)"
+      },
+      {
+        "block": "join_54",
+        "op": "read",
+        "array_or_pointer": "argument",
+        "index_type": "s16",
+        "index_producer": "-",
+        "producer_args": "(136, 137)"
+      },
+      {
+        "block": "yes_58",
+        "op": "read",
+        "array_or_pointer": "argument",
+        "index_type": "s16",
+        "index_producer": "-",
+        "producer_args": "(169, 170)"
+      },
+      {
+        "block": "yes_61",
+        "op": "read",
+        "array_or_pointer": "argument",
+        "index_type": "s16",
+        "index_producer": "-",
+        "producer_args": "(176, 177)"
+      },
+      {
+        "block": "no_65",
+        "op": "read",
+        "array_or_pointer": "argument",
+        "index_type": "s16",
+        "index_producer": "-",
+        "producer_args": "(188, 189)"
+      }
+    ],
+    "scalar_stores": {
+      "mnemonic": 1,
+      "opcode": 3,
+      "core_length": 6,
+      "index": 3
+    }
+  },
+  {
+    "function": "find_symbol",
+    "blocks": 22,
+    "ops": 82,
+    "calls": 1,
+    "indexed": [
+      {
+        "block": "body_5",
+        "op": "read",
+        "array_or_pointer": "symbol_scope",
+        "index_type": "s16",
+        "index_producer": "load",
+        "producer_args": "('i',)"
+      },
+      {
+        "block": "yes_7",
+        "op": "read",
+        "array_or_pointer": "symbol_name_length",
+        "index_type": "s16",
+        "index_producer": "load",
+        "producer_args": "('i',)"
+      },
+      {
+        "block": "yes_10",
+        "op": "read",
+        "array_or_pointer": "symbol_name_offset",
+        "index_type": "s16",
+        "index_producer": "load",
+        "producer_args": "('i',)"
+      },
+      {
+        "block": "body_14",
+        "op": "read",
+        "array_or_pointer": "symbol_name_bytes",
+        "index_type": "s16",
+        "index_producer": "+",
+        "producer_args": "(31, 32)"
+      },
+      {
+        "block": "body_14",
+        "op": "read",
+        "array_or_pointer": "name",
+        "index_type": "u8",
+        "index_producer": "load",
+        "producer_args": "('j',)"
+      }
+    ],
+    "scalar_stores": {
+      "wanted_scope": 1,
+      "i": 2,
+      "offset": 1,
+      "same": 2,
+      "j": 2
+    }
+  },
+  {
+    "function": "stage_byte",
+    "blocks": 4,
+    "ops": 19,
+    "calls": 0,
+    "indexed": [
+      {
+        "block": "join_3",
+        "op": "store_index",
+        "array_or_pointer": "ass_image",
+        "index_type": "s16",
+        "index_producer": "load",
+        "producer_args": "('ass_image_length',)"
+      }
+    ],
+    "scalar_stores": {
+      "ass_image_length": 1
+    }
+  },
+  {
+    "function": "stage_resolved_instruction",
+    "blocks": 19,
+    "ops": 60,
+    "calls": 3,
+    "indexed": [
+      {
+        "block": "entry",
+        "op": "read",
+        "array_or_pointer": "mode_width",
+        "index_type": "u8",
+        "index_producer": "load",
+        "producer_args": "('mode',)"
+      }
+    ],
+    "scalar_stores": {
+      "width": 1,
+      "status": 2
+    }
+  }
+]
