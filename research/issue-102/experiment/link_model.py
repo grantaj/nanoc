@@ -94,12 +94,16 @@ from register_first import RegisterFirstBackend
 from compare_native import NativeCompareBackend
 from pointer_home import PointerHomeBackend
 from machine_strategy import MachineStrategyBackend
+from flow_plan import FlowPlanBackend, pure_byte_summaries, prove_readonly_arrays
 import os
 from scratch_allocator import allocate
 from execute6502 import relax
 arrays=json.loads((S/'whole_corpus'/'arrays.json').read_text())
 assembly=[];size_records=[];global_tempmax=0
 strategy_records=[]
+flow_records=[]
+flow_summaries=pure_byte_summaries(S/'whole_corpus') if os.environ.get('FLOW_PLAN') else {}
+flow_readonly=prove_readonly_arrays(S/'whole_corpus',arrays) if os.environ.get('FLOW_PLAN') else set()
 for f in funcs:
  name=f.decl.name
  t=TapeBuilder((S/'whole_corpus'/(name+'.c')).read_text()).build()
@@ -119,6 +123,14 @@ for f in funcs:
         machine_bytes=cand_info['instruction_bytes'], selected='machine' if choose else 'baseline',
         recipes=dict(candidate.decisions)))
   if choose:t,b,packed,info=t_new,candidate,cand_packed,cand_info
+ if os.environ.get('FLOW_PLAN'):
+  plan_t=TapeBuilder((S/'whole_corpus'/(name+'.c')).read_text()).build()
+  fp=FlowPlanBackend(plan_t,arrays,initialized,flow_summaries,flow_readonly)
+  if fp.plan:
+   alt,altinfo=allocate(plan_t,fp,fp.run())
+   use=altinfo['instruction_bytes']<info['instruction_bytes']
+   flow_records.append(dict(function=name,selected=use,original_bytes=info['instruction_bytes'],flow_bytes=altinfo['instruction_bytes'],plan=vars(fp.plan)))
+   if use:t,b,packed,info=plan_t,fp,alt,altinfo
  global_tempmax=max(global_tempmax,info['packed_bytes'])
  if info['packed_bytes']>8:raise AssertionError('ZP scratch overflow '+name)
  entries={z[:-1] for z in packed.splitlines() if z.endswith(':')}
@@ -176,5 +188,6 @@ P.joinpath('symbols.json').write_text(json.dumps(symbols,indent=2))
 P.joinpath('local_storage.json').write_text(json.dumps(local_storage,indent=2))
 P.joinpath('sizes.json').write_text(json.dumps(size_records,indent=2))
 if os.environ.get('MACHINE_STRATEGY'):P.joinpath('machine_strategy_choices.json').write_text(json.dumps(strategy_records,indent=2))
+if os.environ.get('FLOW_PLAN'):P.joinpath('flow_plan_choices.json').write_text(json.dumps(flow_records,indent=2))
 P.joinpath('layout.json').write_text(json.dumps({'bss_base':BSS_BASE,'bss_end':bss_next,'bss_bytes':bss_next-BSS_BASE,'bss_limit':BSS_LIMIT,'functions':len(funcs),'initialized_bytes':sum(map(len,initialized.values())),'functions_instruction_bytes':sum(x['bytes'] for x in size_records),'max_packed_scratch':global_tempmax,'zp':ZP,'extern':extern},indent=2))
 print(json.dumps(json.loads(P.joinpath('layout.json').read_text()),indent=2))

@@ -129,6 +129,7 @@ class CPU:
       elif op=='tax':self.X=self.A;self.flags(self.X)
       elif op=='txa':self.A=self.X;self.flags(self.A)
       elif op=='iny':self.Y=(self.Y+1)&255;self.flags(self.Y)
+      elif op=='inx':self.X=(self.X+1)&255;self.flags(self.X)
       elif op in ('inc','dec'):
          v=(self.rd(arg)+(1 if op=='inc' else -1))&255;self.wr(arg,v);self.flags(v)
       elif op in BRANCHES:
