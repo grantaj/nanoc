@@ -1,0 +1,13 @@
+{
+  "byte_budget": 16,
+  "base": 48,
+  "allocated_values": 135,
+  "verified_machine_nodes": 5229,
+  "interference_edges": 3658,
+  "call_edges": 69,
+  "bad_overlap_detected": [
+    "__L_assemble_instruction_argument_length",
+    "__L_short_mode_for_index_index"
+  ],
+  "param_aliases_checked": 56
+}

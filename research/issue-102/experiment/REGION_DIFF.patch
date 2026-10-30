@@ -1,0 +1,93 @@
+--- full_corpus/dual_pointer_original.py	2026-10-29 05:10:01.073091403 +0000
++++ full_corpus/dual_pointer.py	2026-10-29 05:10:29.459999154 +0000
+@@ -22,6 +22,8 @@
+     reads:dict
+     compare_id:int
+     store:object
++    offset_bases:dict=None
++    suppressed_ops:set=None
+ 
+ class DualPointerBackend(DirectReadCompareBackend):
+     def __init__(self,t,arrays=None,**kwargs):
+@@ -71,40 +73,70 @@
+             if not (add.code=='+' and self.defs[add.args[0]].code=='load' and self.defs[add.args[0]].args[0]==index and
+                     self.defs[add.args[1]].code=='const' and self.defs[add.args[1]].args[0]==1):continue
+             if any(o.args[0] in (index,bound) and o is not latchstore[0] for o in changes):continue
+-            reads={};bases=set();safe=True
++            reads={};bases=set();safe=True;offset_bases={};suppressed_ops=set()
+             for n in reg:
+                 for o in bm[n].ops:
+                     if o.code in ('call','store_index'):safe=False;break
+                     if o.code=='read':
+                         src=self.defs[o.args[0]];ix=self.defs[o.args[1]]
+-                        if (src.code!='load' or self.t.values[o.args[0]]!='ptr' or ix.code!='load' or ix.args[0]!=index or o.type!='u8'):
+-                            safe=False;break
+-                        bases.add(src.args[0]);reads[o.result]=src.args[0]
++                        if src.code!='load' or o.type!='u8':safe=False;break
++                        # A byte pointer indexed by i, or a named byte array
++                        # indexed by (invariant full-width offset + i).
++                        if self.t.values[o.args[0]]=='ptr' and ix.code=='load' and ix.args[0]==index:
++                            source=src.args[0]
++                        elif src.args[0] in self.arrays and self.arrays[src.args[0]][0]=='u8' and ix.code=='+':
++                            aa,bb=ix.args; da,db=self.defs[aa],self.defs[bb]
++                            ofs=None
++                            for first,second in ((da,db),(db,da)):
++                                if first.code=='load' and first.args[0]==index and second.code=='load' and second.args[0]!=index:
++                                    ofs=second.args[0]
++                            if ofs is None: safe=False;break
++                            source=src.args[0]
++                            if source in offset_bases and offset_bases[source]!=ofs:safe=False;break
++                            offset_bases[source]=ofs
++                            suppressed_ops.add(ix.result)
++                        else:safe=False;break
++                        bases.add(source);reads[o.result]=source
+                     if o.code in ('*','<<','>>','&','|','^','neg','not'):
+                         safe=False;break
+-                    if o.code in ('+','-') and o is not add:
+-                        # Other arithmetic could generate Y/indexed accesses.
+-                        safe=False;break
++                    # Arithmetic use checks happen after all planned reads
++                    # have been discovered, independent of set iteration order.
+                 if not safe:break
+             if not safe or len(bases)!=2 or any(p.nodes & reg for p in self.dual_plans) or any(p.nodes & reg for p in self.yplans):continue
+-            if any(o.code=='store' and o.args[0] in bases for n in reg for o in bm[n].ops):continue
++            if any(o.code in ('+','-') and o is not add and o.result not in suppressed_ops for n in reg for o in bm[n].ops):continue
++            # Address offsets must be invariant across the entire region.
++            if any(o.code=='store' and o.args[0] in (bases | set(offset_bases.values())) for n in reg for o in bm[n].ops):continue
++            # An offset calculation must have exactly the one corresponding
++            # read as its consumer; otherwise suppressing it changes semantics.
++            for v in suppressed_ops:
++                uses=sum(1 for n in bm for op in bm[n].ops if v in self.uses(op))
++                if uses!=1:safe=False
++            if not safe:continue
+             # The two ZP pointers can safely survive all intervening ops:
+             # reads use our own plan; no effectful calls, indirect stores, or
+             # other address formation remains in the loop.
+             # A return of index uses its updated physical byte cell.
+-            p=DualPlan(pre,head.name,latch,index,bound,tuple(sorted(bases)),reg,reads,last.args[0],latchstore[0])
++            p=DualPlan(pre,head.name,latch,index,bound,tuple(sorted(bases)),reg,reads,last.args[0],latchstore[0],offset_bases,suppressed_ops)
+             self.dual_plans.append(p);self.dual_pre[pre]=p;self.dual_hdr[head.name]=p;self.dual_latch[latch]=p
+             self.dual_reads.update({v:p for v in reads})
+ 
+     def op(self,o):
+         if getattr(self,'_probe',False) or not hasattr(self,'dual_pre'):
+             return super().op(o)
++        if any(o.result in p.suppressed_ops for p in self.dual_plans) and o.code=='+':
++            return
+         p=self.dual_pre.get(self.current)
+         if p and o.code=='jump' and o.args[0]==p.hdr:
+             self.emit('ldy',p.index)
+             for base,ptr in zip(p.bases,('__ap','__ix')):
+-                self.emit('lda',base);self.emit('sta',ptr)
+-                self.emit('lda',base+'+1');self.emit('sta',ptr+'+1')
++                if base in p.offset_bases:
++                    # A symbolic array base plus an invariant 16-bit scalar.
++                    ofs=p.offset_bases[base]
++                    self.emit('clc');self.emit('lda',ofs);self.emit('adc','#<'+base);self.emit('sta',ptr)
++                    self.emit('lda',ofs+'+1');self.emit('adc','#>'+base);self.emit('sta',ptr+'+1')
++                else:
++                    self.emit('lda',base);self.emit('sta',ptr)
++                    self.emit('lda',base+'+1');self.emit('sta',ptr+'+1')
+             return super().op(o)
+         p=self.dual_hdr.get(self.current)
+         if p and o.code=='branch' and o.args[0]==p.compare_id:

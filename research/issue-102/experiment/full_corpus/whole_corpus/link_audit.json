@@ -1,0 +1,64 @@
+{
+  "functions": 44,
+  "labels": 791,
+  "duplicates": [],
+  "unresolved": [
+    [
+      "ass_assemble",
+      "__call_io_close_0"
+    ],
+    [
+      "ass_assemble",
+      "__call_io_open_0"
+    ],
+    [
+      "ass_assemble",
+      "__call_io_open_1"
+    ],
+    [
+      "ass_assemble",
+      "io_close"
+    ],
+    [
+      "ass_assemble",
+      "io_open"
+    ],
+    [
+      "close_source_tree",
+      "__call_io_close_0"
+    ],
+    [
+      "close_source_tree",
+      "io_close"
+    ],
+    [
+      "open_include",
+      "__call_io_open_0"
+    ],
+    [
+      "open_include",
+      "__call_io_open_1"
+    ],
+    [
+      "open_include",
+      "io_open"
+    ],
+    [
+      "read_source_line",
+      "__call_io_read_0"
+    ],
+    [
+      "read_source_line",
+      "io_read"
+    ]
+  ],
+  "external_refs": [
+    "__call_io_close_0",
+    "__call_io_open_0",
+    "__call_io_open_1",
+    "__call_io_read_0",
+    "io_close",
+    "io_open",
+    "io_read"
+  ]
+}

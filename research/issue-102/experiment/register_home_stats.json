@@ -1,0 +1,66 @@
+[
+  {
+    "function": "find_symbol",
+    "candidate": "__L_find_symbol_same",
+    "reg": "x",
+    "writes": 2,
+    "reads": 1,
+    "bytes_saved": 6
+  },
+  {
+    "function": "parse_value",
+    "candidate": "__L_parse_value_first_kind",
+    "reg": "x",
+    "writes": 1,
+    "reads": 1,
+    "bytes_saved": 4
+  },
+  {
+    "function": "stage_unresolved_instruction",
+    "candidate": "__L_stage_unresolved_instruction_kind",
+    "reg": "x",
+    "writes": 2,
+    "reads": 1,
+    "bytes_saved": 6
+  },
+  {
+    "function": "assemble_direct_value",
+    "candidate": "__L_assemble_direct_value_mode",
+    "reg": "x",
+    "writes": 3,
+    "reads": 1,
+    "bytes_saved": 8
+  },
+  {
+    "function": "assemble_data_list",
+    "candidate": "__L_assemble_data_list_item_end",
+    "reg": "x",
+    "writes": 2,
+    "reads": 2,
+    "bytes_saved": 8
+  },
+  {
+    "function": "open_include",
+    "candidate": "__L_open_include_parent_path",
+    "reg": "x",
+    "writes": 2,
+    "reads": 1,
+    "bytes_saved": 6
+  },
+  {
+    "function": "scan_argument",
+    "candidate": "__L_scan_argument_quote",
+    "reg": "x",
+    "writes": 5,
+    "reads": 3,
+    "bytes_saved": 16
+  },
+  {
+    "function": "process_source_line",
+    "candidate": "__L_process_source_line_argument_length",
+    "reg": "x",
+    "writes": 2,
+    "reads": 2,
+    "bytes_saved": 8
+  }
+]

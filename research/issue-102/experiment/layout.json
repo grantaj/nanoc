@@ -1,0 +1,47 @@
+{
+  "bss_base": 18432,
+  "bss_end": 51263,
+  "bss_bytes": 32831,
+  "bss_limit": 52736,
+  "functions": 44,
+  "initialized_bytes": 741,
+  "functions_instruction_bytes": 10969,
+  "max_packed_scratch": 6,
+  "zp": {
+    "__ap": 2,
+    "__ix": 4,
+    "__rh": 6,
+    "__mw": 7,
+    "__tmp0": 9,
+    "__tmp1": 10,
+    "__tmp2": 11,
+    "__tmp3": 12,
+    "__tmp4": 13,
+    "__tmp5": 14,
+    "__tmp6": 15,
+    "__tmp7": 16,
+    "NC_TMP": 252,
+    "NC_PTR": 254
+  },
+  "extern": {
+    "io_open": [
+      "open",
+      [
+        53008,
+        53010
+      ]
+    ],
+    "io_read": [
+      "read",
+      [
+        53012
+      ]
+    ],
+    "io_close": [
+      "close",
+      [
+        53022
+      ]
+    ]
+  }
+}

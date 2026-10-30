@@ -1,0 +1,26 @@
+functions 44 bytes 7104 instructions 3264
+ops [('lda', 1002), ('sta', 646), ('cmp', 275), ('jsr', 227), ('rts', 217), ('bne', 158), ('adc', 117), ('beq', 82), ('ldy', 63), ('clc', 61), ('jmp', 60), ('bcc', 53), ('inc', 35), ('sbc', 33), ('ldx', 30), ('bcs', 28), ('sec', 27), ('stx', 24), ('tax', 19), ('bpl', 18), ('iny', 17), ('eor', 16), ('asl', 14), ('txa', 12), ('bmi', 11)]
+top functions
+parse_atom                            557 B     257 ins,  76 LDA,  45 STA,  4 JMP
+assemble_instruction                  541 B     250 ins,  72 LDA,  39 STA,  2 JMP
+parse_value                           414 B     174 ins,  59 LDA,  45 STA,  5 JMP
+resolve_fixups_for_symbol             406 B     189 ins,  56 LDA,  47 STA,  8 JMP
+process_source_line                   380 B     183 ins,  47 LDA,  26 STA,  9 JMP
+open_include                          346 B     165 ins,  50 LDA,  31 STA,  2 JMP
+allocate_symbol                       314 B     147 ins,  48 LDA,  36 STA,  1 JMP
+assemble_direct_value                 280 B     123 ins,  44 LDA,  24 STA,  1 JMP
+stage_data_value                      250 B     106 ins,  35 LDA,  20 STA,  2 JMP
+find_symbol                           244 B     116 ins,  36 LDA,  25 STA,  4 JMP
+define_label                          201 B      92 ins,  35 LDA,  23 STA,  0 JMP
+process_instruction_like              192 B      74 ins,  27 LDA,  19 STA,  0 JMP
+ass_assemble                          188 B      83 ins,  27 LDA,  16 STA,  1 JMP
+assemble_data_list                    174 B      83 ins,  19 LDA,   8 STA,  5 JMP
+append_fixup                          160 B      76 ins,  22 LDA,  20 STA,  0 JMP
+stage_unresolved_instruction          156 B      70 ins,  21 LDA,  10 STA,  0 JMP
+scan_argument                         151 B      77 ins,  15 LDA,   9 STA,  7 JMP
+process_symbol                        151 B      67 ins,  25 LDA,  17 STA,  0 JMP
+assemble_mode_value                   133 B      55 ins,  18 LDA,  11 STA,  0 JMP
+read_source_line                      131 B      62 ins,  17 LDA,   6 STA,  1 JMP
+instruction patterns Counter({'sta-lda identical': 14, 'ora #00': 1}) Counter({'redundant load of temp': 4})
+examples sta-lda identical [('hex_nibble', 0, 'sta __L_hex_nibble_c', 'lda __L_hex_nibble_c'), ('resolve_fixups_for_symbol', 87, 'sta __tmp0', 'lda __tmp0'), ('allocate_symbol', 96, 'sta __L_allocate_symbol_i', 'lda __L_allocate_symbol_i'), ('parse_value', 149, 'sta captured_symbol+1', 'lda captured_symbol+1'), ('parse_value', 167, 'sta __tmp0', 'lda __tmp0')]
+upper,len [('upper_char', 24), ('same_text', 59), ('apply_byte_prefix', 14), ('hex_nibble', 74), ('find_opcode', 34), ('stage_byte', 76), ('parse_atom', 557), ('assemble_instruction', 541), ('process_source_line', 380), ('resolve_fixups_for_symbol', 406), ('allocate_symbol', 314), ('patch_word_chain', 130)]
