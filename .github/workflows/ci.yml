@@ -28,6 +28,12 @@ jobs:
       - name: Validate candidate Phase 1 C assembler
         run: sh scripts/test-ass-c.sh
 
+      - name: Compare native-structured C assembler source paths
+        run: |
+          python3 tests/native-ass/test_native.py
+          python3 tests/native-ass/test_instruction_value.py
+          python3 tests/native-ass/test_source_scanner.py
+
       - name: Run C64-native tests
         run: make test
 
