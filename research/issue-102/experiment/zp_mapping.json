@@ -1,0 +1,618 @@
+[
+  {
+    "symbol": "__L_process_source_line_cursor",
+    "old": 51235,
+    "zp": 17,
+    "width": 1,
+    "refs": 26
+  },
+  {
+    "symbol": "__L_assemble_instruction_argument_length",
+    "old": 51169,
+    "zp": 18,
+    "width": 1,
+    "refs": 23
+  },
+  {
+    "symbol": "__L_stage_byte_value",
+    "old": 51105,
+    "zp": 19,
+    "width": 1,
+    "refs": 19
+  },
+  {
+    "symbol": "__L_assemble_instruction_argument",
+    "old": 51167,
+    "zp": 20,
+    "width": 2,
+    "refs": 34
+  },
+  {
+    "symbol": "source_line_length",
+    "old": 29956,
+    "zp": 22,
+    "width": 1,
+    "refs": 17
+  },
+  {
+    "symbol": "__L_parse_value_position",
+    "old": 51087,
+    "zp": 23,
+    "width": 1,
+    "refs": 16
+  },
+  {
+    "symbol": "__L_assemble_data_list_cursor",
+    "old": 51188,
+    "zp": 24,
+    "width": 1,
+    "refs": 16
+  },
+  {
+    "symbol": "source_depth",
+    "old": 30218,
+    "zp": 25,
+    "width": 2,
+    "refs": 30
+  },
+  {
+    "symbol": "__L_stage_data_value_status",
+    "old": 51180,
+    "zp": 27,
+    "width": 1,
+    "refs": 14
+  },
+  {
+    "symbol": "captured_addend",
+    "old": 50970,
+    "zp": 28,
+    "width": 2,
+    "refs": 26
+  },
+  {
+    "symbol": "atom_used",
+    "old": 50977,
+    "zp": 30,
+    "width": 1,
+    "refs": 13
+  },
+  {
+    "symbol": "__L_upper_char_c",
+    "old": 50980,
+    "zp": 31,
+    "width": 1,
+    "refs": 13
+  },
+  {
+    "symbol": "__L_stage_unresolved_instruction_status",
+    "old": 51137,
+    "zp": 32,
+    "width": 1,
+    "refs": 12
+  },
+  {
+    "symbol": "value_result",
+    "old": 50966,
+    "zp": 33,
+    "width": 2,
+    "refs": 23
+  },
+  {
+    "symbol": "__L_assemble_instruction_core_length",
+    "old": 51175,
+    "zp": 35,
+    "width": 1,
+    "refs": 11
+  },
+  {
+    "symbol": "ass_image_length",
+    "old": 29696,
+    "zp": 36,
+    "width": 2,
+    "refs": 20
+  },
+  {
+    "symbol": "__L_resolve_fixups_for_symbol_i",
+    "old": 51010,
+    "zp": 38,
+    "width": 2,
+    "refs": 20
+  },
+  {
+    "symbol": "__L_parse_atom_text",
+    "old": 51074,
+    "zp": 40,
+    "width": 2,
+    "refs": 20
+  },
+  {
+    "symbol": "__L_parse_atom_symbol",
+    "old": 51082,
+    "zp": 42,
+    "width": 2,
+    "refs": 20
+  },
+  {
+    "symbol": "__L_define_label_symbol",
+    "old": 51069,
+    "zp": 44,
+    "width": 2,
+    "refs": 20
+  },
+  {
+    "symbol": "captured_prefix",
+    "old": 50972,
+    "zp": 46,
+    "width": 1,
+    "refs": 10
+  },
+  {
+    "symbol": "__L_scan_argument_quote",
+    "old": 51213,
+    "zp": 47,
+    "width": 1,
+    "refs": 10
+  },
+  {
+    "symbol": "__L_scan_argument_i",
+    "old": 51212,
+    "zp": 48,
+    "width": 1,
+    "refs": 10
+  },
+  {
+    "symbol": "__L_parse_value_length",
+    "old": 51086,
+    "zp": 49,
+    "width": 1,
+    "refs": 10
+  },
+  {
+    "symbol": "__L_parse_atom_i",
+    "old": 51077,
+    "zp": 50,
+    "width": 1,
+    "refs": 10
+  },
+  {
+    "symbol": "fixup_count",
+    "old": 50964,
+    "zp": 51,
+    "width": 2,
+    "refs": 18
+  },
+  {
+    "symbol": "captured_symbol",
+    "old": 50968,
+    "zp": 53,
+    "width": 2,
+    "refs": 18
+  },
+  {
+    "symbol": "__L_parse_value_text",
+    "old": 51084,
+    "zp": 55,
+    "width": 2,
+    "refs": 18
+  },
+  {
+    "symbol": "__L_hex_nibble_c",
+    "old": 50991,
+    "zp": 57,
+    "width": 1,
+    "refs": 9
+  },
+  {
+    "symbol": "__L_assemble_mode_value_mode",
+    "old": 51142,
+    "zp": 58,
+    "width": 1,
+    "refs": 9
+  },
+  {
+    "symbol": "__L_stage_resolved_instruction_value",
+    "old": 51115,
+    "zp": 59,
+    "width": 2,
+    "refs": 16
+  },
+  {
+    "symbol": "__L_parse_atom_value",
+    "old": 51080,
+    "zp": 61,
+    "width": 2,
+    "refs": 16
+  },
+  {
+    "symbol": "__L_find_symbol_i",
+    "old": 51027,
+    "zp": 63,
+    "width": 2,
+    "refs": 16
+  },
+  {
+    "symbol": "__L_append_fixup_n",
+    "old": 51000,
+    "zp": 65,
+    "width": 2,
+    "refs": 16
+  },
+  {
+    "symbol": "__L_allocate_symbol_n",
+    "old": 51041,
+    "zp": 67,
+    "width": 2,
+    "refs": 16
+  },
+  {
+    "symbol": "__L_parse_value_status",
+    "old": 51088,
+    "zp": 69,
+    "width": 1,
+    "refs": 8
+  },
+  {
+    "symbol": "__L_open_include_i",
+    "old": 51204,
+    "zp": 70,
+    "width": 1,
+    "refs": 8
+  },
+  {
+    "symbol": "__L_find_opcode_mode",
+    "old": 51102,
+    "zp": 71,
+    "width": 1,
+    "refs": 8
+  },
+  {
+    "symbol": "__L_find_opcode_mnemonic",
+    "old": 51101,
+    "zp": 72,
+    "width": 1,
+    "refs": 8
+  },
+  {
+    "symbol": "__L_assemble_data_list_length",
+    "old": 51186,
+    "zp": 73,
+    "width": 1,
+    "refs": 8
+  },
+  {
+    "symbol": "__L_allocate_symbol_length",
+    "old": 51035,
+    "zp": 74,
+    "width": 1,
+    "refs": 8
+  },
+  {
+    "symbol": "__L_assemble_instruction_opcode",
+    "old": 51172,
+    "zp": 75,
+    "width": 2,
+    "refs": 15
+  },
+  {
+    "symbol": "atom_value",
+    "old": 50973,
+    "zp": 77,
+    "width": 2,
+    "refs": 14
+  },
+  {
+    "symbol": "__L_open_include_argument",
+    "old": 51198,
+    "zp": 79,
+    "width": 2,
+    "refs": 14
+  },
+  {
+    "symbol": "atom_kind",
+    "old": 50978,
+    "zp": 81,
+    "width": 1,
+    "refs": 7
+  },
+  {
+    "symbol": "__L_stage_resolved_instruction_opcode",
+    "old": 51113,
+    "zp": 82,
+    "width": 1,
+    "refs": 7
+  },
+  {
+    "symbol": "__L_stage_resolved_instruction_mode",
+    "old": 51114,
+    "zp": 83,
+    "width": 1,
+    "refs": 7
+  },
+  {
+    "symbol": "__L_parse_atom_length",
+    "old": 51076,
+    "zp": 84,
+    "width": 1,
+    "refs": 7
+  },
+  {
+    "symbol": "__L_open_include_output",
+    "old": 51203,
+    "zp": 85,
+    "width": 1,
+    "refs": 7
+  },
+  {
+    "symbol": "__L_open_include_input_start",
+    "old": 51201,
+    "zp": 86,
+    "width": 1,
+    "refs": 7
+  },
+  {
+    "symbol": "__L_find_symbol_length",
+    "old": 51024,
+    "zp": 87,
+    "width": 1,
+    "refs": 7
+  },
+  {
+    "symbol": "__L_assemble_data_list_c",
+    "old": 51192,
+    "zp": 88,
+    "width": 1,
+    "refs": 7
+  },
+  {
+    "symbol": "__L_resolve_fixups_for_symbol_value",
+    "old": 51013,
+    "zp": 89,
+    "width": 2,
+    "refs": 13
+  },
+  {
+    "symbol": "__L_assemble_direct_value_opcode",
+    "old": 51162,
+    "zp": 91,
+    "width": 2,
+    "refs": 13
+  },
+  {
+    "symbol": "symbol_name_used",
+    "old": 45841,
+    "zp": 93,
+    "width": 2,
+    "refs": 12
+  },
+  {
+    "symbol": "symbol_count",
+    "old": 45839,
+    "zp": 95,
+    "width": 2,
+    "refs": 12
+  },
+  {
+    "symbol": "__L_resolve_fixups_for_symbol_stage",
+    "old": 51015,
+    "zp": 97,
+    "width": 2,
+    "refs": 12
+  },
+  {
+    "symbol": "__L_process_instruction_like_name",
+    "old": 51229,
+    "zp": 99,
+    "width": 2,
+    "refs": 12
+  },
+  {
+    "symbol": "__L_process_instruction_like_argument",
+    "old": 51232,
+    "zp": 101,
+    "width": 2,
+    "refs": 12
+  },
+  {
+    "symbol": "__L_find_symbol_name",
+    "old": 51022,
+    "zp": 103,
+    "width": 2,
+    "refs": 12
+  },
+  {
+    "symbol": "__L_define_constant_symbol",
+    "old": 51054,
+    "zp": 105,
+    "width": 2,
+    "refs": 12
+  },
+  {
+    "symbol": "__L_assemble_mode_value_text",
+    "old": 51143,
+    "zp": 107,
+    "width": 2,
+    "refs": 12
+  },
+  {
+    "symbol": "__L_assemble_instruction_mnemonic",
+    "old": 51170,
+    "zp": 109,
+    "width": 2,
+    "refs": 12
+  },
+  {
+    "symbol": "current_scope",
+    "old": 45843,
+    "zp": 111,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_stage_resolved_instruction_status",
+    "old": 51118,
+    "zp": 112,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_stage_plain_word_reference_status",
+    "old": 51112,
+    "zp": 113,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_scan_argument_last",
+    "old": 51214,
+    "zp": 114,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_scan_argument_c",
+    "old": 51215,
+    "zp": 115,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_same_text_a_length",
+    "old": 50983,
+    "zp": 116,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_process_symbol_status",
+    "old": 51228,
+    "zp": 117,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_process_source_line_name_start",
+    "old": 51236,
+    "zp": 118,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_process_source_line_name_length",
+    "old": 51237,
+    "zp": 119,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_process_source_line_argument_start",
+    "old": 51238,
+    "zp": 120,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_process_instruction_like_name_length",
+    "old": 51231,
+    "zp": 121,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_process_instruction_like_argument_length",
+    "old": 51234,
+    "zp": 122,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_open_include_input_length",
+    "old": 51202,
+    "zp": 123,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_assemble_mode_value_mnemonic",
+    "old": 51141,
+    "zp": 124,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_assemble_mode_value_length",
+    "old": 51145,
+    "zp": 125,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_assemble_direct_value_status",
+    "old": 51154,
+    "zp": 126,
+    "width": 1,
+    "refs": 6
+  },
+  {
+    "symbol": "__L_read_source_line_c",
+    "old": 51208,
+    "zp": 127,
+    "width": 2,
+    "refs": 11
+  },
+  {
+    "symbol": "ass_origin",
+    "old": 29698,
+    "zp": 129,
+    "width": 2,
+    "refs": 10
+  },
+  {
+    "symbol": "__L_stage_unresolved_instruction_symbol",
+    "old": 51129,
+    "zp": 131,
+    "width": 2,
+    "refs": 10
+  },
+  {
+    "symbol": "__L_stage_unresolved_instruction_addend",
+    "old": 51131,
+    "zp": 133,
+    "width": 2,
+    "refs": 10
+  },
+  {
+    "symbol": "__L_same_text_b",
+    "old": 50984,
+    "zp": 135,
+    "width": 2,
+    "refs": 10
+  },
+  {
+    "symbol": "__L_same_text_a",
+    "old": 50981,
+    "zp": 137,
+    "width": 2,
+    "refs": 10
+  },
+  {
+    "symbol": "__L_patch_word_chain_stage",
+    "old": 51060,
+    "zp": 139,
+    "width": 2,
+    "refs": 10
+  },
+  {
+    "symbol": "__L_intern_label_symbol",
+    "old": 51047,
+    "zp": 141,
+    "width": 2,
+    "refs": 10
+  },
+  {
+    "symbol": "__L_assemble_data_list_argument",
+    "old": 51184,
+    "zp": 143,
+    "width": 2,
+    "refs": 10
+  }
+]

@@ -1,0 +1,93 @@
+ 1/44 upper_char                      ok        50     50 
+ 2/44 same_text                       ok        95     95 
+ 3/44 apply_byte_prefix               ok       139    139 
+ 4/44 hex_nibble                      ok       147    147 
+ 5/44 append_fixup                    ok       401    401 
+ 6/44 relative_byte                   ok       155    155 
+ 7/44 trim_fixups                     ok       148    145 
+ 8/44 resolve_fixups_for_symbol       ok      1109   1074 
+ 9/44 scope_for_name                  ok       102     99 
+10/44 find_symbol                     ok       497    494 
+11/44 allocate_symbol                 ok       719    719 
+12/44 intern_label                    ok       279    276 
+13/44 define_constant                 ok       300    300 
+14/44 patch_word_chain                ok       436    436 
+15/44 define_label                    ok       634    631 
+16/44 parse_atom                      ok      1377   1160 
+17/44 parse_value                     ok       755    731 
+18/44 find_mnemonic                   ok       361    361 
+19/44 find_opcode                     ok       207    201 
+20/44 stage_byte                      ok       144    144 
+21/44 stage_plain_word_reference      ok       361    361 
+22/44 stage_resolved_instruction      ok       267    267 
+23/44 stage_resolved_relative         ok       226    226 
+24/44 stage_unresolved_instruction    ok       478    478 
+25/44 short_mode_for_index            ok        38     38 
+26/44 long_mode_for_index             ok        38     38 
+27/44 assemble_mode_value             ok       414    414 
+28/44 assemble_direct_value           ok       860    860 
+29/44 assemble_instruction            ok      1760   1707 
+30/44 stage_data_value                ok       610    610 
+31/44 assemble_data_list              ok       310    310 
+32/44 assemble_string                 ok       244    238 
+33/44 open_include                    ok       775    760 
+34/44 read_source_line                ok       343    343 
+35/44 close_source_tree               ok       120    120 
+36/44 scan_argument                   ok       250    250 
+37/44 process_label                   ok       198    195 
+38/44 process_symbol                  ok       294    291 
+39/44 process_instruction_like        ok       559    547 
+40/44 process_source_line             ok       710    641 
+41/44 reset_assembler                 ok       113    113 
+42/44 all_symbols_defined             ok       141    121 
+43/44 all_fixups_resolved             ok       141    121 
+44/44 ass_assemble                    ok       473    467 
+\nSUMMARY Counter({'ok': 44}) Counter({'ok': 44}) Counter({'ok': 44})
+bytes of fully lowered (LOCAL only) 17778
+{
+  "bss_base": 18432,
+  "bss_end": 51263,
+  "bss_bytes": 32831,
+  "bss_limit": 52736,
+  "functions": 44,
+  "initialized_bytes": 741,
+  "functions_instruction_bytes": 15883,
+  "max_packed_scratch": 8,
+  "zp": {
+    "__ap": 2,
+    "__ix": 4,
+    "__rh": 6,
+    "__mw": 7,
+    "__tmp0": 9,
+    "__tmp1": 10,
+    "__tmp2": 11,
+    "__tmp3": 12,
+    "__tmp4": 13,
+    "__tmp5": 14,
+    "__tmp6": 15,
+    "__tmp7": 16,
+    "NC_TMP": 252,
+    "NC_PTR": 254
+  },
+  "extern": {
+    "io_open": [
+      "open",
+      [
+        53008,
+        53010
+      ]
+    ],
+    "io_read": [
+      "read",
+      [
+        53012
+      ]
+    ],
+    "io_close": [
+      "close",
+      [
+        53022
+      ]
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+variant,loaded_bytes,ratio_to_handwritten,gap_to_handwritten
+Handwritten ass,6905,1.0,0
+Earlier compiler,10321,1.495,3416
+Native comparison only,9936,1.439,3031
+Outlining only,9316,1.349,2411
+Combined validated,8945,1.295,2040
