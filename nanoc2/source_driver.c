@@ -22,11 +22,34 @@ char *tb_name(char category, char number)
     return "BAD_SYMBOL";
 }
 
+/* Negative tests for the backend's unsupported-state contracts. */
+int rejection_checks(void)
+{
+    unsigned i;
+    tb_reset();
+    tb_add(6,0,0,1,0);
+    tb_add(6,0,1,2,0);
+    if (tb_plan() != 0 || tb_error != 2) return 1;
+    tb_reset();
+    tb_add(2,1,0,0,0);
+    tb_add(14,0,2,1,3);
+    if (tb_compile() != 0 || tb_error != 4) return 2;
+    tb_reset();
+    i = 0;
+    while (i < 192) {
+        tb_add(1,0,0,0,i);
+        i = i + 1;
+    }
+    if (tb_add(1,0,0,0,200) != 0 || tb_error != 1) return 3;
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static char input[12000];
     size_t count;
     if (argc != 2) return 2;
+    if (!strcmp(argv[1],"reject")) return rejection_checks();
     count = fread(input,1,sizeof(input)-1,stdin);
     if (count >= sizeof(input)-1) return 3;
     input[count] = 0;
