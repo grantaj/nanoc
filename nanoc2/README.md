@@ -34,8 +34,10 @@ python3 nanoc2/test_machine.py
 ```
 
 The test builds the **C emitter** with `cc`, asks it to generate both assembly
-listings, and runs a small independent opcode-level interpreter against the
-algorithms compiled from C with GCC. It includes arrays crossing pages, full
+listings, then **extracts the original functions from the committed
+`nanoc1/nanoc1.c` source** and compiles them with GCC as its independent
+semantic oracle. There is no copied private C oracle. The generated assembly
+runs in a small independent opcode-level interpreter. It includes arrays crossing pages, full
 176-symbol tables and mismatches in the middle of a record. This test
 interpreter is *not* VICE or the project's production assembler. Byte sizes
 are estimated from 6502 instruction/addressing-mode widths, not native links.
