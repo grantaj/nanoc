@@ -1,74 +1,75 @@
-# nanoc2: traversal-first replacement backend, first C implementation
+# nanoc2: traversal-first 6502 compiler (experimental replacement)
 
-This is the **first implementation slice**, not a new working Phase-1 compiler yet.
-It is a proposed replacement for the direct, stack-oriented emitter in
-`nanoc1/nanoc1.c`, not an optimiser applied after that emitter.
+This branch starts a **new C-written code-generation path**. It is **not**
+an optimiser over the old `nanoc1` emitter. Production `nanoc1.c` is
+unchanged.
 
-## What actually runs
+## Working end-to-end experiment
 
-`traversal_backend.c` is C shaped to fit Nano C Phase 1: fixed arrays,
-no AST, no allocation, no recursive parser, no host libraries, and no Python
-in the compiler. It accepts a bounded *typed operation tape* from the parser,
-examines its indexed accesses, chooses simple register roles, and emits text
-6502. It does not inspect or recognise function names.
+`source_tape.c` accepts the **actual C function source**, scans a bounded
+subset of Nano C, validates its supported operations, and records a function's
+typed semantic events. `traversal_backend.c` then examines those events
+before writing 6502, chooses X/Y roles from indexed-memory uses, and emits the
+complete machine routine.
 
-The separate host test adapter **manually supplies the semantic tape** for
-unmodified algorithms from `nanoc1.c`: `same_bytes` and the nested
-`find_global` (including its match flag, break and two loops). This is a
-critical limitation: the production parser has **not yet been wired to
-produce the tape**. Passing these tests does *not* establish C-to-6502
-compilation or self-hosting.
+The current grammar handles byte scalar assignments, byte pointer/array
+reads, simple affine array offsets, a power-of-two record stride, `if`,
+`while`, `break`, and `return`. Nested traversals are supported.
 
-The machine choices are simple: an index used for indirect pointer accesses
-lives in Y; another index used for absolute array accesses lives in X.
-Scalar values not selected as index homes are stored in named byte locations.
-A scaled pointer is constructed once for the outer record, here using the
-algebraic identity `symbol*32 == symbol<<5`, rather than rematerialising it
-for every byte in the inner loop. The emitter uses general labels and branches;
-there is no `find_global`-specific output template.
+There is **no function-name-specific code-generation recipe**, no general
+instruction search, no register allocator, no Python compiler backend, and no
+post-generation peephole pass. The code generator rejects operations it
+cannot represent; no silent generic fallback is claimed.
 
-## Running the tests
+Run the tests from the repository root:
 
 ```sh
 python3 nanoc2/test_machine.py
 ```
 
-The test builds the **C emitter** with `cc`, asks it to generate both assembly
-listings, then **extracts the original functions from the committed
-`nanoc1/nanoc1.c` source** and compiles them with GCC as its independent
-semantic oracle. There is no copied private C oracle. The generated assembly
-runs in a small independent opcode-level interpreter. It includes arrays crossing pages, full
-176-symbol tables and mismatches in the middle of a record. This test
-interpreter is *not* VICE or the project's production assembler. Byte sizes
-are estimated from 6502 instruction/addressing-mode widths, not native links.
+The test extracts **exact** `same_bytes()` and `find_global()` definitions
+from `nanoc1/nanoc1.c`. It feeds them as source text into the new **C**
+parser/semantic tape/emitter, then runs the resulting 6502 in an independent
+instruction interpreter. Independently host-compiled versions of those same
+source definitions are the semantic oracle. The test checks 4,000 cases for
+`same_bytes` and 2,500 for `find_global`, including pointer page crossings,
+long symbol tables, early exits, and mismatched record contents. Negative
+checks exercise both unsafe source constructs and unsupported machine
+representations. CI runs this test separately from native C64 build jobs.
 
-Measured on this slice:
+The adapter binds the test functions' existing symbol names to **experimental
+zero-page and array ABI homes**. The body sizes do not include caller setup,
+and this is not yet an executable self-hosted compiler or a whole-image size
+result.
 
-| Exact algorithm | Emitted body | Independent comparisons |
-|---|---:|---:|
-| `same_bytes` | 37 bytes | 4,000 |
-| `find_global` | 108 bytes | 2,500 |
+## What should be kept and what should be removed
 
-The zero-page homes, function parameter convention and returned byte are part
-of this experimental machine contract; those setup costs are not charged to
-these body counts. Do not compare them directly with complete `nanoc1` images.
+The **lasting** design consists of a small function-local operation tape and
+its traversal-first emitter. The existing `nanoc1` scanner, symbol and type
+parser are the semantic authority and should be retained.
 
-## The architectural boundary
+`source_tape.c` is **temporary integration scaffolding**, not a request to
+retain a second scanner or parser in production. It exists solely to prove
+source -> typed operations -> target 6502 without a manually supplied tape.
+The next step is to modify the **original** bounded `nanoc1` parser so that
+it creates these operations directly, preserving full Phase-1 rules. Once the
+real parser supplies the tape, delete the temporary source scanner and
+replace the old emitter's stack-expression, `ax_pending`, and eager indexed
+address operations. In particular, do **not** keep two complete parsers or
+two complete emitters.
 
-The following remains to be implemented before replacing any production path:
+Until that replacement is done, **do not merge as a finished compiler**.
 
-1. The *existing* bounded Phase-1 scanner/type parser must record these
-   operations instead of calling direct machine emitters. This is not a
-   second parser or a separate Python implementation.
-2. The same emitter must handle **ordinary operations, calls, 16-bit values,
-   source aliasing, loop exits and arbitrary joins**, with a correct canonical
-   fallback. This first slice rejects index conflicts and non-power-of-two
-   scales instead of guessing.
-3. Replace (rather than duplicate) `ax_pending`, stack-expression templates,
-   eager pointer reconstruction and statement-local branch emission.
-4. Compare complete generated programs, including ABI/runtime costs, using
-   real nanoc tests and the handwritten assembler as a machine-style control.
+## Boundaries and correctness caveats
 
-**Simplicity gate:** if this starts accumulating multiple special recognisers,
-large parallel code generators, or an elaborate optimiser, stop and reconsider.
-The goal is to make the compiler more readable while getting better 6502.
+- No 16-bit arithmetic, arbitrary expressions, call side effects, arbitrary
+  aliases, `else`, or general nested expressions yet.
+- The test adapter's `base = symbol * 32` represents a computed byte offset;
+  the source-derived pointer is constructed when its indexed array owner is
+  known. Invalid ownership is rejected.
+- The low-level test interpreter is not VICE. Encoded body sizes are not
+  complete linked C64 image measurements.
+- Never treat a passing manually built operation tape as proof of C source
+  compilation. The current primary machine tests use only automatically
+  generated tapes from the exact original C functions.
+
