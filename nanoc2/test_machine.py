@@ -7,6 +7,7 @@ DRIVER=ROOT/'test_driver'
 subprocess.run(['cc','-std=c99','-funsigned-char','-O0',str(ROOT/'test_driver.c'),'-o',str(DRIVER)],check=True)
 for test in ('same_bytes','find_global'):
     (ROOT/(test+'.asm')).write_bytes(subprocess.check_output([str(DRIVER),test]))
+subprocess.run([str(DRIVER),'reject'],check=True,stdout=subprocess.DEVNULL)
 SRC=ROOT/'original_oracles.c'
 SO=ROOT/'original_oracles.so'
 subprocess.run(['cc','-std=c99','-funsigned-char','-shared','-fPIC','-O0',str(SRC),'-o',str(SO)],check=True)
@@ -148,4 +149,4 @@ for q in range(2500):
 
 print(f'same_bytes: 4000/4000, {image_size(lines1)} 6502 bytes')
 print(f'find_global: 2500/2500, {image_size(lines2)} 6502 bytes')
-print('Total 6500 host-C/machine comparisons passed')
+print('Total 6500 host-C/machine comparisons passed; three rejection guards passed')
