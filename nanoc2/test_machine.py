@@ -8,10 +8,38 @@ subprocess.run(['cc','-std=c99','-funsigned-char','-O0',str(ROOT/'test_driver.c'
 for test in ('same_bytes','find_global'):
     (ROOT/(test+'.asm')).write_bytes(subprocess.check_output([str(DRIVER),test]))
 subprocess.run([str(DRIVER),'reject'],check=True,stdout=subprocess.DEVNULL)
-SRC=ROOT/'original_oracles.c'
-SO=ROOT/'original_oracles.so'
-subprocess.run(['cc','-std=c99','-funsigned-char','-shared','-fPIC','-O0',str(SRC),'-o',str(SO)],check=True)
-lib=ctypes.CDLL(str(SO))
+# The oracle functions are extracted from the *actual committed compiler*.
+# Never test against privately maintained copies of the code under test.
+COMPILER=ROOT.parent/'nanoc1'/'nanoc1.c'
+source=COMPILER.read_text()
+
+def source_function(name):
+    m=re.search(r'^char\s+'+re.escape(name)+r'\s*\([^)]*\)\s*\{',source,re.M)
+    if m is None:raise AssertionError('missing source routine '+name)
+    depth=1;pos=m.end()
+    while depth:
+        if source[pos]=='{':depth+=1
+        if source[pos]=='}':depth-=1
+        pos+=1
+    return source[m.start():pos]
+
+names=['global_name','global_name_len','token_text','token_length','global_count']
+declarations=[]
+for name in names:
+    m=re.search(r'^char\s+'+name+r'(?:\[\d+\])?\s*;',source,re.M)
+    if m is None:raise AssertionError('missing global '+name)
+    declarations.append(m.group(0))
+
+import tempfile
+with tempfile.TemporaryDirectory() as tmp:
+    compiled=pathlib.Path(tmp)
+    oracle=compiled/'oracle.c'
+    oracle.write_text('\n'.join(declarations)+'\n'+source_function('same_bytes')+'\n'+source_function('find_global')+'\n')
+    so=compiled/'oracle.so'
+    subprocess.run(['cc','-std=c99','-funsigned-char','-shared','-fPIC','-O0',str(oracle),'-o',str(so)],check=True)
+    lib=ctypes.CDLL(str(so))
+    # The library remains loaded after leaving the temp directory.
+
 
 class Machine:
     def __init__(self,listing):
