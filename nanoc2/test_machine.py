@@ -3,11 +3,10 @@ Compares the generated machine programs to the *unchanged* C routines.
 """
 import ctypes, pathlib, subprocess, random, re
 ROOT=pathlib.Path(__file__).parent
-DRIVER=ROOT/'test_driver'
-subprocess.run(['cc','-std=c99','-funsigned-char','-O0',str(ROOT/'test_driver.c'),'-o',str(DRIVER)],check=True)
-for test in ('same_bytes','find_global'):
-    (ROOT/(test+'.asm')).write_bytes(subprocess.check_output([str(DRIVER),test]))
-subprocess.run([str(DRIVER),'reject'],check=True,stdout=subprocess.DEVNULL)
+SOURCE_DRIVER=ROOT/'source_driver'
+subprocess.run(['cc','-std=c99','-funsigned-char','-O0',
+                str(ROOT/'source_driver.c'),'-o',str(SOURCE_DRIVER)],check=True)
+subprocess.run([str(SOURCE_DRIVER),'reject'],check=True,stdout=subprocess.DEVNULL)
 # The oracle functions are extracted from the *actual committed compiler*.
 # Never test against privately maintained copies of the code under test.
 COMPILER=ROOT.parent/'nanoc1'/'nanoc1.c'
@@ -25,9 +24,6 @@ def source_function(name):
 
 # The integration test uses the exact C function text as the input to the
 # source-to-tape lowering code. The old hand-entered tape is *not* its oracle.
-SOURCE_DRIVER=ROOT/'source_driver'
-subprocess.run(['cc','-std=c99','-funsigned-char','-O0',
-                str(ROOT/'source_driver.c'),'-o',str(SOURCE_DRIVER)],check=True)
 for name in ('same_bytes','find_global'):
     c_source=source_function(name)
     machine_asm=subprocess.check_output([str(SOURCE_DRIVER),name],
