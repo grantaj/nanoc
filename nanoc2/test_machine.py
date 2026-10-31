@@ -23,6 +23,22 @@ def source_function(name):
         pos+=1
     return source[m.start():pos]
 
+# The integration test uses the exact C function text as the input to the
+# source-to-tape lowering code. The old hand-entered tape is *not* its oracle.
+SOURCE_DRIVER=ROOT/'source_driver'
+subprocess.run(['cc','-std=c99','-funsigned-char','-O0',
+                str(ROOT/'source_driver.c'),'-o',str(SOURCE_DRIVER)],check=True)
+for name in ('same_bytes','find_global'):
+    c_source=source_function(name)
+    machine_asm=subprocess.check_output([str(SOURCE_DRIVER),name],
+                                        input=c_source.encode())
+    (ROOT/(name+'_source.asm')).write_bytes(machine_asm)
+# Ensure unsupported arithmetic is rejected, never silently miscompiled.
+bad_source=source_function('same_bytes').replace('i = i + 1;', 'i = i + 2;')
+bad=subprocess.run([str(SOURCE_DRIVER),'same_bytes'],input=bad_source.encode(),
+                   stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+assert bad.returncode != 0, 'unsupported induction step was accepted'
+
 names=['global_name','global_name_len','token_text','token_length','global_count']
 declarations=[]
 for name in names:
@@ -129,7 +145,7 @@ def image_size(lines):
     return size
 
 rand=random.Random(7816)
-lines1=(ROOT/'same_bytes.asm').read_text();lines2=(ROOT/'find_global.asm').read_text()
+lines1=(ROOT/'same_bytes_source.asm').read_text();lines2=(ROOT/'find_global_source.asm').read_text()
 lib.same_bytes.argtypes=[ctypes.POINTER(ctypes.c_ubyte),ctypes.c_ubyte,ctypes.POINTER(ctypes.c_ubyte),ctypes.c_ubyte]
 lib.same_bytes.restype=ctypes.c_ubyte
 for q in range(4000):
@@ -175,6 +191,6 @@ for q in range(2500):
     actual,_=machine.run()
     assert actual==expected,('find_global',q,count,actual,expected)
 
-print(f'same_bytes: 4000/4000, {image_size(lines1)} 6502 bytes')
-print(f'find_global: 2500/2500, {image_size(lines2)} 6502 bytes')
+print(f'same_bytes SOURCE PARSED: 4000/4000, {image_size(lines1)} 6502 bytes')
+print(f'find_global SOURCE PARSED: 2500/2500, {image_size(lines2)} 6502 bytes')
 print('Total 6500 host-C/machine comparisons passed; three rejection guards passed')
