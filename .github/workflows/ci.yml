@@ -57,3 +57,12 @@ jobs:
             build/nanoc0-integration/n1-ass.asm
             build/nanoc0-integration/nanoc1-baseline.txt
           if-no-files-found: ignore
+
+  nanoc2-source-to-machine:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out nanoc
+        uses: actions/checkout@v7.0.1
+
+      - name: Check traversal-first C source lowering against original compiler
+        run: python3 nanoc2/test_machine.py
