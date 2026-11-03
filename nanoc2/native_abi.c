@@ -10,7 +10,11 @@
  */
 char n2_name(char area, char slot)
 {
-    if (tb_text(area == 1 ? "__g" : "__v") == 0) return 0;
+    if (area==1) {
+        if (tb_text("__g")==0) return 0;
+    } else {
+        if (tb_text("__v")==0) return 0;
+    }
     if (area == 2) {
         if (tb_hex2(nc2_function_symbol) == 0) return 0;
         if (tb_char('_') == 0) return 0;
