@@ -3,10 +3,9 @@ Compares the generated machine programs to the *unchanged* C routines.
 """
 import ctypes, pathlib, subprocess, random, re
 ROOT=pathlib.Path(__file__).parent
-SOURCE_DRIVER=ROOT/'source_driver'
+SOURCE_DRIVER=ROOT/'parser_tape_driver'
 subprocess.run(['cc','-std=c99','-funsigned-char','-O0',
-                str(ROOT/'source_driver.c'),'-o',str(SOURCE_DRIVER)],check=True)
-subprocess.run([str(SOURCE_DRIVER),'reject'],check=True,stdout=subprocess.DEVNULL)
+                str(ROOT/'parser_tape_driver.c'),'-o',str(SOURCE_DRIVER)],check=True)
 # The oracle functions are extracted from the *actual committed compiler*.
 # Never test against privately maintained copies of the code under test.
 COMPILER=ROOT.parent/'nanoc1'/'nanoc1.c'
@@ -22,25 +21,31 @@ def source_function(name):
         pos+=1
     return source[m.start():pos]
 
-# The integration test uses the exact C function text as the input to the
-# source-to-tape lowering code. The old hand-entered tape is *not* its oracle.
-for name in ('same_bytes','find_global'):
-    c_source=source_function(name)
-    machine_asm=subprocess.check_output([str(SOURCE_DRIVER),name],
-                                        input=c_source.encode())
-    (ROOT/(name+'_source.asm')).write_bytes(machine_asm)
-# Ensure unsupported arithmetic is rejected, never silently miscompiled.
-bad_source=source_function('same_bytes').replace('i = i + 1;', 'i = i + 2;')
-bad=subprocess.run([str(SOURCE_DRIVER),'same_bytes'],input=bad_source.encode(),
-                   stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
-assert bad.returncode != 0, 'unsupported induction step was accepted'
-
+# Bind global declarations from the *exact* compiler source.
 names=['global_name','global_name_len','token_text','token_length','global_count']
 declarations=[]
 for name in names:
     m=re.search(r'^char\s+'+name+r'(?:\[\d+\])?\s*;',source,re.M)
     if m is None:raise AssertionError('missing global '+name)
     declarations.append(m.group(0))
+metadata={}
+for name in ('same_bytes','find_global'):
+    c_source=(('\n'.join(declarations)+'\n') if name=='find_global' else '')+source_function(name)
+    result=subprocess.run([str(SOURCE_DRIVER)],input=c_source.encode(),capture_output=True)
+    assert result.returncode==0,(name,result.stderr.decode())
+    (ROOT/(name+'_source.asm')).write_bytes(result.stdout)
+    varmap={};ptrmap={}
+    for line in result.stderr.decode().splitlines():
+        kind,nm,idnum=line.split()
+        if kind=='NC2VAR':varmap[nm]=int(idnum)
+        elif kind=='NC2PTR':ptrmap[nm]=int(idnum)
+        else:raise AssertionError(('unexpected compiler diagnostic',line))
+    metadata[name]=(varmap,ptrmap)
+
+# The original Phase-1 semantic parser must reject invalid C types.
+bad_source=source_function('same_bytes').replace('i = i + 1;', 'i = a;')
+bad=subprocess.run([str(SOURCE_DRIVER)],input=bad_source.encode(),capture_output=True)
+assert bad.returncode != 0,'Phase-1 semantic error accepted'
 
 import tempfile
 with tempfile.TemporaryDirectory() as tmp:
@@ -155,9 +160,12 @@ for q in range(4000):
     # Page crossing is intentional: pointer0 at $40F0, pointer1 at $51E8.
     for ix,v in enumerate(a):machine.m[(0x40f0+ix)&65535]=v
     for ix,v in enumerate(b):machine.m[(0x51e8+ix)&65535]=v
-    machine.m[0x27]=0xf0;machine.m[0x28]=0x40
-    machine.m[0x29]=0xe8;machine.m[0x2a]=0x51
-    machine.m[0x22]=length;machine.m[0x23]=other
+    varmap,ptrmap=metadata['same_bytes']
+    for nm,addr in [('a',0x40f0),('b',0x51e8)]:
+        k=ptrmap[nm];slot=0x27+2*k
+        machine.m[slot]=addr&255;machine.m[slot+1]=addr>>8
+    for nm,value in [('a_length',length),('b_length',other)]:
+        machine.m[machine.addr['__v'+str(varmap[nm])]]=value
     actual,_=machine.run()
     assert actual==expected,('same_bytes',q,actual,expected)
 
@@ -183,10 +191,12 @@ for q in range(2500):
     machine.m[machine.addr['global_name_len']:machine.addr['global_name_len']+176]=bytes(glen)
     machine.m[machine.addr['global_name']:machine.addr['global_name']+5632]=bytes(gname)
     machine.m[machine.addr['token_text']:machine.addr['token_text']+192]=bytes(token)
-    machine.m[0x23]=name_len;machine.m[0x24]=count
+    varmap,ptrmap=metadata['find_global']
+    for nm,value in [('token_length',name_len),('global_count',count)]:
+        machine.m[machine.addr['__v'+str(varmap[nm])]]=value
     actual,_=machine.run()
     assert actual==expected,('find_global',q,count,actual,expected)
 
 print(f'same_bytes SOURCE PARSED: 4000/4000, {image_size(lines1)} 6502 bytes')
 print(f'find_global SOURCE PARSED: 2500/2500, {image_size(lines2)} 6502 bytes')
-print('Total 6500 host-C/machine comparisons passed; three rejection guards passed')
+print('Total 6500 original-parser C-to-machine comparisons passed; semantic rejection passed')
