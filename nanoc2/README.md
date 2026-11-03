@@ -89,6 +89,44 @@ Native smoke is an **explicit test tier**, separate from default fast CI:
 apply the `native-smoke` PR label, or dispatch its workflow when available
 on the default branch. A verified run is recorded in PR #131's history.
 
+## Same-C-source function-body size comparison
+
+The opt-in native workflow now runs:
+
+```sh
+python3 nanoc2/test_size_spots.py
+```
+
+This compiles **identical committed Phase-1 C functions** twice: once using
+the unmodified production `nanoc1/nanoc1.c` through the narrow
+`production_baseline_driver.c` host I/O shim, and once through nanoc2's
+original-parser → semantic-events → traversal-first C emitter and native
+ABI. Both are assembled with **vasm**. Each exact body length is calculated
+from resolved assembler symbols, not by counting instructions or guessing
+instruction sizes. The production runtime and both entry wrappers are excluded
+from the function-body comparison; static parameter/local/global homes have
+the same contract.
+
+| Function | Original nanoc1 | New nanoc2 | Reduction | Original PHA/PLA | New PHA/PLA |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `same_bytes` | 211 B | 69 B | 67.3% | 16/16 | 0/0 |
+| `find_global` | 400 B | 121 B | 69.8% | 36/36 | 0/0 |
+| `copy_pointer` | 158 B | 42 B | 73.4% | 12/12 | 0/0 |
+| `copy_array` | 144 B | 24 B | 83.3% | 12/12 | 0/0 |
+| **Four function bodies** | **913 B** | **256 B** | **72.0%** | **76/76** | **0/0** |
+
+Source: [successful targeted native workflow](https://github.com/grantaj/nanoc/actions/runs/41743070650).
+The test also writes the two source-level machine bodies under
+`build/nanoc2-size-spots/` for inspection and comparison.
+
+**Scope:** this is strong evidence that selecting byte-index and pointer
+access *before instruction emission* eliminates structural stack and address
+overhead on the represented subset. It is **not** a full linked `ass.c`
+benchmark: the current native backend is still single-function, byte-only
+and call-free, so shared runtime, general 16-bit arithmetic, call overhead and
+remaining parser/compiler binary size are unresolved. The handwritten
+assembler is also a different source-level algorithm.
+
 ## Boundaries and next steps
 
 1. The current native assembly unit supports **one byte-returning function**,
