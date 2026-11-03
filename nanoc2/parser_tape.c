@@ -2453,8 +2453,11 @@ char compile_call_stmt(char function_id)
 
 char emit_false_jump(unsigned target)
 {
-    if (nc2_capture != 0) nc2_event(3,0,0,nc2_value[value_top - 1],target);
     unsigned skip;
+    if (nc2_capture != 0) {
+        /* One semantic branch, not the old inverse-branch/JMP expansion. */
+        return nc2_event(3,0,0,nc2_value[value_top - 1],target);
+    }
 
     skip = label_counter;
     label_counter = label_counter + 1;
