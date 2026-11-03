@@ -79,7 +79,7 @@ with tempfile.TemporaryDirectory() as tmp:
     lib.same_bytes.argtypes=[ctypes.POINTER(ctypes.c_ubyte),ctypes.c_ubyte,
                              ctypes.POINTER(ctypes.c_ubyte),ctypes.c_ubyte]
     lib.same_bytes.restype=ctypes.c_ubyte
-    for q in range(750):
+    for q in range(4000):
         n=rng.randrange(256);n2=n if q%9 else rng.randrange(256)
         a=bytearray(rng.randrange(256) for _ in range(256));b=bytearray(a)
         if n and q%2==0:b[rng.randrange(n)]^=1
@@ -101,7 +101,7 @@ with tempfile.TemporaryDirectory() as tmp:
     token=(ctypes.c_ubyte*192).in_dll(lib,'token_text')
     tokenlen=ctypes.c_ubyte.in_dll(lib,'token_length')
     gcount=ctypes.c_ubyte.in_dll(lib,'global_count')
-    for q in range(500):
+    for q in range(2500):
         count=rng.randrange(177);name_len=rng.randrange(32)
         for j in range(count):
             glen[j]=rng.randrange(32)
@@ -121,4 +121,12 @@ with tempfile.TemporaryDirectory() as tmp:
         actual,_=m.run(400000)
         assert actual==expected,('find_global',q,actual,expected)
 
-    print('Original semantic parser -> traversal C lowerer -> 6502: 1250/1250 oracle comparisons')
+        # Unsupported but valid C must not be silently lowered to byte code.
+    extra = [
+        original_function('same_bytes').replace('i = i + 1;', 'i = i + 2;'),
+        original_function('same_bytes').replace('char same_bytes(', 'int same_bytes('),
+    ]
+    for source in extra:
+        p=subprocess.run([str(driver)],input=source.encode(),capture_output=True)
+        assert p.returncode!=0, ('unsupported code accepted',p.stdout.decode())
+    print('Original semantic parser -> C traversal lowerer -> 6502: 6500/6500 oracle comparisons; word and recurrence guards passed')
