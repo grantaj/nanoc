@@ -120,10 +120,13 @@ char nd_add(char op, char dst, char a, char b, unsigned number)
     return 1;
 }
 
-/* Convert the C indexed expression to a real 6502 load or compare. */
-char nd_index(unsigned node, char compare)
+/* All indexed operations share one address decision: fixed byte array
+ * indexed by X/Y, or a byte pointer indexed by Y.  Mode is load, compare,
+ * or store.  No source-loop pattern matching is involved.
+ */
+char nd_index_address(char area, char symbol, char kind,
+                      unsigned index_node, char mode)
 {
-    unsigned index_node;
     unsigned base_node;
     unsigned offset_node;
     int idx;
@@ -131,43 +134,38 @@ char nd_index(unsigned node, char compare)
     int ptr;
     int owner;
     char opcode;
-    if (nc2_kind[node]!=4 & nc2_kind[node]!=5) { nd_error=11; return 0; }
-    if (nc2_kind[node]==5) {
-        base_node=nc2_left[node];
-        index_node=nc2_right[node];
-        if (nc2_kind[base_node]!=2 | nc2_number[base_node]!=4) {
-            nd_error=12; return 0;
+
+    if (kind != 2) {
+        /* A named char pointer. The original parser checked indexing
+         * syntax; verify the element really is a byte here as well. */
+        if (area == 1) {
+            if (global_type[symbol] != 4 | global_kind[symbol] != 1) {
+                nd_error=12; return 0;
+            }
+        } else {
+            if (local_type[symbol] != 4) { nd_error=12; return 0; }
         }
-        ptr=nd_pointer(nc2_a[base_node],nc2_b[base_node]);
+        ptr=nd_pointer(area,symbol);
         idx=nd_scalar(index_node);
         if (ptr<0 | idx<0) return 0;
-        if (compare!=0) opcode=7; else opcode=6;
+        if (mode==0) opcode=6;
+        else if (mode==1) opcode=7;
+        else opcode=20;
         return nd_add(opcode,0,ptr,idx,0);
     }
-    /* The original parser already established that this index is legal C. */
-    index_node=nc2_left[node];
-    if (nc2_number[node]!=2) {
-        /* A named char* in Phase 1 is a pointer value. */
-        if (nc2_a[node]==1) {
-            if (global_type[nc2_b[node]]!=4) { nd_error=12; return 0; }
-        } else if (local_type[nc2_b[node]]!=4) {
-            nd_error=12; return 0;
-        }
-        ptr=nd_pointer(nc2_a[node],nc2_b[node]);
-        idx=nd_scalar(index_node);
-        if (ptr<0 | idx<0) return 0;
-        if (compare!=0) opcode=7; else opcode=6;
-        return nd_add(opcode,0,ptr,idx,0);
-    }
-    arr=nd_array(nc2_a[node],nc2_b[node]);
+    arr=nd_array(area,symbol);
     if (arr<0) return 0;
     if (nc2_kind[index_node]==2) {
         idx=nd_scalar(index_node);
         if (idx<0) return 0;
-        if (compare!=0) opcode=5; else opcode=4;
+        if (mode==0) opcode=4;
+        else if (mode==1) opcode=5;
+        else opcode=19;
         return nd_add(opcode,0,arr,idx,0);
     }
-    /* An affine address base plus an inner-loop index. */
+
+    /* A computed fixed-record base and an independent character offset.
+     * Reuse the pointer prepared by the earlier scalar assignment. */
     if (nc2_kind[index_node]!=6 | nc2_a[index_node]!='+') {
         nd_error=13; return 0;
     }
@@ -183,8 +181,64 @@ char nd_index(unsigned node, char compare)
     tb_a[nd_map_event[owner]]=arr;
     idx=nd_scalar(offset_node);
     if (idx<0) return 0;
-    if (compare!=0) opcode=7; else opcode=6;
+    if (mode==0) opcode=6;
+    else if (mode==1) opcode=7;
+    else opcode=20;
     return nd_add(opcode,0,nd_map_id[owner],idx,0);
+}
+
+char nd_index(unsigned node, char mode)
+{
+    unsigned base_node;
+    if (nc2_kind[node]==4) {
+        return nd_index_address(nc2_a[node],nc2_b[node],
+                                nc2_number[node],nc2_left[node],mode);
+    }
+    if (nc2_kind[node]==5) {
+        base_node=nc2_left[node];
+        if (nc2_kind[base_node]!=2 | nc2_number[base_node]!=4) {
+            nd_error=12; return 0;
+        }
+        return nd_index_address(nc2_a[base_node],nc2_b[base_node],
+                                1,nc2_right[node],mode);
+    }
+    nd_error=11;
+    return 0;
+}
+
+/* Store to an indexed byte location. The parser has already saved both
+ * sides before emission: only these pure, byte-valued RHS forms are accepted.
+ */
+char nd_index_store(char area,char symbol,unsigned index_node,unsigned rhs)
+{
+    char kind;
+    int source;
+    if (rhs==0 | index_node==0) { nd_error=27; return 0; }
+    if (area==1) kind=global_kind[symbol];
+    else kind=1;
+    if (kind!=2) {
+        if (area==1) {
+            if (global_type[symbol]!=4) { nd_error=27; return 0; }
+        } else {
+            if (local_type[symbol]!=4) { nd_error=27; return 0; }
+        }
+    } else if (global_type[symbol]!=1) {
+        nd_error=27; return 0;
+    }
+
+    if (nc2_kind[rhs]==1) {
+        if (nc2_number[rhs]>255) { nd_error=27; return 0; }
+        if (nd_add(21,0,0,0,nc2_number[rhs])==0) return 0;
+    } else if (nc2_kind[rhs]==2) {
+        source=nd_scalar(rhs);
+        if (source<0) return 0;
+        if (nd_add(15,0,source,0,0)==0) return 0;
+    } else if (nc2_kind[rhs]==4 | nc2_kind[rhs]==5) {
+        if (nd_index(rhs,0)==0) return 0;
+    } else {
+        nd_error=27; return 0;
+    }
+    return nd_index_address(area,symbol,kind,index_node,2);
 }
 
 char nd_condition(unsigned expr, unsigned exit_label)
@@ -347,6 +401,8 @@ char nd_compile()
             if (nd_assignment(area,sym,node)==0) return 0;
         } else if (op==5) {
             if (nd_return(node)==0) return 0;
+        } else if (op==6) {
+            if (nd_index_store(area,sym,label,node)==0) return 0;
         } else {
             nd_error=22; return 0;
         }
