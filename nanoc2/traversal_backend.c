@@ -339,9 +339,12 @@ char tb_compile()
             if (tb_branch(0,k) == 0) return 0;
         } else if (op == 12) {
             if (tb_load_var(d) == 0) return 0;
+            /* Nano C char result: A contains the byte, X is zero. */
+            if (tb_immediate("ldx",0) == 0) return 0;
             if (tb_simple("rts") == 0) return 0;
         } else if (op == 13) {
             if (tb_immediate("lda",k) == 0) return 0;
+            if (tb_immediate("ldx",0) == 0) return 0;
             if (tb_simple("rts") == 0) return 0;
         } else if (op == 14) {
             if (tb_scaled_pointer(d,a,b,k) == 0) return 0;
