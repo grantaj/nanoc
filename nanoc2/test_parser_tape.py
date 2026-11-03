@@ -52,3 +52,15 @@ bad=function("same_bytes").replace("i = i + 1;", "i = a;")
 result=subprocess.run([str(DRIVER)],input=bad.encode(),capture_output=True)
 assert result.returncode != 0, "invalid byte <- pointer assignment accepted"
 print("original Phase-1 type rejection passed")
+
+# The native emitter uses the same parser, but this first ABI stage deliberately
+# handles one function and uninitialized BSS only. Reject unsupported units
+# before treating their emitted assembly as a complete program.
+for candidate in (
+    "char first() { return 1; } char second() { return 2; }",
+    "char initialized = 7; char first() { return 1; }",
+):
+    result=subprocess.run([str(DRIVER),'native'],input=candidate.encode(),
+                          capture_output=True)
+    assert result.returncode != 0, "unsupported native translation unit accepted"
+print("native ABI unit-boundary rejection checks passed")
