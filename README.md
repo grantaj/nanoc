@@ -48,6 +48,11 @@ make test
 
 Build products are written to `build/`.
 
+For fast PR development, GitHub runs host-side checks on every push without
+starting the native emulator. Full VICE/bootstrap correctness checks are
+available on request and run on `main` and nightly. See
+**[CI tiers](docs/ci-tiers.md)** for when each level applies.
+
 For a guided tour, including other-host prerequisites and a source-reading order, start with **[Getting started](docs/getting-started.md)**.
 
 ## The project in one picture
