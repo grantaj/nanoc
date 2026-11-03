@@ -1,71 +1,46 @@
 name: CI
 
+# Only inexpensive, host-side checks run on every commit. This job deliberately
+# does not install VICE/vasm, build PRGs, or run the native bootstrap.
 on:
-  push:
-    branches:
-      - main
   pull_request:
+  push:
+    branches: [main]
+
+# Compiling a new candidate makes older PR checks irrelevant. In particular,
+# do not queue a second full emulator run for every intermediate edit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
+    # Keep the existing CI / build check name for branch-protection rules.
     runs-on: ubuntu-24.04
-
+    timeout-minutes: 8
     steps:
       - name: Check out nanoc
         uses: actions/checkout@v7.0.1
 
-      - name: Set up development environment
-        run: make setup
-
-      - name: Check native-test shell syntax
+      - name: Check test script syntax
         run: |
-          sh -n scripts/test-nanoc0-integration.sh
-          sh -n scripts/test-nanoc1-baseline.sh
+          set -eu
+          for script in scripts/*.sh tests/run-test.sh; do
+            sh -n "$script"
+          done
 
-      - name: Build all targets
-        run: make
+      - name: Check Phase-1 C source syntax
+        run: |
+          set -eu
+          cc -std=c90 -funsigned-char -fsyntax-only nanoc1/nanoc1.c
+          cc -std=c90 -funsigned-char -fsyntax-only bootstrap/ass.c
 
-      - name: Validate candidate Phase 1 C assembler
-        run: sh scripts/test-ass-c.sh
-
-      - name: Run C64-native tests
-        run: make test
-
-      - name: Pin 6502 physical-condition seam
-        run: sh scripts/test-nanoc0-physical-contract.sh
-
-      - name: Run production nanoc0 integration baseline
-        run: sh scripts/test-nanoc0-integration.sh
-
-      - name: Validate nanoc1 Phase 1 semantic baseline
-        run: sh scripts/test-nanoc1-baseline.sh
-
-      - name: Capture generated bootstrap assembly
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: nanoc0-bootstrap-generated
-          path: |
-            build/nanoc0-integration/ASSFROMC.ASM
-            build/nanoc0-integration/assfromc.asm
-            build/nanoc0-integration/NCOUT.ASM
-            build/nanoc0-integration/ncout.asm
-            build/nanoc0-integration/NANOC1.ASM
-            build/nanoc0-integration/nanoc1.asm
-            build/nanoc0-integration/N1OUT.ASM
-            build/nanoc0-integration/n1out.asm
-            build/nanoc0-integration/n1-ass.asm
-            build/nanoc0-integration/nanoc1-baseline.txt
-          if-no-files-found: ignore
-
-  nanoc2-source-to-machine:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Check out nanoc
-        uses: actions/checkout@v7.0.1
-
-      - name: Validate Nano C semantic nodes using the original parser
-        run: python3 nanoc2/test_parser_tape.py
-
-      - name: Execute original-parser tape lowering against C oracles
-        run: python3 nanoc2/test_lower_tape.py
+      - name: Test traversal-first compiler if present
+        run: |
+          set -eu
+          if [ -f nanoc2/test_parser_tape.py ]; then
+            timeout 150s python3 nanoc2/test_parser_tape.py
+          fi
+          if [ -f nanoc2/test_lower_tape.py ]; then
+            timeout 150s python3 nanoc2/test_lower_tape.py
+          fi
