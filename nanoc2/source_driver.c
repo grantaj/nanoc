@@ -3,6 +3,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/*
+ * Integration with the actual nanoc1 Phase-1 scanner. Rename the program
+ * entry point for this host-only harness; do not copy scanner logic.
+ */
+#define main original_nanoc1_main
+#include "../nanoc1/nanoc1.c"
+#undef main
+
+static char *host_source;
+static unsigned host_source_at;
+int io_read(int handle)
+{
+    int c;
+    (void)handle;
+    c = (unsigned char)host_source[host_source_at];
+    if (c == 0) return -1;
+    host_source_at = host_source_at + 1;
+    return c;
+}
+int io_open(char *name, int len) { (void)name; (void)len; return -2; }
+int io_create(char *name, int len) { (void)name; (void)len; return -2; }
+int io_write(int h, int c) { (void)h; (void)c; return -2; }
+int io_close(int h) { (void)h; return 0; }
+
 #include "traversal_backend.c"
 #include "source_tape.c"
 
@@ -53,6 +77,12 @@ int main(int argc, char **argv)
     count = fread(input,1,sizeof(input)-1,stdin);
     if (count >= sizeof(input)-1) return 3;
     input[count] = 0;
+    host_source = input;
+    host_source_at = 0;
+    source_handle = 1;
+    hold_valid = 0;
+    compiler_error = 0;
+    if (next_source_char() == 0) return 4;
     ta_bindings = 0;
     if (!strcmp(argv[1],"same_bytes")) {
         ta_register("i",1,1);
