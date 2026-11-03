@@ -33,7 +33,20 @@ class Machine:
         if s.endswith(',x'):return self.m[(self.address(s[:-2])+self.x)&65535]
         return self.m[self.address(s)]
     def wr(self,s,n):
-        self.m[self.address(s)]=n&255
+        # Real 6502 STA also supports indexed absolute and (zp),Y.
+        if s.startswith('('):
+            q,reg=s[1:].split('),')
+            assert reg=='y',s
+            zp=self.address(q)
+            base=self.m[zp] | self.m[zp+1]<<8
+            address=(base+self.y)&65535
+        elif s.endswith(',y'):
+            address=(self.address(s[:-2])+self.y)&65535
+        elif s.endswith(',x'):
+            address=(self.address(s[:-2])+self.x)&65535
+        else:
+            address=self.address(s)
+        self.m[address]=n&255
     def nz(self,n):
         self.z=int((n&255)==0); self.n=int(bool(n&128))
     def run(self,maxsteps=100000):
