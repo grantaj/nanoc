@@ -5,9 +5,9 @@
  * record address expressions. It is NOT a new whole-language compiler yet.
  *
  * There are no named-function templates or machine-code rewrite passes.
- * The eventual nanoc1 integration replaces this scanner with nanoc1's tested
- * scanner/symbol parser. Only ta_operand(), ta_condition(), and ta_action()
- * are semantic lowering logic intended to survive that integration.
+ * Lexical analysis now uses the original nanoc1 scan_token() directly.
+ * The provisional statement parser is still slated for removal after the
+ * original semantic parser records operations.
  */
 
 /* tb_add, tb_reset, tb_compile, tb_count, tb_a are provided by the C backend. */
@@ -18,8 +18,6 @@ char ta_bindings;
 char ta_token[48];
 char ta_tok_type;        /* 1 identifier, 2 integer, 3 punctuation, 0 EOF */
 unsigned ta_tok_number;
-char *ta_input;
-unsigned ta_cursor;
 char ta_error;
 unsigned ta_label_number;
 char ta_frames[20];      /* 1 function, 2 if, 3 while */
@@ -77,73 +75,63 @@ int ta_lookup(char *s)
     return -1;
 }
 
-char ta_space(char c)
-{
-    return c == ' ' | c == '\n' | c == '\t' | c == '\r';
-}
-
-char ta_letter(char c)
-{
-    return (c >= 'a' & c <= 'z') | (c >= 'A' & c <= 'Z') | c == '_';
-}
-
-char ta_digit(char c)
-{
-    return c >= '0' & c <= '9';
-}
-
+/*
+ * Use the original nanoc1 scanner and its token conventions.
+ * There is no second lexer: identifiers, numeric literals, keywords, comments,
+ * EOF, and punctuation have already been validated by scan_token().
+ *
+ * This narrow adapter only translates token codes for the provisional
+ * traversal semantic parser. The next stage removes that parser too.
+ */
 char ta_scan()
 {
-    unsigned j;
-    char c;
-    char d;
-    while (ta_space(ta_input[ta_cursor])) ta_cursor = ta_cursor + 1;
-    /* Ignore C block comments, but do not silently accept // comments. */
-    while (ta_input[ta_cursor] == '/' & ta_input[ta_cursor + 1] == '*') {
-        ta_cursor = ta_cursor + 2;
-        while (ta_input[ta_cursor] != 0) {
-            if (ta_input[ta_cursor] == '*' & ta_input[ta_cursor + 1] == '/') break;
-            ta_cursor = ta_cursor + 1;
-        }
-        if (ta_input[ta_cursor] == 0) { ta_error = 1; return 0; }
-        ta_cursor = ta_cursor + 2;
-        while (ta_space(ta_input[ta_cursor])) ta_cursor = ta_cursor + 1;
+    unsigned i;
+    if (scan_token() == 0) {
+        ta_error = 1;
+        return 0;
     }
-    c = ta_input[ta_cursor];
-    if (c == 0) { ta_tok_type = 0; ta_token[0] = 0; return 1; }
-    j = 0;
-    if (ta_letter(c)) {
+    if (token_kind == 128) {
+        ta_tok_type = 0;
+        ta_token[0] = 0;
+        return 1;
+    }
+    if (token_kind == 129) {
+        ta_error = 1;
+        return 0;
+    }
+    if (token_kind == 130 | (token_kind >= 134 & token_kind <= 141)) {
         ta_tok_type = 1;
-        while (ta_letter(ta_input[ta_cursor]) | ta_digit(ta_input[ta_cursor])) {
-            if (j >= 46) { ta_error = 2; return 0; }
-            ta_token[j] = ta_input[ta_cursor];
-            j = j + 1;
-            ta_cursor = ta_cursor + 1;
+        i = 0;
+        while (i < token_length) {
+            if (i >= 47) { ta_error = 2; return 0; }
+            ta_token[i] = token_text[i];
+            i = i + 1;
         }
-    } else if (ta_digit(c)) {
-        ta_tok_type = 2;
-        ta_tok_number = 0;
-        while (ta_digit(ta_input[ta_cursor])) {
-            if (j >= 46) { ta_error = 2; return 0; }
-            d = ta_input[ta_cursor];
-            ta_tok_number = ta_tok_number * 10 + d - '0';
-            ta_token[j] = d;
-            j = j + 1;
-            ta_cursor = ta_cursor + 1;
-        }
-    } else {
-        ta_tok_type = 3;
-        ta_token[j] = c;
-        j = j + 1;
-        ta_cursor = ta_cursor + 1;
-        d = ta_input[ta_cursor];
-        if ((c == '!' | c == '=' | c == '<' | c == '>') & d == '=') {
-            ta_token[j] = d;
-            j = j + 1;
-            ta_cursor = ta_cursor + 1;
-        }
+        ta_token[i] = 0;
+        return 1;
     }
-    ta_token[j] = 0;
+    if (token_kind == 131 | token_kind == 132) {
+        ta_tok_type = 2;
+        ta_tok_number = token_value;
+        ta_token[0] = '#';
+        ta_token[1] = 0;
+        return 1;
+    }
+    ta_tok_type = 3;
+    i = token_kind;
+    if (i < 128) {
+        ta_token[0] = i;
+        ta_token[1] = 0;
+        return 1;
+    }
+    if (i == 142) { ta_token[0] = '='; ta_token[1] = '='; }
+    else if (i == 143) { ta_token[0] = '!'; ta_token[1] = '='; }
+    else if (i == 144) { ta_token[0] = '<'; ta_token[1] = '='; }
+    else if (i == 145) { ta_token[0] = '>'; ta_token[1] = '='; }
+    else if (i == 146) { ta_token[0] = '<'; ta_token[1] = '<'; }
+    else if (i == 147) { ta_token[0] = '>'; ta_token[1] = '>'; }
+    else { ta_error = 1; return 0; }
+    ta_token[2] = 0;
     return 1;
 }
 
@@ -311,7 +299,6 @@ char ta_assignment()
 
 char ta_start()
 {
-    ta_cursor = 0;
     ta_error = 0;
     ta_depth = 0;
     ta_single_if = 0;
@@ -338,7 +325,6 @@ char ta_compile_source(char *source)
     char kind;
     char is_single;
     int symbol;
-    ta_input = source;
     if (ta_start() == 0) return 0;
     while (ta_depth != 0 & ta_tok_type != 0) {
         is_single = 0;
