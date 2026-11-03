@@ -64,7 +64,7 @@ A fresh machine needs tools only for the native/full path:
 
 ```sh
 # Fast: host syntax and nanoc2 machine interpreter tests
-sh -n scripts/*.sh
+for script in scripts/*.sh tests/run-test.sh; do sh -n "$script"; done
 cc -std=c90 -funsigned-char -fsyntax-only nanoc1/nanoc1.c
 cc -std=c90 -funsigned-char -fsyntax-only bootstrap/ass.c
 python3 nanoc2/test_parser_tape.py
