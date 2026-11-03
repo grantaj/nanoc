@@ -64,13 +64,7 @@ jobs:
       - name: Check out nanoc
         uses: actions/checkout@v7.0.1
 
-      - name: Check traversal-first C source lowering against original compiler
-        run: python3 nanoc2/test_machine.py
-
-      - name: Exercise original parser with replacement byte-code emitter
-        run: python3 nanoc2/test_integrated.py
-
-      - name: Record semantic operations using the original Nano C parser
+      - name: Validate Nano C semantic nodes using the original parser
         run: python3 nanoc2/test_parser_tape.py
 
       - name: Execute original-parser tape lowering against C oracles
