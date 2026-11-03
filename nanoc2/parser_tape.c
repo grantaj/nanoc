@@ -12,6 +12,9 @@
  */
 char nc2_enable;
 char nc2_return_type;
+char nc2_function_count;
+char nc2_function_symbol;
+char nc2_local_slots;
 char nc2_capture;
 char nc2_fault;
 unsigned nc2_nodes;
@@ -2838,6 +2841,8 @@ char parse_function(char function_id)
 
     nc2_return_type = global_type[function_id];
     if (nc2_enable != 0) {
+        nc2_function_count=nc2_function_count+1;
+        nc2_function_symbol=function_id;
         nc2_reset();
         nc2_capture = 1;
     }
@@ -2917,6 +2922,7 @@ char parse_function(char function_id)
     if (parse_statements() == 0) {
         return 0;
     }
+    nc2_local_slots=local_count;
     nc2_capture = 0;
     local_count = 0;
     return 1;
