@@ -141,7 +141,7 @@ char nd_index(unsigned node, char compare)
         ptr=nd_pointer(nc2_a[base_node],nc2_b[base_node]);
         idx=nd_scalar(index_node);
         if (ptr<0 | idx<0) return 0;
-        opcode=compare ? 7 : 6;
+        if (compare!=0) opcode=7; else opcode=6;
         return nd_add(opcode,0,ptr,idx,0);
     }
     /* The original parser already established that this index is legal C. */
@@ -156,7 +156,7 @@ char nd_index(unsigned node, char compare)
         ptr=nd_pointer(nc2_a[node],nc2_b[node]);
         idx=nd_scalar(index_node);
         if (ptr<0 | idx<0) return 0;
-        opcode=compare ? 7 : 6;
+        if (compare!=0) opcode=7; else opcode=6;
         return nd_add(opcode,0,ptr,idx,0);
     }
     arr=nd_array(nc2_a[node],nc2_b[node]);
@@ -164,7 +164,7 @@ char nd_index(unsigned node, char compare)
     if (nc2_kind[index_node]==2) {
         idx=nd_scalar(index_node);
         if (idx<0) return 0;
-        opcode=compare ? 5 : 4;
+        if (compare!=0) opcode=5; else opcode=4;
         return nd_add(opcode,0,arr,idx,0);
     }
     /* An affine address base plus an inner-loop index. */
@@ -183,7 +183,7 @@ char nd_index(unsigned node, char compare)
     tb_a[nd_map_event[owner]]=arr;
     idx=nd_scalar(offset_node);
     if (idx<0) return 0;
-    opcode=compare ? 7 : 6;
+    if (compare!=0) opcode=7; else opcode=6;
     return nd_add(opcode,0,nd_map_id[owner],idx,0);
 }
 
@@ -248,7 +248,8 @@ char nd_assignment(char area, char symbol, unsigned rhs)
     unsigned extra;
     char op;
     if (rhs==0) { nd_error=19; return 0; }
-    target_type=(area==1 ? global_type[symbol] : local_type[symbol]);
+    if (area==1) target_type=global_type[symbol];
+    else target_type=local_type[symbol];
     if (nc2_kind[rhs]==6) {
         op=nc2_a[rhs];
         lhs=nc2_left[rhs];
