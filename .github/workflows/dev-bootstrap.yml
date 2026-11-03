@@ -1,21 +1,22 @@
 name: Oversized seed compiler (development layout)
 
+# This is a costly research/bootstrap profile, not the PR correctness gate.
+# Apply dev-bootstrap to a PR for a one-off run, or dispatch from Actions.
 on:
-  pull_request:
-    paths:
-      - 'nanoc0/**'
-      - 'nanoc1/**'
-      - 'ass/**'
-      - 'scripts/**'
-      - 'tests/**'
-      - 'bootstrap/**'
-      - 'test.inc'
-      - 'Makefile'
-      - '.github/workflows/**'
   workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   development-bootstrap:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'dev-bootstrap'
+    timeout-minutes: 120
     runs-on: ubuntu-24.04
     steps:
       - name: Check out nanoc
