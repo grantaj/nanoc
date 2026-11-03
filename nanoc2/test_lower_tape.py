@@ -4,7 +4,6 @@ The parser has no second C lexer/parser. The GCC oracles are extracted from the
 exact original production compiler. The 6502 ABI remains experimental and its
 pointer ZP homes are initialised by this test adapter, not linked startup code.
 """
-import ast
 import ctypes
 import pathlib
 import random
@@ -15,14 +14,7 @@ import tempfile
 ROOT=pathlib.Path(__file__).parent
 SOURCE=(ROOT.parent/'nanoc1'/'nanoc1.c').read_text()
 
-# Reuse the same instruction-level 6502 interpreter as the original experiment
-# without importing/running its other tests as a side effect.
-file=ast.parse((ROOT/'test_machine.py').read_text())
-node=next(n for n in file.body if isinstance(n,ast.ClassDef) and n.name=='Machine')
-ns={}
-exec(compile(ast.Module(body=[node],type_ignores=[]),'<test-machine>','exec'),ns)
-Machine=ns['Machine']
-
+from test_6502 import Machine
 
 def original_function(name):
     m=re.search(r'^char\s+'+re.escape(name)+r'\s*\([^)]*\)\s*\{',SOURCE,re.M)
