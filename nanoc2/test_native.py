@@ -48,11 +48,11 @@ def check_call(expected, check):
         "\tjsr __nc_start",
         "\tcmp #$%02x" % expected,
         "\tbeq .a%02x" % check,
-        "\tjmp fail",
+        "\tjmp native_fail",
         ".a%02x:" % check,
         "\tcpx #$00",
         "\tbeq .x%02x" % check,
-        "\tjmp fail",
+        "\tjmp native_fail",
         ".x%02x:" % check,
     ]
 
@@ -135,15 +135,35 @@ def run_native(name, source, test_lines, driver):
     harness = list(test_lines)
     harness += [
         "\tjmp success",
-        "fail:", "\tlda #$40", "\tsta $02",
+        "native_fail:", "\tlda #$40", "\tsta $02",
         ".halt:", "\tjmp .halt",
         "success:", "\tlda #$ff", "\tsta $02",
         ".halt:", "\tjmp .halt",
         "",
     ]
-    asm_path = OUT / (name + ".asm")
-    asm_path.write_text("\n".join(harness) + "\n" + asm)
-    prg = OUT / (name + ".prg")
+    # vasm treats separate "* = $0200" and "* = $0800" origins as
+    # independent segments. The normal project test pattern is therefore
+    # two PRGs, with the code PRG preloaded at $0800.
+    generated_source = OUT / (name + "-generated.asm")
+    generated_source.write_text(asm)
+    code_prg = OUT / (name + "-generated.prg")
+    subprocess.run([VASM, "-Fbin", "-cbm-prg", "-o", str(code_prg),
+                    str(generated_source)], cwd=ROOT, check=True)
+    code = code_prg.read_bytes()
+    assert code[:2] == b"\x00\x08", (name, code[:2])
+
+    # Symbol-only equates from the exact generated compiler output can be
+    # shared by the independently assembled native caller. No duplicated
+    # parameter/array offsets are hardcoded in the test.
+    symbols = []
+    for line in asm.splitlines():
+        if re.match(r'^(?:NC_BSS|__tptr\w*|__tw\w*|__g\w*|__v\w*|n2_\w+)\s*=', line):
+            symbols.append(line)
+    assert any(line.startswith("n2_") for line in symbols)
+    asm_path = OUT / (name + "-caller.asm")
+    asm_path.write_text("\n".join(harness) + "\n" +
+                        "\n".join(symbols) + "\n")
+    prg = OUT / (name + "-caller.prg")
     subprocess.run([VASM, "-Fbin", "-cbm-prg", "-o", str(prg),
                     str(asm_path)], cwd=ROOT, check=True)
     raw = prg.read_bytes()
@@ -151,6 +171,7 @@ def run_native(name, source, test_lines, driver):
     env = os.environ.copy()
     env["BUILD_DIR"] = str(OUT)
     env["VICE_TIMEOUT"] = "35"
+    env["VICE_PRELOAD_PRG"] = str(code_prg)
     subprocess.run(["sh", "tests/run-test.sh", str(prg),
                     "nanoc2-" + name], cwd=ROOT, env=env, check=True)
     print("%s: assembled %d loaded bytes; native ABI and result checks passed" %
