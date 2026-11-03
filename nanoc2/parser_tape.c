@@ -637,24 +637,12 @@ char emit_label_name(unsigned label)
 
 char emit_label(unsigned label)
 {
-    if (nc2_capture != 0) return nc2_event(1,0,0,0,label);
-    if (emit_label_name(label) == 0) {
-        return 0;
-    }
-    if (write_char(':') == 0) {
-        return 0;
-    }
-    return write_newline();
+    return nc2_event(1,0,0,0,label);
 }
 
 char emit_jump_label(char *op, unsigned label)
 {
-    if (nc2_capture != 0) return nc2_event(2,0,0,0,label);
-    emit_instruction(op);
-    write_char(' ');
-    emit_label_name(label);
-    write_newline();
-    return compiler_error == 0;
+    return nc2_event(2,0,0,0,label);
 }
 char emit_text_operand(char *op, char *text)
 {
@@ -1435,92 +1423,26 @@ char emit_param_store(char function_id, char argument, char type)
     return emit_param_byte(function_id, argument, 0);
 }
 
-char emit_push_ax()
-{
-    return write_text((fixed_text + 694));
-}
+char emit_push_ax() { return 1; }
 
 /* Materialise the last value only when another value needs A/X. */
-char flush_ax()
-{
-    if (ax_pending == 0) {
-        return 1;
-    }
-    ax_pending = 0;
-    return emit_push_ax();
-}
+char flush_ax() { return 1; }
 
-char hold_ax()
-{
-    ax_pending = 1;
-    return 1;
-}
+char hold_ax() { return 1; }
 
-char emit_pop_ax()
-{
-    if (ax_pending != 0) {
-        ax_pending = 0;
-        return 1;
-    }
-    return write_text((fixed_text + 710));
-}
+char emit_pop_ax() { return 1; }
 
 char emit_load_symbol(char area, char symbol, char type)
 {
-    if (nc2_capture != 0) { nc2_last=nc2_node(2,area,symbol,0,0,type); return nc2_fault == 0; }
-    if (emit_symbol_operand((fixed_text + 431), area, symbol, 0) == 0) {
-        return 0;
-    }
-    if (type == 1) {
-        if (emit_immediate((fixed_text + 435), 0) == 0) {
-            return 0;
-        }
-    } else {
-        if (emit_symbol_operand((fixed_text + 435), area, symbol, 1) == 0) {
-            return 0;
-        }
-    }
-    return hold_ax();
+    nc2_last = nc2_node(2,area,symbol,0,0,type);
+    return nc2_fault == 0;
 }
 
 /* Both a global array and a string literal are constant 16-bit addresses. */
 char emit_address_value(char kind, unsigned target)
 {
-    if (nc2_capture != 0) { nc2_last=nc2_node(3,kind,0,0,0,target); return nc2_fault == 0; }
-    char high;
-    char *op;
-    char *prefix;
-
-    high = 0;
-    while (high < 2) {
-        if (high == 0) {
-            op = fixed_text + 431;
-            prefix = fixed_text + 547;
-        } else {
-            op = fixed_text + 435;
-            prefix = fixed_text + 551;
-        }
-        if (emit_instruction(op) == 0) {
-            return 0;
-        }
-        if (write_text(prefix) == 0) {
-            return 0;
-        }
-        if (kind == 2) {
-            if (emit_global_name(target) == 0) {
-                return 0;
-            }
-        } else {
-            if (emit_label_name(target) == 0) {
-                return 0;
-            }
-        }
-        if (write_newline() == 0) {
-            return 0;
-        }
-        high = high + 1;
-    }
-    return hold_ax();
+    nc2_last = nc2_node(3,kind,0,0,0,target);
+    return nc2_fault == 0;
 }
 
 char emit_array_address(char symbol)
@@ -1530,47 +1452,14 @@ char emit_array_address(char symbol)
 
 char emit_literal_value(unsigned value)
 {
-    if (nc2_capture != 0) { nc2_last=nc2_node(1,0,0,0,0,value); return nc2_fault == 0; }
-    if (emit_immediate((fixed_text + 431), value & 255) == 0) {
-        return 0;
-    }
-    if (emit_immediate((fixed_text + 435), (value >> 8) & 255) == 0) {
-        return 0;
-    }
-    return hold_ax();
+    nc2_last = nc2_node(1,0,0,0,0,value);
+    return nc2_fault == 0;
 }
 
 char emit_string_literal()
 {
-    if (nc2_capture != 0) { nc2_fault=10; return 0; }
-    unsigned data_label;
-    unsigned skip_label;
-    char i;
-
-    data_label = label_counter;
-    label_counter = label_counter + 1;
-    skip_label = label_counter;
-    label_counter = label_counter + 1;
-    if (emit_jump_label((fixed_text + 531), skip_label) == 0) {
-        return 0;
-    }
-    if (emit_label(data_label) == 0) {
-        return 0;
-    }
-    i = 0;
-    while (i < token_length) {
-        if (emit_byte_data(token_text[i]) == 0) {
-            return 0;
-        }
-        i = i + 1;
-    }
-    if (emit_byte_data(0) == 0) {
-        return 0;
-    }
-    if (emit_label(skip_label) == 0) {
-        return 0;
-    }
-    return emit_address_value(1, data_label);
+    nc2_fault = 10; /* string materialisation not yet in new backend */
+    return 0;
 }
 
 char is_numeric_type(char type)
@@ -1661,125 +1550,30 @@ char push_value_type(char type)
     return 1;
 }
 
-char emit_binary_prelude()
-{
-    return write_text((fixed_text + 726));
-}
+char emit_binary_prelude() { return 0; }
 
-char emit_add_sub(char op)
-{
-    if (op == '+') {
-        return write_text((fixed_text + 778));
-    }
-    return write_text((fixed_text + 830));
-}
+char emit_add_sub(char op) { nc2_fault=31; return 0; }
 
-char emit_bitwise(char op)
-{
-    if (op == '&') {
-        return write_text((fixed_text + 882));
-    }
-    return write_text((fixed_text + 929));
-}
+char emit_bitwise(char op) { nc2_fault=31; return 0; }
 
-char emit_shift(char op)
-{
-    unsigned loop_label;
-    unsigned done_label;
-
-    loop_label = label_counter;
-    label_counter = label_counter + 1;
-    done_label = label_counter;
-    label_counter = label_counter + 1;
-    if (write_text((fixed_text + 1111)) == 0) {
-        return 0;
-    }
-    if (emit_jump_label((fixed_text + 523), done_label) == 0) {
-        return 0;
-    }
-    if (emit_label(loop_label) == 0) {
-        return 0;
-    }
-    if (op == 146) {
-        if (write_text((fixed_text + 1124)) == 0) {
-            return 0;
-        }
-    } else {
-        if (write_text((fixed_text + 1173)) == 0) {
-            return 0;
-        }
-    }
-    if (write_text((fixed_text + 1222)) == 0) {
-        return 0;
-    }
-    if (emit_jump_label((fixed_text + 527), loop_label) == 0) {
-        return 0;
-    }
-    return emit_label(done_label);
-}
+char emit_shift(char op) { nc2_fault=31; return 0; }
 
 /*
  * The relational helper names are eight consecutive 11-byte strings in
  * fixed_text: unsigned LT/LE/GT/GE, then signed LT/LE/GT/GE.
  */
-char emit_compare(char op, char unsigned_compare)
-{
-    unsigned offset;
-
-    if (op == 142) {
-        offset = 312;
-    } else {
-        if (op == 143) {
-            offset = 322;
-        } else {
-            offset = 332;
-            if (unsigned_compare == 0) {
-                offset = 376;
-            }
-            if (op == 144) {
-                offset = offset + 11;
-            }
-            if (op == '>') {
-                offset = offset + 22;
-            }
-            if (op == 145) {
-                offset = offset + 33;
-            }
-        }
-    }
-    return emit_text_operand((fixed_text + 535), fixed_text + offset);
-}
+char emit_compare(char op, char unsigned_compare) { nc2_fault=31; return 0; }
 
 char reduce_unary()
 {
     char type;
-
-    if (value_top < 1) {
-        compiler_error = 3;
-        return 0;
-    }
-    type = value_type[value_top - 1];
-    if (is_numeric_type(type) == 0) {
-        compiler_error = 5;
-        return 0;
-    }
-    if (nc2_capture != 0) {
-        nc2_last = nc2_node(7,0,0,nc2_value[value_top - 1],0,0);
-        nc2_value[value_top - 1] = nc2_last;
-        if (type == 1) value_type[value_top - 1] = 2;
-        return nc2_fault == 0;
-    }
-    /* The negation template pops and re-pushes its result: stack-resident. */
-    if (flush_ax() == 0) {
-        return 0;
-    }
-    if (write_text((fixed_text + 976)) == 0) {
-        return 0;
-    }
-    if (type == 1) {
-        value_type[value_top - 1] = 2;
-    }
-    return 1;
+    if (value_top < 1) { compiler_error=3; return 0; }
+    type=value_type[value_top-1];
+    if (is_numeric_type(type)==0) { compiler_error=5; return 0; }
+    nc2_last=nc2_node(7,0,0,nc2_value[value_top-1],0,0);
+    nc2_value[value_top-1]=nc2_last;
+    if (type==1) value_type[value_top-1]=2;
+    return nc2_fault==0;
 }
 
 char reduce_binary(char op)
@@ -1787,102 +1581,33 @@ char reduce_binary(char op)
     char left;
     char right;
     char result;
-    char unsigned_compare;
-
-    if (value_top < 2) {
-        compiler_error = 3;
-        return 0;
-    }
-    right = value_type[value_top - 1];
-    left = value_type[value_top - 2];
-    if (op == '+') {
-        if (left == 4) {
-            if (is_numeric_type(right) == 0) {
-                compiler_error = 5;
-                return 0;
-            }
-            result = 4;
+    if (value_top < 2) { compiler_error=3; return 0; }
+    right=value_type[value_top-1];
+    left=value_type[value_top-2];
+    if (op=='+') {
+        if (left==4) {
+            if (is_numeric_type(right)==0) { compiler_error=5; return 0; }
+            result=4;
         } else {
-            if (is_numeric_type(left) == 0 | is_numeric_type(right) == 0) {
-                compiler_error = 5;
-                return 0;
+            if (is_numeric_type(left)==0 | is_numeric_type(right)==0) {
+                compiler_error=5; return 0;
             }
-            if (left == 3 | right == 3) {
-                result = 3;
-            } else {
-                result = 2;
-            }
+            result=(left==3 | right==3) ? 3 : 2;
         }
     } else {
-        if (is_numeric_type(left) == 0 | is_numeric_type(right) == 0) {
-            compiler_error = 5;
-            return 0;
+        if (is_numeric_type(left)==0 | is_numeric_type(right)==0) {
+            compiler_error=5; return 0;
         }
-        if (left == 3 | right == 3) {
-            result = 3;
-        } else {
-            result = 2;
-        }
+        result=(left==3 | right==3) ? 3 : 2;
     }
-    if (op == 146 | op == 147) {
-        if (left == 3) {
-            result = 3;
-        } else {
-            result = 2;
-        }
-    }
-    if (nc2_capture != 0) {
-        nc2_last = nc2_node(6,op,0,nc2_value[value_top - 2],nc2_value[value_top - 1],0);
-        value_top=value_top-1;
-        value_type[value_top-1]=result;
-        nc2_value[value_top-1]=nc2_last;
-        return nc2_fault == 0;
-    }
-    if (flush_ax() == 0) {
-        return 0;
-    }
-    if (emit_binary_prelude() == 0) {
-        return 0;
-    }
-    if (op == '+' | op == '-') {
-        if (emit_add_sub(op) == 0) {
-            return 0;
-        }
-    } else {
-        if (op == '&' | op == '|') {
-            if (emit_bitwise(op) == 0) {
-                return 0;
-            }
-        } else {
-            if (op == '*') {
-                if (emit_text_operand((fixed_text + 535), (fixed_text + 420)) == 0) {
-                    return 0;
-                }
-            } else {
-                if (op == 146 | op == 147) {
-                    if (emit_shift(op) == 0) {
-                        return 0;
-                    }
-                } else {
-                    unsigned_compare = 0;
-                    if (left == 3 | right == 3) {
-                        unsigned_compare = 1;
-                    }
-                    if (emit_compare(op, unsigned_compare) == 0) {
-                        return 0;
-                    }
-                    result = 2;
-                }
-            }
-        }
-    }
-    if (hold_ax() == 0) {
-        return 0;
-    }
-    value_top = value_top - 1;
-    value_type[value_top - 1] = result;
-    if (nc2_capture != 0) nc2_value[value_top - 1] = nc2_last;
-    return 1;
+    if (op==146 | op==147) result=(left==3 ? 3 : 2);
+    if (op==142 | op==143 | op=='<' | op=='>' | op==144 | op==145)
+        result=2;
+    nc2_last=nc2_node(6,op,0,nc2_value[value_top-2],nc2_value[value_top-1],0);
+    value_top=value_top-1;
+    value_type[value_top-1]=result;
+    nc2_value[value_top-1]=nc2_last;
+    return nc2_fault==0;
 }
 
 char reduce_top_operator()
@@ -1921,55 +1646,9 @@ char reduce_to_marker(char marker)
 
 char emit_call_finish(char marker_index)
 {
-    if (nc2_capture != 0) { nc2_fault=11; return 0; }
-    char function_id;
-    char argc;
-    char base;
-    char i;
-    char expected;
-    char actual;
-
-    function_id = op_aux[marker_index];
-    argc = op_argc[marker_index];
-    base = op_base[marker_index];
-    if (argc != global_param_count[function_id]) {
-        compiler_error = 5;
-        return 0;
-    }
-    i = 0;
-    while (i < argc) {
-        actual = value_type[base + i];
-        expected = param_type[global_param_start[function_id] + i];
-        if (compatible_type(actual, expected) == 0) {
-            compiler_error = 5;
-            return 0;
-        }
-        i = i + 1;
-    }
-    if (flush_ax() == 0) {
-        return 0;
-    }
-    i = argc;
-    while (i > 0) {
-        i = i - 1;
-        expected = param_type[global_param_start[function_id] + i];
-        if (emit_param_store(function_id, i, expected) == 0) {
-            return 0;
-        }
-    }
-    if (emit_callee_call(function_id) == 0) {
-        return 0;
-    }
-    value_top = base;
-    if (global_type[function_id] == 1) {
-        if (emit_immediate((fixed_text + 435), 0) == 0) {
-            return 0;
-        }
-    }
-    if (hold_ax() == 0) {
-        return 0;
-    }
-    return push_value_type(global_type[function_id]);
+    /* Phase-1 call semantics need a corresponding full event before support. */
+    nc2_fault=11;
+    return 0;
 }
 
 /*
@@ -1978,31 +1657,11 @@ char emit_call_finish(char marker_index)
  */
 char emit_index_address(char area, char symbol, char kind, char element_type)
 {
-    if (nc2_capture != 0) {
-        nc2_store_area = area;
-        nc2_store_symbol = symbol;
-        nc2_store_kind = kind;
-        nc2_store_index = nc2_value[value_top - 1];
-        return nc2_fault == 0;
-    }
-    emit_pop_ax();
-    if (kind == 2) {
-        if (element_type != 1) {
-            write_text((fixed_text + 1629));
-        }
-        write_text((fixed_text + 1674));
-        emit_global_name(symbol);
-        write_text((fixed_text + 1687));
-        emit_global_name(symbol);
-        write_text((fixed_text + 1713));
-    } else {
-        write_text((fixed_text + 1729));
-        emit_symbol_name(area, symbol);
-        write_text((fixed_text + 1740));
-        emit_symbol_name(area, symbol);
-        write_text((fixed_text + 1764));
-    }
-    return compiler_error == 0;
+    nc2_store_area=area;
+    nc2_store_symbol=symbol;
+    nc2_store_kind=kind;
+    nc2_store_index=nc2_value[value_top-1];
+    return 1;
 }
 
 /* The fixed-text indexed-load templates finish by pushing A/X, unlike
@@ -2015,35 +1674,9 @@ char emit_index_address(char area, char symbol, char kind, char element_type)
  */
 char emit_index_load(char area, char symbol, char kind, char element_type, char index_type)
 {
-    if (nc2_capture != 0) {
-        nc2_last = nc2_node(4,area,symbol,nc2_value[value_top - 1],0,kind);
-        nc2_value[value_top - 1] = nc2_last;
-        return nc2_fault == 0;
-    }
-    if (kind == 2 & element_type == 1 & index_type == 1) {
-        /*
-         * Output errors are sticky in compiler_error. Each output helper
-         * becomes a no-op after failure, so one check at the end suffices.
-         */
-        emit_pop_ax();
-        emit_zero((fixed_text + 467));
-        emit_instruction((fixed_text + 431));
-        write_char(' ');
-        emit_global_name(symbol);
-        write_char(',');
-        write_char('y');
-        write_newline();
-        emit_immediate((fixed_text + 435), 0);
-        hold_ax();
-        return compiler_error == 0;
-    }
-    if (emit_index_address(area, symbol, kind, element_type) == 0) {
-        return 0;
-    }
-    if (element_type == 1) {
-        return write_text((fixed_text + 1228));
-    }
-    return write_text((fixed_text + 1280));
+    nc2_last=nc2_node(4,area,symbol,nc2_value[value_top-1],0,kind);
+    nc2_value[value_top-1]=nc2_last;
+    return nc2_fault==0;
 }
 
 char finish_call_marker()
@@ -2296,16 +1929,8 @@ char expression_close_index()
         type = 1;
     }
     if (kind == 5) {
-        if (nc2_capture != 0) {
-            nc2_last = nc2_node(5,0,0,nc2_value[value_top - 2],nc2_value[value_top - 1],0);
-            nc2_value[value_top - 2] = nc2_last;
-        }
-        if (flush_ax() == 0) {
-            return 0;
-        }
-        if (write_text((fixed_text + 1782)) == 0) {
-            return 0;
-        }
+        nc2_last = nc2_node(5,0,0,nc2_value[value_top - 2],nc2_value[value_top - 1],0);
+        nc2_value[value_top - 2] = nc2_last;
         value_top = value_top - 1;
     } else {
         if (emit_index_load(area, id, kind, type, value_type[value_top - 1]) == 0) {
@@ -2439,85 +2064,24 @@ char compile_expression()
 
 char compile_call_stmt(char function_id)
 {
-    op_top = 0;
-    value_top = 0;
-    if (push_operator(202, function_id, 1, 0) == 0) {
-        return 0;
-    }
-    if (scan_token() == 0) {
-        return 0;
-    }
-    if (expression_loop() == 0) {
-        return 0;
-    }
-    if (ax_pending != 0) {
-        ax_pending = 0;
-        return 1;
-    }
-    if (emit_zero((fixed_text + 455)) == 0) {
-        return 0;
-    }
-    return emit_zero((fixed_text + 455));
+    nc2_fault=11;
+    return 0;
 }
 
 char emit_false_jump(unsigned target)
 {
-    unsigned skip;
-    if (nc2_capture != 0) {
-        /* One semantic branch, not the old inverse-branch/JMP expansion. */
-        return nc2_event(3,0,0,nc2_value[value_top - 1],target);
-    }
-
-    skip = label_counter;
-    label_counter = label_counter + 1;
-    if (emit_pop_ax() == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 443), (fixed_text + 198), 0) == 0) {
-        return 0;
-    }
-    if (emit_zero((fixed_text + 459)) == 0) {
-        return 0;
-    }
-    if (emit_scratch((fixed_text + 495), (fixed_text + 198), 0) == 0) {
-        return 0;
-    }
-    if (emit_jump_label((fixed_text + 527), skip) == 0) {
-        return 0;
-    }
-    if (emit_jump_label((fixed_text + 531), target) == 0) {
-        return 0;
-    }
-    return emit_label(skip);
+    return nc2_event(3,0,0,nc2_value[value_top-1],target);
 }
 
 char emit_scalar_store(char area, char symbol, char type)
 {
-    if (nc2_capture != 0) return nc2_event(4,area,symbol,nc2_value[value_top - 1],0);
-    if (emit_pop_ax() == 0) {
-        return 0;
-    }
-    if (emit_symbol_operand((fixed_text + 443), area, symbol, 0) == 0) {
-        return 0;
-    }
-    if (type != 1) {
-        if (emit_symbol_operand((fixed_text + 447), area, symbol, 1) == 0) {
-            return 0;
-        }
-    }
-    return 1;
+    return nc2_event(4,area,symbol,nc2_value[value_top-1],0);
 }
 
 char emit_index_store(char element_type)
 {
-    if (nc2_capture != 0) return nc2_event(6,nc2_store_area,nc2_store_symbol,nc2_value[value_top - 1],nc2_store_index);
-    if (flush_ax() == 0) {
-        return 0;
-    }
-    if (element_type == 1) {
-        return write_text((fixed_text + 1372));
-    }
-    return write_text((fixed_text + 1483));
+    return nc2_event(6,nc2_store_area,nc2_store_symbol,
+                     nc2_value[value_top-1],nc2_store_index);
 }
 
 int find_break_label()
