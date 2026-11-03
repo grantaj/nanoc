@@ -1,75 +1,67 @@
-# nanoc2: traversal-first 6502 compiler (experimental replacement)
+# nanoc2: replacement compiler, original parser and traversal-first backend
 
-This branch starts a **new C-written code-generation path**. It is **not**
-an optimiser over the old `nanoc1` emitter. Production `nanoc1.c` is
-unchanged.
+This is a **draft replacement**, not a production-ready compiler. The source
+semantic authority is the *existing* Nano C Phase-1 scanner, symbol/type
+rules, bounded operator parser and statement parser. The earlier separate C
+source adapter, hand-authored tape driver and alternative integrated fork have
+been deleted rather than retained as parallel implementations.
 
-## Working end-to-end experiment
+## Architecture
 
-`source_tape.c` accepts the **actual C function source**, scans a bounded
-subset of Nano C, validates its supported operations, and records a function's
-typed semantic events. `traversal_backend.c` then examines those events
-before writing 6502, chooses X/Y roles from indexed-memory uses, and emits the
-complete machine routine.
+1. `parser_tape.c` is currently a fork of the original
+   `nanoc1/nanoc1.c`. Its original parsing functions record semantic
+   expression nodes and ordered statement events (labels, branches, writes,
+   returns, etc.). No second lexer or statement grammar participates in this
+   path. This step retains the original Phase-1 syntax/type validation.
+2. `lower_tape.c` reads those nodes/events and derives the small byte-index
+   and pointer traversal representation, including a scaled-record address
+   from an affine C expression. It rejects unsupported semantics rather than
+   silently reverting to the old stack code generator.
+3. `traversal_backend.c` chooses simple X/Y homes and emits the 6502. Its
+   indexed accesses are selected from the relationships recorded by the
+   parser, not from source-function names.
 
-The current grammar handles byte scalar assignments, byte pointer/array
-reads, simple affine array offsets, a power-of-two record stride, `if`,
-`while`, `break`, and `return`. Nested traversals are supported.
+The old immediate emitter functions **still exist inside the temporary parser
+fork** because the semantic front end has not yet been fully separated from
+the original emitter. Their output is ignored by the host bridge; that is
+**unfinished deletion work**, not intended architecture. The next substantial
+step is to remove this source code and extend the one new lowering path to
+full Phase-1 expression and call semantics.
 
-There is **no function-name-specific code-generation recipe**, no general
-instruction search, no register allocator, no Python compiler backend, and no
-post-generation peephole pass. The code generator rejects operations it
-cannot represent; no silent generic fallback is claimed.
+## Reproduce the current tests
 
-Run the tests from the repository root:
+From the repository root:
 
 ```sh
-python3 nanoc2/test_machine.py
+python3 nanoc2/test_parser_tape.py
+python3 nanoc2/test_lower_tape.py
 ```
 
-The test extracts **exact** `same_bytes()` and `find_global()` definitions
-from `nanoc1/nanoc1.c`. It feeds them as source text into the new **C**
-parser/semantic tape/emitter, then runs the resulting 6502 in an independent
-instruction interpreter. Independently host-compiled versions of those same
-source definitions are the semantic oracle. The test checks 4,000 cases for
-`same_bytes` and 2,500 for `find_global`, including pointer page crossings,
-long symbol tables, early exits, and mismatched record contents. Negative
-checks exercise both unsafe source constructs and unsupported machine
-representations. CI runs this test separately from native C64 build jobs.
+The tests extract exact `same_bytes()` and `find_global()` source from the
+unchanged production `nanoc1/nanoc1.c`. The first tests original-parser
+semantic recording and rejection of invalid C. The second runs the full
+original-parser -> C semantic lowerer -> 6502 path in an instruction-level
+interpreter, comparing against independently host-compiled C on random test
+cases (including nested loops, record stride and pointer page crossings).
+The interpreter is `test_6502.py`; it is a test oracle, not another compiler.
 
-The adapter binds the test functions' existing symbol names to **experimental
-zero-page and array ABI homes**. The body sizes do not include caller setup,
-and this is not yet an executable self-hosted compiler or a whole-image size
-result.
+The test manually supplies the provisional zero-page argument/pointer homes;
+there is **not yet** a linked executable or complete C64 ABI. The code has
+not passed native VICE self-hosting or the exact assembler functional oracle.
 
-## What should be kept and what should be removed
+## What is done and what is not
 
-The **lasting** design consists of a small function-local operation tape and
-its traversal-first emitter. The existing `nanoc1` scanner, symbol and type
-parser are the semantic authority and should be retained.
+Implemented: a single original semantic parser to typed nodes/events, a C
+lowerer for byte-array/pointer traversals and nested control flow, safe
+rejection of unsupported patterns, and end-to-end tests for two real
+compiler-source functions.
 
-`source_tape.c` is **temporary integration scaffolding**, not a request to
-retain a second scanner or parser in production. It exists solely to prove
-source -> typed operations -> target 6502 without a manually supplied tape.
-The next step is to modify the **original** bounded `nanoc1` parser so that
-it creates these operations directly, preserving full Phase-1 rules. Once the
-real parser supplies the tape, delete the temporary source scanner and
-replace the old emitter's stack-expression, `ax_pending`, and eager indexed
-address operations. In particular, do **not** keep two complete parsers or
-two complete emitters.
+Not implemented: the full Phase-1 expression/call/16-bit surface in the
+replacement emitter; target-native argument and pointer-home setup, complete
+linking, full compiler-source self-compilation, removal of the remaining old
+emitter functions from the temporary parser fork, and measured whole-program
+machine-code quality. Consequently this PR must remain **draft/unmerged**.
 
-Until that replacement is done, **do not merge as a finished compiler**.
-
-## Boundaries and correctness caveats
-
-- No 16-bit arithmetic, arbitrary expressions, call side effects, arbitrary
-  aliases, `else`, or general nested expressions yet.
-- The test adapter's `base = symbol * 32` represents a computed byte offset;
-  the source-derived pointer is constructed when its indexed array owner is
-  known. Invalid ownership is rejected.
-- The low-level test interpreter is not VICE. Encoded body sizes are not
-  complete linked C64 image measurements.
-- Never treat a passing manually built operation tape as proof of C source
-  compilation. The current primary machine tests use only automatically
-  generated tapes from the exact original C functions.
-
+**Simplicity criterion:** any extension should remove or replace existing
+code-generation machinery. Do not add per-function selectors, a second
+semantic parser, or an optimisation layer above the old stack emitter.
