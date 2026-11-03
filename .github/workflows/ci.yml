@@ -72,3 +72,6 @@ jobs:
 
       - name: Record semantic operations using the original Nano C parser
         run: python3 nanoc2/test_parser_tape.py
+
+      - name: Execute original-parser tape lowering against C oracles
+        run: python3 nanoc2/test_lower_tape.py
