@@ -17,7 +17,7 @@
  * 13 return constant, 14 prepare scaled pointer, 15 load variable,
  * 16 set variable to A, 17 compare A with immediate,
  * 18 compare A with byte variable, 19 store fixed array indexed,
- * 20 store through zero-page pointer indexed.
+ * 20 store through zero-page pointer indexed, 21 load immediate byte.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
  * pointer slot 0/1 is a shared zero-page address.
  * Branch tests: 1 EQ, 2 NE, 3 CC, 4 CS. 0 is unconditional.
@@ -349,6 +349,8 @@ char tb_compile()
             if (tb_load_var(a) == 0) return 0;
         } else if (op == 16) {
             if (tb_store_var(d) == 0) return 0;
+        } else if (op == 21) {
+            if (tb_immediate("lda",k) == 0) return 0;
         } else if (op == 17) {
             if (tb_immediate("cmp",k) == 0) return 0;
         } else if (op == 18) {
