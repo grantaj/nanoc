@@ -17,6 +17,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 CC = os.environ.get("CC", "cc")
 VASM = os.environ.get("VASM", "vasm6502_oldstyle")
 SOURCE = (ROOT / "nanoc1" / "nanoc1.c").read_text()
+WRITE_FIXTURE = (ROOT / "tests" / "nanoc2" / "indexed-write.c").read_text()
 
 
 def original_function(name):
@@ -28,6 +29,17 @@ def original_function(name):
         n += (SOURCE[p] == "{") - (SOURCE[p] == "}")
         p += 1
     return SOURCE[match.start():p]
+
+
+def fixture_function(name):
+    match = re.search(r"^char\\s+" + re.escape(name) + r"\\s*\\([^)]*\\)\\s*\\{",
+                      WRITE_FIXTURE, re.M)
+    assert match, name
+    n, p = 1, match.end()
+    while n:
+        n += (WRITE_FIXTURE[p] == "{") - (WRITE_FIXTURE[p] == "}")
+        p += 1
+    return WRITE_FIXTURE[match.start():p]
 
 
 def globals_for_find():
@@ -124,6 +136,55 @@ def find_global_test():
     return lines
 
 
+def copy_pointer_test():
+    lines = [
+        "\t* = $0200", "main:",
+        "\tlda #<$31f9", "\tsta n2_dst",
+        "\tlda #>$31f9", "\tsta n2_dst+1",
+        "\tlda #<$300f", "\tsta n2_src",
+        "\tlda #>$300f", "\tsta n2_src+1",
+        "\tlda #$c8", "\tsta n2_n",
+        "\tldx #$00",
+        ".prepare:",
+        "\ttxa", "\tsta $300f,x",
+        "\tlda #$00", "\tsta $31f9,x",
+        "\tinx", "\tcpx #$c8", "\tbne .prepare",
+    ]
+    lines += check_call(200, 0)
+    lines += [
+        "\tldx #$00",
+        ".verify:", "\tlda $300f,x",
+        "\tcmp $31f9,x",
+        "\tbeq .matching",
+        "\tjmp native_fail",
+        ".matching:", "\tinx",
+        "\tcpx #$c8", "\tbne .verify",
+    ]
+    return lines
+
+
+def copy_array_test():
+    lines = [
+        "\t* = $0200", "main:",
+        "\tlda #$c8", "\tsta n2_n",
+        "\tldx #$00",
+        ".prepare:", "\ttxa", "\tsta n2_source_bytes,x",
+        "\tlda #$00", "\tsta n2_dest_bytes,x",
+        "\tinx", "\tcpx #$c8", "\tbne .prepare",
+    ]
+    lines += check_call(200, 0)
+    lines += [
+        "\tldx #$00",
+        ".verify:", "\tlda n2_source_bytes,x",
+        "\tcmp n2_dest_bytes,x",
+        "\tbeq .matching",
+        "\tjmp native_fail",
+        ".matching:", "\tinx",
+        "\tcpx #$c8", "\tbne .verify",
+    ]
+    return lines
+
+
 def run_native(name, source, test_lines, driver):
     output = subprocess.run([str(driver), "native"], input=source.encode(),
                             capture_output=True, check=True)
@@ -174,8 +235,9 @@ def run_native(name, source, test_lines, driver):
     env["VICE_PRELOAD_PRG"] = str(code_prg)
     subprocess.run(["sh", "tests/run-test.sh", str(prg),
                     "nanoc2-" + name], cwd=ROOT, env=env, check=True)
-    print("%s: assembled %d loaded bytes; native ABI and result checks passed" %
-          (name, len(raw)-2))
+    print("%s: generated %d-byte native program, %d-byte caller; "
+          "ABI, results and memory checks passed" %
+          (name, len(code)-2, len(raw)-2))
 
 
 def main():
@@ -188,6 +250,11 @@ def main():
     run_native("find_global", globals_for_find() +
                original_function("find_global"),
                find_global_test(), driver)
+    run_native("copy_pointer", fixture_function("copy_pointer"),
+               copy_pointer_test(), driver)
+    run_native("copy_array", "char source_bytes[256];\\n" +
+               "char dest_bytes[256];\\n" + fixture_function("copy_array"),
+               copy_array_test(), driver)
 
 
 if __name__ == "__main__":
