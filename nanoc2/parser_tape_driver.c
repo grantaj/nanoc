@@ -6,6 +6,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* Host-side Nano C I/O adapter; declarations precede the original parser
+ * so strict host compilers can type-check it without implicit prototypes. */
+int io_read(int h);
+int io_write(int h, int c);
+int io_open(char *path, int length);
+int io_create(char *path, int length);
+int io_close(int h);
 #define main original_nanoc1_main
 #include "parser_tape.c"
 #undef main
