@@ -2832,15 +2832,15 @@ char parse_local()
 
 char parse_function(char function_id)
 {
+    char type;
+    int slot;
+    char param_start;
+
     nc2_return_type = global_type[function_id];
     if (nc2_enable != 0) {
         nc2_reset();
         nc2_capture = 1;
     }
-    char type;
-    int slot;
-    char param_start;
-
     current_func = function_id;
     local_count = 0;
     param_start = param_count;
