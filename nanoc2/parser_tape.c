@@ -1592,15 +1592,17 @@ char reduce_binary(char op)
             if (is_numeric_type(left)==0 | is_numeric_type(right)==0) {
                 compiler_error=5; return 0;
             }
-            result=(left==3 | right==3) ? 3 : 2;
+            if (left==3 | right==3) result=3; else result=2;
         }
     } else {
         if (is_numeric_type(left)==0 | is_numeric_type(right)==0) {
             compiler_error=5; return 0;
         }
-        result=(left==3 | right==3) ? 3 : 2;
+        if (left==3 | right==3) result=3; else result=2;
     }
-    if (op==146 | op==147) result=(left==3 ? 3 : 2);
+    if (op==146 | op==147) {
+        if (left==3) result=3; else result=2;
+    }
     if (op==142 | op==143 | op=='<' | op=='>' | op==144 | op==145)
         result=2;
     nc2_last=nc2_node(6,op,0,nc2_value[value_top-2],nc2_value[value_top-1],0);
