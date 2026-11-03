@@ -35,7 +35,7 @@ for name,prelude in [
     ("find_global","\n".join(decls)+"\n"),
 ]:
     c = prelude + function(name) + "\n"
-    result=subprocess.run([str(DRIVER)],input=c.encode(),capture_output=True)
+    result=subprocess.run([str(DRIVER),'dump'],input=c.encode(),capture_output=True)
     assert result.returncode == 0, (name,result.stderr.decode())
     records=result.stdout.decode().splitlines()
     hdr=records[0].split()
