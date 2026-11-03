@@ -27,3 +27,5 @@ jobs:
         run: make setup
       - name: Execute original-parser generated 6502 under VICE
         run: python3 nanoc2/test_native.py
+      - name: Compare exact C function-body sizes with original nanoc1
+        run: python3 nanoc2/test_size_spots.py
