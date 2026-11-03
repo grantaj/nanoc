@@ -27,10 +27,11 @@ def compile_host(driver, source, *args):
     return result.stdout.decode()
 
 def measure_assembled(asm, old, name):
-    m = re.search(r'^(__f[0-9a-fA-F]{2}):\s*
+    m = re.search((r'^(__f[0-9a-fA-F]{2}):\s*$' if old else
+                   r'^(__c[0-9a-fA-F]{2}):\s*$'), asm, re.M)
     assert m, (name, "missing function entry label")
     entry = m.group(1)
-    assert len(re.findall(r'^__(?:f|c)[0-9a-fA-F]{2}:\s*, asm, re.M)) == 1, name
+    assert len(re.findall(r'^__(?:f|c)[0-9a-fA-F]{2}:\s*$', asm, re.M)) == 1, name
     if old:
         # This equate is emitted immediately after the final user function,
         # before the production runtime is appended. Its address is the
