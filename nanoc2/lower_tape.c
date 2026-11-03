@@ -29,8 +29,8 @@ char nd_array_symbol[32];
 
 char *nd_source_name(char area, char symbol)
 {
-    if (area == 1) return global_name + (unsigned)symbol * 32;
-    return local_name + (unsigned)symbol * 32;
+    if (area == 1) return global_name + symbol * 32;
+    return local_name + symbol * 32;
 }
 
 int nd_find(char area, char symbol)
