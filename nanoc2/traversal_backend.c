@@ -16,7 +16,8 @@
  * 9 compare a variable, 10 conditional branch, 11 jump, 12 return variable,
  * 13 return constant, 14 prepare scaled pointer, 15 load variable,
  * 16 set variable to A, 17 compare A with immediate,
- * 18 compare A with byte variable.
+ * 18 compare A with byte variable, 19 store fixed array indexed,
+ * 20 store through zero-page pointer indexed.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
  * pointer slot 0/1 is a shared zero-page address.
  * Branch tests: 1 EQ, 2 NE, 3 CC, 4 CS. 0 is unconditional.
@@ -153,14 +154,14 @@ char tb_plan()
     i = 0;
     while (i < tb_count) {
         a = tb_b[i];
-        if (tb_op[i] == 6 | tb_op[i] == 7) {
+        if (tb_op[i] == 6 | tb_op[i] == 7 | tb_op[i] == 20) {
             if (indirect != 0 & indirect != a) {
                 tb_error = 2;
                 return 0;
             }
             indirect = a;
         }
-        if (tb_op[i] == 4 | tb_op[i] == 5) {
+        if (tb_op[i] == 4 | tb_op[i] == 5 | tb_op[i] == 19) {
             if (direct == 0) direct = a;
         }
         i = i + 1;
@@ -324,6 +325,10 @@ char tb_compile()
             } else {
                 if (tb_load_index(b, "cmp", a, op >= 6) == 0) return 0;
             }
+        } else if (op == 19 | op == 20) {
+            /* The RHS is already in A. Indexed addressing does not
+             * clobber it; X/Y were planned before this loop began. */
+            if (tb_load_index(b, "sta", a, op == 20) == 0) return 0;
         } else if (op == 8) {
             if (tb_compare_imm(d,k) == 0) return 0;
         } else if (op == 9) {
