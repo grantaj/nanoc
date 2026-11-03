@@ -84,7 +84,10 @@ int nd_record(char area, char symbol, char kind)
 int nd_scalar(unsigned node)
 {
     if (node==0 | nc2_kind[node]!=2) { nd_error=6; return -1; }
-    if (nc2_number[node]==4) { nd_error=7; return -1; }
+    /* Only an actual byte may inhabit an 8-bit scalar home.
+     * Int/unsigned and pointers require separate complete lowering.
+     */
+    if (nc2_number[node]!=1) { nd_error=7; return -1; }
     return nd_record(nc2_a[node],nc2_b[node],1);
 }
 
@@ -236,6 +239,7 @@ char nd_condition(unsigned expr, unsigned exit_label)
 
 char nd_assignment(char area, char symbol, unsigned rhs)
 {
+    char target_type;
     int dst;
     int src;
     int ptr;
@@ -244,6 +248,7 @@ char nd_assignment(char area, char symbol, unsigned rhs)
     unsigned extra;
     char op;
     if (rhs==0) { nd_error=19; return 0; }
+    target_type=(area==1 ? global_type[symbol] : local_type[symbol]);
     if (nc2_kind[rhs]==6) {
         op=nc2_a[rhs];
         lhs=nc2_left[rhs];
@@ -255,7 +260,7 @@ char nd_assignment(char area, char symbol, unsigned rhs)
             if (dst<0) return 0;
             return nd_add(3,dst,0,0,0);
         }
-        if (op=='*' & nc2_kind[lhs]==2 & nc2_kind[extra]==1) {
+        if (op=='*' & target_type==2 & nc2_kind[lhs]==2 & nc2_kind[extra]==1) {
             /* C source recurrence: base = index * constant stride.
              * Keep a ZP pointer representation, but only when an indexed
              * use later establishes its unique array owner.
@@ -270,6 +275,7 @@ char nd_assignment(char area, char symbol, unsigned rhs)
             return nd_add(14,ptr,0,src,nc2_number[extra]);
         }
     }
+    if (target_type!=1) { nd_error=25; return 0; }
     dst=nd_record(area,symbol,1);
     if (dst<0) return 0;
     if (nc2_kind[rhs]==1) {
