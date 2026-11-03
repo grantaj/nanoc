@@ -85,16 +85,16 @@ int main(int argc,char **argv)
     }
     if (argc!=1) return 2;
     if (nd_compile()==0) {
-        fprintf(stderr,"lowerer error %u, tb error %u; events %u\\n",
+        fprintf(stderr,"lowerer error %u, tb error %u; events %u\n",
                 (unsigned)nd_error,(unsigned)tb_error,nc2_events);
         return 6;
     }
     for (i=1;i<nd_next_scalar;i++) {
-        fprintf(stderr,"NC2VAR %s %u\\n",
+        fprintf(stderr,"NC2VAR %s %u\n",
                 nd_source_name(nd_var_area[i],nd_var_symbol[i]),i);
     }
     for (i=0;i<nd_next_pointer;i++) {
-        fprintf(stderr,"NC2PTR %s %u\\n",
+        fprintf(stderr,"NC2PTR %s %u\n",
                 nd_source_name(nd_ptr_area[i],nd_ptr_symbol[i]),i);
     }
     return 0;
