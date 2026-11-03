@@ -32,7 +32,7 @@ def original_function(name):
 
 
 def fixture_function(name):
-    match = re.search(r"^char\\s+" + re.escape(name) + r"\\s*\\([^)]*\\)\\s*\\{",
+    match = re.search(r"^char\s+" + re.escape(name) + r"\s*\([^)]*\)\s*\{",
                       WRITE_FIXTURE, re.M)
     assert match, name
     n, p = 1, match.end()
@@ -252,8 +252,8 @@ def main():
                find_global_test(), driver)
     run_native("copy_pointer", fixture_function("copy_pointer"),
                copy_pointer_test(), driver)
-    run_native("copy_array", "char source_bytes[256];\\n" +
-               "char dest_bytes[256];\\n" + fixture_function("copy_array"),
+    run_native("copy_array", "char source_bytes[256];\n" +
+               "char dest_bytes[256];\n" + fixture_function("copy_array"),
                copy_array_test(), driver)
 
 
