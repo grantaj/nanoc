@@ -66,3 +66,6 @@ jobs:
 
       - name: Check traversal-first C source lowering against original compiler
         run: python3 nanoc2/test_machine.py
+
+      - name: Record semantic operations using the original Nano C parser
+        run: python3 nanoc2/test_parser_tape.py
