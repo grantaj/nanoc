@@ -253,7 +253,7 @@ char nd_assignment(char area, char symbol, unsigned rhs)
         op=nc2_a[rhs];
         lhs=nc2_left[rhs];
         extra=nc2_right[rhs];
-        if (op=='+' & nc2_kind[lhs]==2 & nc2_kind[extra]==1 &
+        if (op=='+' & target_type==1 & nc2_kind[lhs]==2 & nc2_kind[extra]==1 &
             nc2_number[extra]==1 & nc2_a[lhs]==area &
             nc2_b[lhs]==symbol) {
             dst=nd_record(area,symbol,1);
@@ -328,6 +328,7 @@ char nd_compile()
     nd_next_pointer=0;
     tb_reset();
     if (nc2_fault!=0) return 0;
+    if (nc2_return_type!=1) { nd_error=26; return 0; }
     i=0;
     while (i<nc2_events) {
         op=nc2_event_kind[i];
