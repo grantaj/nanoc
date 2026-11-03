@@ -11,8 +11,10 @@
 #undef main
 #include "traversal_backend.c"
 #include "lower_tape.c"
+#include "native_abi.c"
 
 static char source_buffer[110000];
+static int native_mode;
 static unsigned source_position;
 int io_read(int h)
 {
@@ -34,7 +36,27 @@ char tb_char(char c)
 }
 char *tb_name(char category, char number)
 {
-    static char tmp[16];
+    static char tmp[24];
+    if (native_mode) {
+        if (category==1) {
+            if (number==0 | number>=nd_next_scalar) return "INVALID_HOME";
+            if (nd_var_area[number]==1)
+                snprintf(tmp,sizeof(tmp),"__g%02X",
+                         (unsigned char)nd_var_symbol[number]);
+            else
+                snprintf(tmp,sizeof(tmp),"__v%02X_%02X",
+                         (unsigned char)nc2_function_symbol,
+                         (unsigned char)nd_var_symbol[number]);
+            return tmp;
+        }
+        if (category==2) {
+            if (number==0 | number>=nd_next_array) return "INVALID_ARRAY";
+            snprintf(tmp,sizeof(tmp),"__g%02X",
+                     (unsigned char)nd_array_symbol[number]);
+            return tmp;
+        }
+        return "INVALID_HOME";
+    }
     if (category==1) {
         snprintf(tmp,sizeof(tmp),"__v%u",(unsigned char)number);
         return tmp;
@@ -65,12 +87,23 @@ int main(int argc,char **argv)
     global_count = 0;
     main_symbol = -1;
     nc2_enable = 1;
+    nc2_function_count = 0;
+    nc2_local_slots = 0;
     if (init_symbols() == 0) return 3;
     if (next_source_char() == 0 || scan_token() == 0) return 4;
     if (parse_unit() == 0 || nc2_fault != 0) {
         fprintf(stderr,"parser error %d, tape error %d, token %d, node %u, event %u\n",
                 compiler_error,nc2_fault,token_kind,nc2_nodes,nc2_events);
         return 5;
+    }
+    if (argc==2 && strcmp(argv[1],"native")==0) {
+        native_mode=1;
+        if(n2_native()==0) {
+            fprintf(stderr,"native ABI error %u, lowerer %u, backend %u\n",
+                    (unsigned)nc2_fault,(unsigned)nd_error,(unsigned)tb_error);
+            return 7;
+        }
+        return 0;
     }
     if (argc==2 && strcmp(argv[1],"dump")==0) {
     printf("NODES %u EVENTS %u\n",nc2_nodes,nc2_events);
