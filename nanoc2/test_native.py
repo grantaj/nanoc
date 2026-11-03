@@ -45,7 +45,7 @@ def globals_for_find():
 def check_call(expected, check):
     # Both registers in Nano C's existing byte-return ABI are verified.
     return [
-        "\tjsr __nc_start",
+        "\tjsr $0800",
         "\tcmp #$%02x" % expected,
         "\tbeq .a%02x" % check,
         "\tjmp native_fail",
