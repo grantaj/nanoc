@@ -1,0 +1,72 @@
+name: Full native correctness
+
+# The expensive C64/VICE suite is retained unchanged. Run it on main,
+# nightly, manually with Actions > Run workflow, or opt a PR into it by
+# applying the full-ci label. A normal PR update does not start VICE.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  native:
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out nanoc
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up development environment
+        run: make setup
+
+      - name: Check native-test shell syntax
+        run: |
+          sh -n scripts/test-nanoc0-integration.sh
+          sh -n scripts/test-nanoc1-baseline.sh
+
+      - name: Build all targets
+        run: make
+
+      - name: Validate candidate Phase 1 C assembler
+        run: sh scripts/test-ass-c.sh
+
+      - name: Run C64-native tests
+        run: make test
+
+      - name: Pin 6502 physical-condition seam
+        run: sh scripts/test-nanoc0-physical-contract.sh
+
+      - name: Run production nanoc0 integration baseline
+        run: sh scripts/test-nanoc0-integration.sh
+
+      - name: Validate nanoc1 Phase 1 semantic baseline
+        run: sh scripts/test-nanoc1-baseline.sh
+
+      - name: Capture generated bootstrap assembly
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanoc0-bootstrap-generated
+          path: |
+            build/nanoc0-integration/ASSFROMC.ASM
+            build/nanoc0-integration/assfromc.asm
+            build/nanoc0-integration/NCOUT.ASM
+            build/nanoc0-integration/ncout.asm
+            build/nanoc0-integration/NANOC1.ASM
+            build/nanoc0-integration/nanoc1.asm
+            build/nanoc0-integration/N1OUT.ASM
+            build/nanoc0-integration/n1out.asm
+            build/nanoc0-integration/n1-ass.asm
+            build/nanoc0-integration/nanoc1-baseline.txt
+          if-no-files-found: ignore
