@@ -11,6 +11,7 @@
  * added; the parser's Phase-1 checks remain the same.
  */
 char nc2_enable;
+char nc2_return_type;
 char nc2_capture;
 char nc2_fault;
 unsigned nc2_nodes;
@@ -3265,6 +3266,7 @@ char parse_local()
 
 char parse_function(char function_id)
 {
+    nc2_return_type = global_type[function_id];
     if (nc2_enable != 0) {
         nc2_reset();
         nc2_capture = 1;
