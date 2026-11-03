@@ -5,9 +5,12 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #define main original_nanoc1_main
 #include "parser_tape.c"
 #undef main
+#include "traversal_backend.c"
+#include "lower_tape.c"
 
 static char source_buffer[110000];
 static unsigned source_position;
@@ -25,7 +28,24 @@ int io_open(char *path,int length) { (void)path; (void)length; return -2; }
 int io_create(char *path,int length) { (void)path; (void)length; return -2; }
 int io_close(int h) { (void)h; return 0; }
 
-int main(void)
+char tb_char(char c)
+{
+    return putchar(c)==EOF ? 0 : 1;
+}
+char *tb_name(char category, char number)
+{
+    static char tmp[16];
+    if (category==1) {
+        snprintf(tmp,sizeof(tmp),"__v%u",(unsigned char)number);
+        return tmp;
+    }
+    if (category==2) {
+        if (number==0 | number>=nd_next_array) return "INVALID_ARRAY";
+        return global_name+(unsigned)nd_array_symbol[number]*32;
+    }
+    return "INVALID_HOME";
+}
+int main(int argc,char **argv)
 {
     size_t n;
     unsigned i;
@@ -52,6 +72,7 @@ int main(void)
                 compiler_error,nc2_fault,token_kind,nc2_nodes,nc2_events);
         return 5;
     }
+    if (argc==2 && strcmp(argv[1],"dump")==0) {
     printf("NODES %u EVENTS %u\n",nc2_nodes,nc2_events);
     for (i=1; i<nc2_nodes; i++)
         printf("N %u %u %u %u %u %u %u\n",i,nc2_kind[i],nc2_a[i],
@@ -60,5 +81,21 @@ int main(void)
         printf("E %u %u %u %u %u %u\n",i,nc2_event_kind[i],
                nc2_event_area[i],nc2_event_symbol[i],
                nc2_event_node[i],nc2_event_label[i]);
+        return 0;
+    }
+    if (argc!=1) return 2;
+    if (nd_compile()==0) {
+        fprintf(stderr,"lowerer error %u, tb error %u; events %u\\n",
+                (unsigned)nd_error,(unsigned)tb_error,nc2_events);
+        return 6;
+    }
+    for (i=1;i<nd_next_scalar;i++) {
+        fprintf(stderr,"NC2VAR %s %u\\n",
+                nd_source_name(nd_var_area[i],nd_var_symbol[i]),i);
+    }
+    for (i=0;i<nd_next_pointer;i++) {
+        fprintf(stderr,"NC2PTR %s %u\\n",
+                nd_source_name(nd_ptr_area[i],nd_ptr_symbol[i]),i);
+    }
     return 0;
 }
