@@ -1,84 +1,109 @@
-# nanoc2 — replacement emitter from the original Phase-1 compiler
+# nanoc2 — original Phase-1 parser, traversal-first 6502 emitter
 
-**Status: working research compiler for a restricted byte-traversal subset.
-Draft PR; not a production Phase-1 replacement yet.**
+**Status: original-parser source-to-6502 compiler for a restricted byte subset.
+Native 6510 execution is proven for four routines. Draft PR, not yet a
+complete Phase-1 compiler or self-hosted.**
 
-## Architecture
+## The one compiler path
 
-The source begins with the exact, proven scanner, symbol model, bounded
-operator stack and structured-control parser from `nanoc1/nanoc1.c`.
-The fork lives in `parser_tape.c`. Its statement and expression actions now
-construct **semantic nodes and function-local events** instead of directly
-lowering arithmetic and addresses to stack-oriented 6502. The large
-push/pop, binary arithmetic, comparison and address-reconstruction bodies
-have been removed from the fork, not put behind an extra optimiser.
-
-The pipeline is:
+The existing scanner, symbols, type checks, bounded operator parser and
+structured-statement parser are inherited from `nanoc1/nanoc1.c` in
+`parser_tape.c`. Their expression/statement actions record small semantic
+nodes and bounded function events **before target instructions are emitted**.
 
 ```text
 original Nano C scanner + semantic parser
-  -> typed expression nodes and statement/control events
-  -> lower_tape.c: simple machine-state choices
-  -> traversal_backend.c: 6502 text emitter
+  -> typed expression nodes / control-flow events
+  -> lower_tape.c (simple traversal and X/Y decisions)
+  -> traversal_backend.c (one 6502 emitter)
+  -> native_abi.c (static Nano C homes and pointer-entry prologue)
 ```
 
-For supported loops, the lowerer derives X/Y roles and a reusable zero-page
-record pointer from array accesses and recurrence expressions. It does **not**
-select a named routine template or search an instruction space. Expressions
-are represented only until the complete region is visible.
+Indexed byte **loads, comparisons and stores** share the same address
+lowering. Pointers use `(zp),Y`, direct arrays use `,X` or `,Y`, and a
+scaled record offset may hold a reusable pointer in ZP. There are no named
+source-routine recipes, generic search, parallel source parsers, or
+post-generation optimiser layers.
 
-The former second lexer, independent statement parser and hand-authored tape
-test driver have been **deleted**. There is only one source parser on the new
-test path.
+## Fast semantic and machine tests
 
-## Verification
-
-From the repository root:
+From the repository root (host C compiler and Python only):
 
 ```sh
 python3 nanoc2/test_parser_tape.py
 python3 nanoc2/test_lower_tape.py
+python3 nanoc2/test_indexed_write.py
 ```
 
-The test driver `parser_tape_driver.c` is host-only. It presents source bytes
-through a stub for Nano C's `io_read`, invokes the original compiler's parser,
-discards the **old top-level output scaffolding**, then invokes the new C
-lowerer and 6502 emitter.
+The host adapter `parser_tape_driver.c` feeds C source bytes to the original
+Nano C semantic parser, then calls the same C lowerer/emitter. The semantic
+oracle functions are the **exact original** `same_bytes` and `find_global`
+functions from `nanoc1.c`, and byte-indexed write fixtures in
+`tests/nanoc2/indexed-write.c`. Independent GCC oracles and a narrow
+instruction-level 6502 interpreter compare return values and byte memory
+effects: **6,500 + 3,250 = 9,750 tests**. Unsupported expressions fail closed.
 
-The tests extract the **exact, unmodified** `same_bytes()` and
-`find_global()` C functions from `nanoc1/nanoc1.c`. They compare generated
-6502 execution in an independent instruction interpreter against those same
-functions compiled with GCC, including nested loops, `break`, page crossing
-and searches across 176 symbol records. The expanded test set has **6,500**
-cases and explicit negative tests for invalid C and unsupported semantics.
+The interpreter's manually loaded zero-page homes are **only a test ABI**;
+the native test below no longer relies on that setup.
 
-These are interpreter/oracle comparisons, **not** a linked C64 image, VICE
-execution, or self-hosting. The scalar and pointer zero-page homes are set up
-by the host test adapter, not a native ABI.
+## Native 6510 ABI smoke
 
-## What the new compiler intentionally rejects
+Once the normal C64 tools are installed (`make setup`), run:
 
-The current lowerer is limited to byte scalars and read-only traversals,
-including an affine power-of-two record stride. General 16-bit arithmetic,
-16-bit return values, arbitrary pointer arithmetic, calls, array writes,
-unsupported conditions and alias-sensitive operations are not yet lowered.
-They must remain errors until proven correct; no silent byte truncation or
-fallback to the old stack emitter is acceptable.
+```sh
+python3 nanoc2/test_native.py
+```
 
-## Work remaining for complete replacement
+This uses the **same original parser and C emitter**, but the
+`native` output option of `parser_tape_driver.c` writes a complete small
+native assembly unit. `native_abi.c` names static homes using the established
+Nano C convention:
 
-1. Complete the semantic event vocabulary for Phase-1 expressions, pointer
-   writes, calls, and full 16-bit arithmetic without rebuilding the old
-   stack-machine emitter.
-2. Provide a real native register/zero-page/call ABI, and emit BSS and
-   function boundaries for **all** functions in a translation unit. The
-   host test's dedicated parameter homes are not that ABI.
-3. Compile and execute the existing Phase-1 corpus on the C64; then compile
-   exact `bootstrap/ass.c`, compare instruction-level differences against
-   the handwritten assembler, and measure the complete loaded image.
-4. Delete the now-unused assembly-template pool and old output scaffolding
-   after the replacement covers those functions. Preserve the small,
-   established lexer/symbol/type parser.
+- Global `__gSS`; local/parameter `__vFF_SS`
+- Return byte in **A**, X **zero**
+- Function `__cFF`; entry point `__nc_start`
+- Zero-page cursor slots `$f0-$f3`, calculation scratch `$f4-$f5`
+- Uninitialized global/local BSS starting at `$4800`
 
-This branch must not be merged as a finished compiler until those gates pass.
-`nanoc1/nanoc1.c` and the production baseline are unchanged.
+On entry, the compiler-generated prologue loads `char *` parameter words
+from their **actual static homes** into ZP cursors; the test caller **only
+stages ordinary C parameters**, never cursor values. These scratch homes are
+safe only for the present call-free subset and require a call clobber
+contract before general functions are supported.
+
+The test assembles the **generated** routine using vasm into its own
+`$0800` PRG; a separate `$0200` test caller supplies parameters and checks
+results, using the repository's standard VICE preload/run-test harness.
+Its native checks on a real emulated 6510 passed:
+
+| Routine | Generated native PRG payload | Checks |
+| --- | ---: | --- |
+| `same_bytes` | 72 B | Equal/different buffers, 200-byte page-crossing, lengths, A/X returns |
+| `find_global` | 124 B | 175th record, mismatched record, first record, A/X returns |
+| `copy_pointer` | 45 B | 200-byte indirect indexed copy, byte-for-byte effects, A/X return |
+| `copy_array` | 27 B | 200-byte fixed array copy, byte-for-byte effects, A/X return |
+
+These sizes **include** a small entry wrapper and pointer prologue where
+needed, but **exclude** the caller and do not represent linked `ass.c`.
+Native smoke is an **explicit test tier**, separate from default fast CI:
+apply the `native-smoke` PR label, or dispatch its workflow when available
+on the default branch. A verified run is recorded in PR #131's history.
+
+## Boundaries and next steps
+
+1. The current native assembly unit supports **one byte-returning function**,
+   uninitialized globals and no C calls. Other function definitions or global
+   initializers must be rejected. General source files still need native
+   function boundaries, static storage and initialization integrated with
+   the existing parser across the *whole* translation unit.
+2. Complete Phase-1 arithmetic, word values, function calls, general pointer
+   writes, side effects, and control-flow joins in the **one new lowering
+   path**. Register/cursor homes must be reconciled across calls/regions.
+3. Run the full native Phase-1 correctness corpus, then self-compile and
+   measure exact `bootstrap/ass.c` against the handwritten 6,905-byte
+   assembler. Current tests **do not establish** these properties.
+4. Delete remaining legacy output scaffolding from the parser fork when
+   Phase-1 semantic equivalence is achieved. Do not import another parser,
+   another register allocator, or research-only Python code generator.
+
+Production `nanoc1/nanoc1.c` remains unchanged. This PR stays **draft**.
