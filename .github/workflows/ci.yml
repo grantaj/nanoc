@@ -44,3 +44,6 @@ jobs:
           if [ -f nanoc2/test_lower_tape.py ]; then
             timeout 150s python3 nanoc2/test_lower_tape.py
           fi
+          if [ -f nanoc2/test_indexed_write.py ]; then
+            timeout 150s python3 nanoc2/test_indexed_write.py
+          fi
