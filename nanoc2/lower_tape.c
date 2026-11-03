@@ -368,7 +368,7 @@ char nd_return(unsigned expr)
     return 0;
 }
 
-char nd_compile()
+char nd_prepare()
 {
     unsigned i;
     char op;
@@ -414,6 +414,15 @@ char nd_compile()
         if (tb_op[i]==14 & tb_a[i]==0) { nd_error=23; return 0; }
         i=i+1;
     }
+    return 1;
+}
+
+/* The same lowering is used for host execution and native assembly.
+ * Native output inserts the Nano C argument-pointer prologue between
+ * semantic planning and final instruction emission. */
+char nd_compile()
+{
+    if (nd_prepare()==0) return 0;
     if (tb_compile()==0) { nd_error=24; return 0; }
     return 1;
 }
