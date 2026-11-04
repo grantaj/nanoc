@@ -453,6 +453,74 @@ def word_call_test():
         ])
     return lines
 
+
+def mixed_arithmetic_test():
+    lines = ["\t* = $1000", "main:"]
+    case = 0
+
+    def exercise(name, args, expected):
+        nonlocal case
+        for slot, value, size in args:
+            lines.extend([
+                "\tlda #$%02x" % (value & 255),
+                "\tsta n2_%s_%s" % (name, slot),
+            ])
+            if size == 2:
+                lines.extend([
+                    "\tlda #$%02x" % ((value >> 8) & 255),
+                    "\tsta n2_%s_%s+1" % (name, slot),
+                ])
+        lines.append("\tjsr n2_%s" % name)
+        lines.extend(word_assert(expected & 255, (expected >> 8) & 255,
+                                 4000 + case))
+        case += 1
+
+    pairs = [
+        (0, 0), (255, 1), (256, 255), (65535, 1),
+        (32767, 255), (32768, 1), (0x1234, 0x80),
+        (0x0100, 0xff), (0xffff, 0xff),
+    ]
+    for wide, delta in pairs:
+        one_byte = (("small", delta, 1),)
+        one_word = (("wide", wide, 2),)
+        mixed = (("wide", wide, 2), ("delta", delta, 1))
+        exercise("widen_copy", one_byte, delta)
+        exercise("narrow_copy", one_word, wide & 255)
+        exercise("widen_return", one_byte, delta)
+        exercise("narrow_return", one_word, wide & 255)
+        exercise("mix_add", mixed, (wide + delta) & 65535)
+        exercise("mix_sub", mixed, (wide - delta) & 65535)
+        exercise("mix_return", mixed, (wide + delta) & 65535)
+        exercise("mix_return_sub", mixed, (wide - delta) & 65535)
+        exercise("reverse_mixed",
+                 (("delta", delta, 1), ("wide", wide, 2)),
+                 (wide + delta) & 65535)
+        exercise("reverse_sub",
+                 (("delta", delta, 1), ("wide", wide, 2)),
+                 (delta - wide) & 65535)
+        exercise("literal_base", mixed, (1 + wide - delta) & 65535)
+        exercise("alias_late", mixed, (2 * wide + delta) & 65535)
+
+    triples = [
+        (0, 0, 0), (255, 1, 255), (0xffff, 1, 1),
+        (32767, 32768, 255), (0x1234, 0x4321, 0x80),
+    ]
+    for left, right, offset in triples:
+        args = (("left", left, 2), ("right", right, 2),
+                ("offset", offset, 1))
+        answer = (left + right - offset + 257) & 65535
+        exercise("compound", args, answer)
+        exercise("compound_return", args, answer)
+
+    for left, right in ((0, 0), (255, 255), (255, 1),
+                        (128, 128), (0x70, 0x7f)):
+        args = (("left", left, 1), ("right", right, 1))
+        expected = left + right + 1
+        exercise("byte_chain", args, expected & 255)
+        exercise("byte_return", args, expected & 255)
+        exercise("byte_sum_word", args, left + right)
+    return lines
+
 def run_native(name, source, test_lines, driver):
     output = subprocess.run([str(driver), "native"], input=source.encode(),
                             capture_output=True, check=True)
@@ -552,6 +620,8 @@ def main():
     run_native("word_ops", word_ops_source, word_ops_test(), driver)
     word_call_source = (ROOT / "tests" / "nanoc2" / "word-call.c").read_text()
     run_native("word_call", word_call_source, word_call_test(), driver)
+    mixed_source = (ROOT / "tests" / "nanoc2" / "mixed-arithmetic.c").read_text()
+    run_native("mixed_arithmetic", mixed_source, mixed_arithmetic_test(), driver)
     # One source unit, two real Phase-1 definitions. The parser must emit
     # each bounded function tape before it is reset for the next function.
     multi_source = (
