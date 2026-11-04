@@ -1067,6 +1067,34 @@ char tb_compile()
                 if(tb_location(word_op,1,b,"+1")==0) return 0;
             }
             if(tb_operand("sta","__tacc+1")==0) return 0;
+        } else if (op == 100) {
+            /* Byte-stride multiplication for char table indexes.
+             * The source may be live in X/Y; tb_load_var selects the
+             * correct register or static home before changing A. */
+            if(tb_load_var(a)==0) return 0;
+            if(k==0) {
+                if(tb_immediate("lda",0)==0) return 0;
+            } else if(k==1) {
+                /* No work. */
+            } else if(k==2 | k==4 | k==8) {
+                while(k!=1) {
+                    if(tb_simple("asl")==0) return 0;
+                    k=k>>1;
+                }
+            } else if(k==3) {
+                if(tb_operand("sta","__twlo")==0) return 0;
+                if(tb_simple("asl")==0) return 0;
+                if(tb_simple("clc")==0) return 0;
+                if(tb_operand("adc","__twlo")==0) return 0;
+            } else if(k==10) {
+                if(tb_simple("asl")==0) return 0;
+                if(tb_operand("sta","__twlo")==0) return 0;
+                if(tb_simple("asl")==0) return 0;
+                if(tb_simple("asl")==0) return 0;
+                if(tb_simple("clc")==0) return 0;
+                if(tb_operand("adc","__twlo")==0) return 0;
+            } else {tb_error=100;return 0;}
+            if(tb_store_var(d)==0) return 0;
         } else if (op == 96) {
             /* A small constant word multiplier uses ordinary 6502
              * binary shift and add, not a runtime multiply or a
