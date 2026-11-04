@@ -37,9 +37,19 @@ a high-byte tie. Signed comparisons bias the high byte by `$80`; the parser
 records usual signed/unsigned conversion before lowering. Equality and ordering
 branches directly consume the final comparison flags, rather than materialising
 a Boolean. A bare word variable condition uses `LDA/ORA` across both bytes.
-These are general typed operations, not source-loop patterns. Complex expression
-trees, word multiplication, mixed byte/word arithmetic and pointer arithmetic
-remain unsupported and are explicitly rejected.
+These are general typed operations, not source-loop patterns.
+
+Mixed byte/word arithmetic now zero-extends byte operands to 16 bits and
+uses direct `ADC/SBC` carry chains for two scalar operands. A bounded
+non-recursive walk accepts **left-associated chains** such as
+`result = left + right - offset + 257`; the compiler evaluates all terms
+into a two-byte private accumulator before writing the destination. That
+preserves source reads in expressions such as `a = a + b + a` and supports
+byte truncation at assignment/return boundaries. Direct byte-pair addition
+and reversed word/byte operations use ordinary 6502 instructions without
+materialising a scratch accumulator. Right-nested trees, calls inside
+arithmetic expressions, multiplication, unary arithmetic, and pointer
+arithmetic still fail closed; they are not silently reordered or truncated.
 
 Calls now accept **zero, one or two byte or word parameters**, and byte or
 word results. The callee must already be defined; arguments are evaluated
@@ -65,7 +75,7 @@ C64 test caller uses `$1000`, **not** `$0200` (which overlaps IRQ-owned
 system buffers). The test enables IRQs for the extended two-function run.
 
 Two indirect pointer cursors occupy the C64's user-reserved `$FB–$FE`.
-Other scratch bytes occupy reserved private RAM `$CF20–$CF23`. The
+Other scratch bytes occupy reserved private RAM `$CF20–$CF25`. The
 original Nano C runtime also uses `$FC–$FE`; a function with an active
 indirect pointer cursor **cannot yet make a call**, and the lowerer
 explicitly rejects that case. Full call clobber/save/restore semantics,
@@ -101,6 +111,10 @@ multiplication and checks that no unresolved `INVALID_HOME` operand escapes
 the generated assembly. The committed `word-call.c` fixture covers 16-bit
 parameter homes, mixed-width arguments, call results assigned to word locals,
 direct word returns, incorrect arities and a live X-index across a word call.
+The `mixed-arithmetic.c` fixture exercises 166 native results, including
+16-bit carry/borrow, signed-range boundaries, byte widening/narrowing,
+non-unit byte arithmetic, left-associated chains and destination aliasing.
+Fast checks reject unsupported right-nested trees and multiplication.
 
 ## Target-native tests
 
@@ -126,10 +140,11 @@ the three-byte entry trampoline, not linked complete applications.
 | `word_scalar` | 116 B | Word loads, copies, literal add/sub, A/X returns; carry, borrow and wraparound |
 | `word_ops` | 804 B | 211 native checks: word+word, aliasing, six signed/unsigned relations, constants and word loop conditions |
 | `word_call` | 366 B | Static word parameters/returns, mixed-width conversion and X-register preservation |
+| `mixed_arithmetic` | 684 B | 166 checks: mixed widths, composed chains, aliasing, direct reverse/byte additions |
 | `two_functions` | 78 B | Two separately streamed functions, static homes, IRQ enabled |
 
-All ten passed in
-[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41769848565).
+All eleven passed in
+[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41771724378).
 Native smoke remains opt-in through the `native-smoke` PR label or
 manual dispatch, not the fast default PR gate.
 
@@ -170,29 +185,33 @@ caller and callee costs under the same statically allocated ABI).
 | Word scalar | 4 | 162 B | 84 B | 48.1% |
 | Word arithmetic/branch | 12 | 610 B | 378 B | 38.0% |
 | Complete word-call unit | 13 functions | 459 B | 363 B | 20.9% |
-| **Combined** | **36 function bodies** | **2,244 B** | **1,141 B** | **49.2%** |
+| Mixed-width/composed arithmetic | 22 | 1,018 B | 681 B | 33.1% |
+| **Combined** | **58 function bodies** | **3,262 B** | **1,822 B** | **44.1%** |
 
-The new suite has 24 source measurement cases, including the multi-function
+The suite now has 46 source measurement cases, including the multi-function
 unit. For word calls, a single span includes all 13 functions; no runtime,
-test caller or entry trampoline is counted. The smaller call and word-branch
-reductions reveal a real remaining code-generation quality gap, not a reason
-to substitute the arbitrary 16 KiB fit target for the handwritten image. The original four traversal
+test caller or entry trampoline is counted. The smaller call, word-branch and chained-expression reductions reveal
+remaining code-generation quality gaps, not a reason to substitute the
+arbitrary 16 KiB fit target for the handwritten image. Three initial byte
+regressions (`reverse_mixed`, `reverse_sub`, `byte_sum_word`) were removed
+by direct operand selection; exact-size assertions now prevent recurrence. The original four traversal
 functions alone total **913 B versus 270 B (70.4% smaller)** after moving
 scratch out of KERNAL ZP. The earlier 72% result used an unsafe scratch map
 and is **superseded**, not another comparable image.
 
 The size and VICE tests passed together in
-[workflow run 41769848565](https://github.com/grantaj/nanoc/actions/runs/41769848565).
+[workflow run 41771724378](https://github.com/grantaj/nanoc/actions/runs/41771724378).
 These are function-body results, **not** a compiled `ass.c` image and not
 proof the new compiler binary itself will fit C64 memory.
 
 ## Unfinished work
 
-1. Complete general 16-bit expressions beyond simple word +/- scalar/literal
-   (mixed widths, composed arithmetic, unary expressions and comparison
-   operands), then remaining pointer expressions, initialized globals, pointer
-   arguments and runtime service calls. Formalize pointer-cursor invalidation
-   across calls; byte/word scalar calls are already supported.
+1. Extend expression lowering beyond pure left-associated +/- chains:
+   right-nested/composed subexpressions, unary operations and mixed-width
+   comparisons, with explicit side-effect sequencing. Then address
+   pointer arithmetic, initialized globals, pointer arguments and runtime
+   service calls. Formalize pointer-cursor invalidation across calls;
+   byte/word scalar calls are already supported.
 2. Preserve the one-pass-per-function, bounded-memory design while removing
    remaining old output scaffolding from the inherited parser.
 3. Run the full native Phase-1 corpus, self-compile the new compiler and
