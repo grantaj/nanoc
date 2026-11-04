@@ -40,7 +40,8 @@
  * 76 read an indexed byte, preserving A and its flags,
  * 77 stage evaluated 16-bit arithmetic call argument,
  * 78 load word-array element, 79 store word from accumulator,
- * 82 load word-array RHS into independent two-byte term.
+ * 82 load word-array RHS into independent two-byte term,
+ * 83-85 pointer load/compare/store at literal Y displacement.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -216,6 +217,31 @@ char tb_load_index(char index, char *op, char array, char indirect)
     if (tb_y != 0) { tb_error = 8; return 0; }
     if (tb_location("ldy", 1, index, "") == 0) return 0;
     return tb_location(op, 2, array, ",y");
+}
+
+/* Address a real char pointer with a compile-time Y displacement.
+ * This requires no fake scalar index home. Save an unrelated live Y loop
+ * register if one is already planned, and restore processor flags after
+ * the effective load/compare/store. A remains the loaded byte.
+ */
+char tb_pointer_immediate(char ptr,char *mnemonic,unsigned offset)
+{
+    if(offset>255 | ptr>1) {tb_error=83;return 0;}
+    if(tb_y!=0) {
+        if(tb_operand("sty","__tidxsave")==0) return 0;
+    }
+    if(tb_immediate("ldy",offset)==0) return 0;
+    if(tb_text("\t")==0) return 0;
+    if(tb_text(mnemonic)==0) return 0;
+    if(tb_text(" (__tptr")==0) return 0;
+    if(tb_hex2(ptr)==0) return 0;
+    if(tb_text("),y\n")==0) return 0;
+    if(tb_y!=0) {
+        if(tb_simple("php")==0) return 0;
+        if(tb_operand("ldy","__tidxsave")==0) return 0;
+        if(tb_simple("plp")==0) return 0;
+    }
+    return 1;
 }
 
 char tb_load_var(char v)
@@ -725,6 +751,11 @@ char tb_compile()
             } else {
                 if (tb_location("inc",1,d,"") == 0) return 0;
             }
+        } else if (op == 83 | op == 84 | op == 85) {
+            if(op==83) word_op="lda";
+            else if(op==84) word_op="cmp";
+            else word_op="sta";
+            if(tb_pointer_immediate(d,word_op,k)==0) return 0;
         } else if (op == 4 | op == 5 | op == 6 | op == 7) {
             if (op == 4 | op == 6) {
                 if (tb_load_index(b, "lda", a, op >= 6) == 0) return 0;
