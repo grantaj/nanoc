@@ -227,11 +227,10 @@ def main():
     targets.append(("ass_prefix15",
                     ASS_SOURCE[:ASS_SOURCE.index(
                         "/* ---------------- Tiny assembler value grammar")]))
-    # Also measure the first 32 consecutive verbatim original functions.
-    # This overlaps the 15-function checkpoint; neither is a whole image.
-    targets.append(("ass_prefix32",
-                    ASS_SOURCE[:ASS_SOURCE.index("char open_include(")]))
-    ass_count=12
+    # Keep original, same-source measurements in the comparable suite.
+    # The 32-function prefix is additionally measured below, with a
+    # compiler-specific baseline status if production nanoc1 rejects it.
+    ass_count=11
     # The original nanoc1 host compiler rejects this composed-call fixture.
     # It stays in independent native VICE correctness testing; the physical
     # comparison stays strictly apples-to-apples with accepted source.
@@ -242,6 +241,28 @@ def main():
         targets.append((name,"unsigned word_samples[640];\n"+
                         exact_c_function(word_array,name)))
     new_count=len(word_array_names)
+    # Report the full current original-source unit separately: existing
+    # production nanoc1 can reject this much larger prefix (exit 2).
+    # We still physically assemble and record the new compiler's body,
+    # but never invent an old-versus-new reduction when the old code
+    # did not compile or blend unmatched bytes into the aggregate.
+    prefix32=ASS_SOURCE[:ASS_SOURCE.index("char open_include(")]
+    new_asm=compile_host(new_driver,prefix32,"native")
+    new32,_,new_body=measure_assembled(new_asm,False,"ass_prefix32")
+    (OUT/"ass_prefix32-new-body.asm").write_text(new_body)
+    old_attempt=subprocess.run([str(old_driver)],input=prefix32.encode(),
+                               stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    if old_attempt.returncode==0:
+        old32,_,old_body=measure_assembled(old_attempt.stdout.decode(),
+                                          True,"ass_prefix32")
+        (OUT/"ass_prefix32-old-body.asm").write_text(old_body)
+        print("EXACT ass.c first 32 functions: nanoc1 %d B, nanoc2 %d B; saved %d B (%.1f%%)"%
+              (old32,new32,old32-new32,
+               100.0*(old32-new32)/old32),flush=True)
+    else:
+        print("EXACT ass.c first 32 functions: nanoc2 %d B; nanoc1 unavailable (compiler exit %d); no same-source ratio"%
+              (new32,old_attempt.returncode),flush=True)
+
     results = []
     for name, source in targets:
         old_asm = compile_host(old_driver,source)
