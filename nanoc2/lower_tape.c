@@ -301,9 +301,15 @@ char nd_condition(unsigned expr, unsigned exit_label)
     int r;
     if (expr==0) { nd_error=16; return 0; }
     if (nc2_kind[expr]==2) {
-        l=nd_scalar(expr);
-        if (l<0) return 0;
-        if (nd_add(8,l,0,0,0)==0) return 0;
+        if(nc2_number[expr]==2 | nc2_number[expr]==3) {
+            l=nd_word(expr);
+            if(l<0) return 0;
+            if(nd_add(41,l,0,0,0)==0) return 0;
+        } else {
+            l=nd_scalar(expr);
+            if(l<0) return 0;
+            if(nd_add(8,l,0,0,0)==0) return 0;
+        }
         return nd_add(10,0,1,0,exit_label);
     }
     if (nc2_kind[expr]!=6) { nd_error=16; return 0; }
@@ -312,8 +318,26 @@ char nd_condition(unsigned expr, unsigned exit_label)
     else if (op==143) rel=1;  /* !=: false when EQ */
     else if (op=='<') rel=4;  /* <: false when carry set */
     else if (op==145) rel=3;  /* >=: false when carry clear */
+    else if (op=='>') rel=5;  /* >: false when carry clear or equal */
+    else if (op==144) rel=6;  /* <=: false when carry set and unequal */
     else { nd_error=17; return 0; }
     left=nc2_left[expr];right=nc2_right[expr];
+    if (nc2_kind[left]==2 &
+        (nc2_number[left]==2 | nc2_number[left]==3)) {
+        /* Compare complete words, including negative signed values.
+         * The typed parser recorded unsigned promotion in nc2_b[expr]. */
+        l=nd_word(left);
+        if(l<0) return 0;
+        if(nc2_kind[right]==2) {
+            r=nd_word(right);
+            if(r<0) return 0;
+            if(nd_add(39,l,r,nc2_b[expr],0)==0) return 0;
+        } else if(nc2_kind[right]==1) {
+            if(nd_add(40,l,nc2_b[expr],0,nc2_number[right])==0)
+                return 0;
+        } else { nd_error=18; return 0; }
+        return nd_add(10,0,rel,0,exit_label);
+    }
     if (nc2_kind[left]==2) {
         l=nd_scalar(left);
         if (l<0) return 0;
@@ -405,6 +429,15 @@ char nd_assignment(char area, char symbol, unsigned rhs)
                 else op=32;
                 return nd_add(op,dst,src,0,nc2_number[extra]);
             }
+            if(nc2_kind[extra]==2) {
+                src=nd_word(lhs);
+                if(src<0) return 0;
+                ptr=nd_word(extra);
+                if(ptr<0) return 0;
+                if(nc2_a[rhs]=='+') op=35;
+                else op=36;
+                return nd_add(op,dst,src,ptr,0);
+            }
         }
         nd_error=25;return 0;
     }
@@ -458,6 +491,17 @@ char nd_return(unsigned expr)
                 if(nc2_a[expr]=='+') op=33;
                 else op=34;
                 return nd_add(op,src,0,0,nc2_number[extra]);
+            }
+            if(nc2_kind[extra]==2) {
+                src=nd_word(lhs);
+                if(src<0) return 0;
+                /* Use the two static word homes directly; no generic
+                 * virtual-register or stacked expression machinery. */
+                extra=nd_word(extra);
+                if(extra>31) { nd_error=30;return 0; }
+                if(nc2_a[expr]=='+') op=37;
+                else op=38;
+                return nd_add(op,src,extra,0,0);
             }
         }
         nd_error=21;return 0;
