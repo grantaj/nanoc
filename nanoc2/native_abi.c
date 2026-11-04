@@ -210,6 +210,18 @@ char n2_emit_function()
     if(n2_function_name()==0) return 0;
     if(tb_text(":\n")==0) return 0;
     if(n2_pointer_prologue()==0) return 0;
+    /* An incoming byte parameter may be assigned to X/Y by the
+     * direct-index traversal plan. Unlike a local loop induction
+     * variable it has not yet been initialized by a function event.
+     * Seed both selected registers from their static Nano C homes
+     * at the ABI boundary; subsequent tape writes update them. */
+    if(tb_plan()==0) return 0;
+    if(tb_x!=0) {
+        if(tb_location("ldx",1,tb_x,"")==0) return 0;
+    }
+    if(tb_y!=0) {
+        if(tb_location("ldy",1,tb_y,"")==0) return 0;
+    }
     if(tb_compile()==0) return 0;
     if(n2_function_alias()==0) return 0;
     if(n2_local_bss()==0) return 0;
