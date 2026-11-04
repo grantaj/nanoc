@@ -30,6 +30,8 @@ def ass_wide_test():
     def check_byte(name,value):
         nonlocal case
         lines.extend((
+            "\tlda #$%02x"%(case&255),
+            "\tsta $03",
             "\tlda %s"%name,
             "\tcmp #$%02x"%(value&255),
             "\tbeq .ab_check_%d"%case,
