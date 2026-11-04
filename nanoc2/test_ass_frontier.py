@@ -108,10 +108,10 @@ def main():
     # Full source compilation is necessary but not sufficient for native
     # correctness or size. A regression in isolated real C is always fatal.
     # Other failures are deliberately visible as our development frontier.
-    # First seven original ass.c functions, including wide indexed
-    # byte/word fixup stores and computed-index reads, compile with the
-    # complete unmodified global declarations. Keep this milestone gated.
-    assert successful >= 7, "ass.c prefix coverage regressed below seven functions"
+    # Ten consecutive original ass.c functions compile with the full
+    # unmodified global declarations. This now includes two-byte array
+    # values, computed calls, pointer arguments and cross-cursor lookup.
+    assert successful >= 10, "ass.c prefix coverage regressed below ten functions"
     if whole.returncode == 0:
         assert first_blocker is None, "full source accepted, prefix rejected"
 
