@@ -36,6 +36,11 @@ char nc2_b[256];
 unsigned nc2_left[256];
 unsigned nc2_right[256];
 unsigned nc2_number[256];
+/* Bounded, per-function argument entries: each function call node records
+ * an offset into this typed expression-node list. Do not allocate ASTs or
+ * reorder side effects; the lowerer stages entries in source order. */
+unsigned nc2_call_values[192];
+unsigned nc2_call_used;
 /* Event 1 label, 2 jump, 3 branch-if-false, 4 scalar write,
  * 5 return, 6 indexed write, 7 byte function call.
  * Semantic node kind 8 is a call result; the call event occurs before
@@ -57,6 +62,7 @@ char nc2_reset()
     nc2_events = 0;
     nc2_fault = 0;
     nc2_last = 0;
+    nc2_call_used = 0;
     return 1;
 }
 
@@ -1682,9 +1688,8 @@ char emit_call_finish(char marker_index)
     char i;
     char expected;
     unsigned operand;
-    unsigned first;
-    unsigned second;
     unsigned result;
+    unsigned arg_base;
     function_id=op_aux[marker_index];
     argc=op_argc[marker_index];
     base=op_base[marker_index];
@@ -1693,9 +1698,9 @@ char emit_call_finish(char marker_index)
     }
     if(global_kind[function_id]!=3 |
        (global_type[function_id]!=1 & global_type[function_id]!=2) |
-       argc>2) {nc2_fault=11;return 0;}
-    first=0;
-    second=0;
+       argc>8) {nc2_fault=11;return 0;}
+    arg_base=nc2_call_used;
+    if(arg_base+argc>192) {nc2_fault=11;return 0;}
     i=0;
     while(i<argc) {
         expected=param_type[global_param_start[function_id]+i];
@@ -1719,11 +1724,11 @@ char emit_call_finish(char marker_index)
                 nc2_fault=11;return 0;
             }
         }
-        if(i==0) first=operand;
-        else second=operand;
+        nc2_call_values[nc2_call_used]=operand;
+        nc2_call_used=nc2_call_used+1;
         i=i+1;
     }
-    result=nc2_node(8,function_id,argc,first,second,0);
+    result=nc2_node(8,function_id,argc,0,0,arg_base);
     if(result==0) return 0;
     if(nc2_event(7,0,function_id,result,0)==0) return 0;
     /* push_value_type stores nc2_last in the new value slot. Do not let
