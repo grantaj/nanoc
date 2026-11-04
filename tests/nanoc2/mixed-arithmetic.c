@@ -2,6 +2,8 @@
  * All operands are pure scalars/literals; expressions may read their
  * destination late, so the compiler must not overwrite it early.
  */
+char out_even[256];
+
 int widen_copy(char small)
 {
     int out;
@@ -133,4 +135,17 @@ char byte_pair_store(char left, char right)
     char out;
     out = left + right;
     return out;
+}
+
+/* The index is live in X because it addresses an array. Incrementing it
+ * by two must update the register, not just its stale static home. */
+char fill_even(char count)
+{
+    char i;
+    i = 0;
+    while (i < count) {
+        out_even[i] = i;
+        i = i + 2;
+    }
+    return i;
 }
