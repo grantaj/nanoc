@@ -539,6 +539,85 @@ def mixed_arithmetic_test():
         ])
     return lines
 
+
+def mixed_compare_test():
+    lines = ["\t* = $1000", "main:"]
+    case = 0
+
+    def test(name, args, expected):
+        nonlocal case
+        for parameter, value, width in args:
+            lines.extend([
+                "\tlda #$%02x" % (value & 255),
+                "\tsta n2_%s_%s" % (name, parameter),
+            ])
+            if width == 2:
+                lines.extend([
+                    "\tlda #$%02x" % ((value >> 8) & 255),
+                    "\tsta n2_%s_%s+1" % (name, parameter),
+                ])
+        lines.append("\tjsr n2_%s" % name)
+        lines.extend(word_assert(expected & 255, (expected >> 8) & 255,
+                                 6000+case))
+        case += 1
+
+    comparisons = (
+        ("lt", lambda x,y: x<y), ("le", lambda x,y: x<=y),
+        ("gt", lambda x,y: x>y), ("ge", lambda x,y: x>=y),
+        ("eq", lambda x,y: x==y), ("ne", lambda x,y: x!=y),
+    )
+    pairs = [
+        (0, 0), (0, 255), (255, 255), (256, 255), (256, 0),
+        (32767, 255), (32768, 0), (32768, 255),
+        (65535, 0), (65535, 255), (0x12ff, 0x34),
+    ]
+    for word, byte in pairs:
+        signed = word if word < 32768 else word-65536
+        for suffix, compare in comparisons:
+            for prefix, lhs, rhs, unsigned in (
+                ("mix", "word", "byte", False),
+                ("rev", "byte", "word", False),
+                ("umix", "word", "byte", True),
+                ("urev", "byte", "word", True),
+            ):
+                converted_word = word if unsigned else signed
+                left = converted_word if lhs=="word" else byte
+                right = converted_word if rhs=="word" else byte
+                args = ((lhs, word if lhs=="word" else byte,
+                         2 if lhs=="word" else 1),
+                        (rhs, word if rhs=="word" else byte,
+                         2 if rhs=="word" else 1))
+                test(prefix+"_"+suffix, args, int(compare(left,right)))
+    for byte in (0, 1, 254, 255):
+        args = (("byte",byte,1),)
+        test("byte_lt_256",args,int(byte < 256))
+        test("byte_eq_256",args,int(byte == 256))
+        test("literal_gt_byte",args,int(256 > byte))
+        test("literal_eq_byte",args,int(255 == byte))
+        test("byte_ge_257",args,int(byte >= 257))
+    for word in (0, 255, 256, 257, 32767, 32768, 65535):
+        signed = word if word < 32768 else word-65536
+        test("literal_lt_word",(("word",word,2),),int(256 < signed))
+        test("literal_eq_word",(("word",word,2),),int(256 == signed))
+        test("literal_gt_unsigned",(("word",word,2),),int(256 > word))
+        test("word_lt_byte_literal",(("word",word,2),),int(signed < 255))
+    for limit in (0,1,2,16):
+        test("mark_below_word",(("limit",limit,2),),limit)
+    for i in range(16):
+        lines.extend([
+            "\tlda n2_compare_marks+%d" % i,
+            "\tcmp #$%02x" % i,
+            "\tbeq .mixed_mark_%d" % i,
+            "\tjmp native_fail",
+            ".mixed_mark_%d:" % i,
+        ])
+    for start,limit in ((0,5),(3,3),(8,3),(65535,2)):
+        signed = start if start < 32768 else start-65536
+        expect = start if signed>=limit else limit
+        test("advance_word_until_byte",
+             (("start",start,2),("limit",limit,1)),expect)
+    return lines
+
 def run_native(name, source, test_lines, driver):
     output = subprocess.run([str(driver), "native"], input=source.encode(),
                             capture_output=True, check=True)
@@ -640,6 +719,8 @@ def main():
     run_native("word_call", word_call_source, word_call_test(), driver)
     mixed_source = (ROOT / "tests" / "nanoc2" / "mixed-arithmetic.c").read_text()
     run_native("mixed_arithmetic", mixed_source, mixed_arithmetic_test(), driver)
+    compare_source = (ROOT / "tests" / "nanoc2" / "mixed-compare.c").read_text()
+    run_native("mixed_compare", compare_source, mixed_compare_test(), driver)
     # One source unit, two real Phase-1 definitions. The parser must emit
     # each bounded function tape before it is reset for the next function.
     multi_source = (
