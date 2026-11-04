@@ -525,6 +525,18 @@ def mixed_arithmetic_test():
         exercise("byte_sum_store", args, left + right)
         exercise("byte_pair_return", args, (left + right) & 255)
         exercise("byte_pair_store", args, (left + right) & 255)
+    # The same arithmetic chain must round-trip a live X loop index.
+    for bound in (0, 1, 2, 3, 4, 7, 10, 11):
+        exercise("fill_even", (("count", bound, 1),),
+                 2 * ((bound + 1) // 2))
+    for i in (2, 4, 6, 8, 10):
+        lines.extend([
+            "\tlda n2_out_even+%d" % i,
+            "\tcmp #$%02x" % i,
+            "\tbeq .even_ok_%d" % i,
+            "\tjmp native_fail",
+            ".even_ok_%d:" % i,
+        ])
     return lines
 
 def run_native(name, source, test_lines, driver):
