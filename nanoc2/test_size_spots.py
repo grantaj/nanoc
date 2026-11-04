@@ -51,7 +51,8 @@ def measure_assembled(asm, old, name):
     # together, so caller + callee overhead is measured consistently.
     if name in ("word_call_unit", "ass_scope_find_unit",
                 "ass_allocate_unit", "ass_symbol_api_unit",
-                "ass_prefix15", "ass_prefix32"):
+                "ass_prefix15", "ass_prefix32", "ass_prefix33",
+                "io_builtin_unit", "pointer_sum_unit"):
         assert nlabels > 1, (name,nlabels)
     else:
         assert nlabels == 1, (name,nlabels)
@@ -65,8 +66,16 @@ def measure_assembled(asm, old, name):
         asm = asm[:end.start()] + "__bench_end:\n" + asm[end.start():]
         body_text = asm[m.end():asm.index("__bench_end:",m.end())]
     else:
-        body_text = asm[m.end():]
-        asm += "\n__bench_end:\n"
+        # Builtin units append an I/O runtime. The measurement stops
+        # BEFORE the entry initializer and runtime, counting only C
+        # function bodies while still physically assembling the unit.
+        startup = re.search(r'^__nc_entry:\s*$', asm, re.M)
+        if startup:
+            asm = asm[:startup.start()] + "__bench_end:\n" + asm[startup.start():]
+            body_text = asm[m.end():asm.index("__bench_end:",m.end())]
+        else:
+            body_text = asm[m.end():]
+            asm += "\n__bench_end:\n"
     # The two word expressions are resolved by vasm in the same binary as
     # the function, so no instruction-heuristic or unlinked source-counting.
     asm += "\n\tword " + entry + ", __bench_end\n"
@@ -80,7 +89,10 @@ def measure_assembled(asm, old, name):
     try:
         run = subprocess.run(
             [VASM, "-Fbin", "-cbm-prg", "-o", str(image), str(temp_path)],
-            cwd=ROOT / "ass", stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            cwd=(ROOT if not old and
+                 'include "nanoc2/target/io-runtime.asm"' in asm
+                 else ROOT / "ass"),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
         if run.returncode:
             raise RuntimeError("vasm failed for %s %s:\n%s" %
@@ -192,6 +204,14 @@ def main():
     for name in rhs_names:
         targets.append((name,exact_c_function(rhs_source,name)))
     rhs_count=len(rhs_names)
+    # Callers and callees must be priced as units. The target linker
+    # resolves real Nano C I/O runtime labels but runtime bytes are not
+    # included in the comparable C function-body spans.
+    targets.append(("io_builtin_unit",
+                    (ROOT/"tests"/"nanoc2"/"io-builtins.c").read_text()))
+    targets.append(("pointer_sum_unit",
+                    (ROOT/"tests"/"nanoc2"/"pointer-sum.c").read_text()))
+    machine_count=2
     # The actual assembler drives the next slice. These are exact
     # unmodified Phase-1 functions, not synthetic arithmetic lookalikes.
     for name in ("upper_char","same_text","apply_byte_prefix"):
@@ -246,22 +266,25 @@ def main():
     # We still physically assemble and record the new compiler's body,
     # but never invent an old-versus-new reduction when the old code
     # did not compile or blend unmatched bytes into the aggregate.
-    prefix32=ASS_SOURCE[:ASS_SOURCE.index("char open_include(")]
-    new_asm=compile_host(new_driver,prefix32,"native")
-    new32,_,new_body=measure_assembled(new_asm,False,"ass_prefix32")
-    (OUT/"ass_prefix32-new-body.asm").write_text(new_body)
-    old_attempt=subprocess.run([str(old_driver)],input=prefix32.encode(),
-                               stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    if old_attempt.returncode==0:
-        old32,_,old_body=measure_assembled(old_attempt.stdout.decode(),
-                                          True,"ass_prefix32")
-        (OUT/"ass_prefix32-old-body.asm").write_text(old_body)
-        print("EXACT ass.c first 32 functions: nanoc1 %d B, nanoc2 %d B; saved %d B (%.1f%%)"%
-              (old32,new32,old32-new32,
-               100.0*(old32-new32)/old32),flush=True)
-    else:
-        print("EXACT ass.c first 32 functions: nanoc2 %d B; nanoc1 unavailable (compiler exit %d); no same-source ratio"%
-              (new32,old_attempt.returncode),flush=True)
+    for depth,end_name in ((32,"char open_include("),
+                           (33,"int read_source_line(")):
+        source=ASS_SOURCE[:ASS_SOURCE.index(end_name)]
+        tag="ass_prefix%d"%depth
+        new_asm=compile_host(new_driver,source,"native")
+        new_size,_,new_body=measure_assembled(new_asm,False,tag)
+        (OUT/(tag+"-new-body.asm")).write_text(new_body)
+        old_attempt=subprocess.run([str(old_driver)],input=source.encode(),
+                                   stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        if old_attempt.returncode==0:
+            old_size,_,old_body=measure_assembled(old_attempt.stdout.decode(),
+                                                  True,tag)
+            (OUT/(tag+"-old-body.asm")).write_text(old_body)
+            print("EXACT ass.c first %d functions: nanoc1 %d B, nanoc2 %d B; saved %d B (%.1f%%)"%
+                  (depth,old_size,new_size,old_size-new_size,
+                   100.0*(old_size-new_size)/old_size),flush=True)
+        else:
+            print("EXACT ass.c first %d functions: nanoc2 %d B; nanoc1 unavailable (compiler exit %d); no same-source ratio"%
+                  (depth,new_size,old_attempt.returncode),flush=True)
 
     results = []
     for name, source in targets:
@@ -297,12 +320,13 @@ def main():
           "saved %d B (%.1f%%)" %
           (old_total,new_total,old_total-new_total,
            100.0*(old_total-new_total)/old_total))
-    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1+mixed_count+compare_count+expression_count+rhs_count+ass_count+new_count
+    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1+mixed_count+compare_count+expression_count+rhs_count+machine_count+ass_count+new_count
     calls_index=baseline_count+word_scalar_count+word_ops_count
     compare_index=calls_index+1+mixed_count
     expression_index=compare_index+compare_count
     rhs_index=expression_index+expression_count
-    ass_index=rhs_index+rhs_count
+    machine_index=rhs_index+rhs_count
+    ass_index=machine_index+machine_count
     added_index=ass_index+ass_count
     for title,subset in [
         ("legacy-seven",results[:baseline_count]),
@@ -312,7 +336,8 @@ def main():
         ("mixed-composed",results[calls_index+1:compare_index]),
         ("mixed-comparisons",results[compare_index:expression_index]),
         ("arithmetic-conditions",results[expression_index:rhs_index]),
-        ("computed-RHS",results[rhs_index:ass_index]),
+        ("computed-RHS",results[rhs_index:machine_index]),
+        ("6502-addressing-and-I/O",results[machine_index:ass_index]),
         ("real-ass.c",results[ass_index:added_index]),
         ("computed-calls-and-word-array",results[added_index:]),
     ]:
