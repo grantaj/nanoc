@@ -53,16 +53,24 @@ result=subprocess.run([str(DRIVER)],input=bad.encode(),capture_output=True)
 assert result.returncode != 0, "invalid byte <- pointer assignment accepted"
 print("original Phase-1 type rejection passed")
 
-# The native emitter uses the same parser, but this first ABI stage deliberately
-# handles one function and uninitialized BSS only. Reject unsupported units
-# before treating their emitted assembly as a complete program.
-for candidate in (
-    "char initialized = 7; char first() { return 1; }",
-):
-    result=subprocess.run([str(DRIVER),'native'],input=candidate.encode(),
-                          capture_output=True)
-    assert result.returncode != 0, "unsupported native translation unit accepted"
-print("native ABI initialized-data rejection passed")
+# Initialized globals have real data labels and are *not* included in
+# NC_BSS. The original Phase-1 parser owns their constant syntax and sizes.
+initialized = (
+    "char initialized = 7; char unused; "
+    "char bytes[4] = {1, 2, 3, 4}; "
+    "int word = 4660; "
+    "char first() { return initialized; }"
+)
+result=subprocess.run([str(DRIVER),'native'],input=initialized.encode(),
+                      capture_output=True)
+assert result.returncode == 0, result.stderr.decode()
+asm = result.stdout.decode()
+assert "__g00:\n\tdc.b $07" in asm, asm
+assert "__g01 = NC_BSS+$0000" in asm, asm
+assert "__g02:\n\tdc.b $01" in asm, asm
+assert "__g03:\n\tdc.b $34\n\tdc.b $12" in asm, asm
+assert "__g00 = NC_BSS" not in asm and "__g02 = NC_BSS" not in asm
+print("native ABI Phase-1 initialized globals, byte/word tables and BSS segregation passed")
 
 # Multiple functions no longer require keeping their previous semantic tapes
 # in memory. All definitions must be present in one generated assembly unit.
