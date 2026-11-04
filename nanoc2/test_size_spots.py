@@ -49,7 +49,7 @@ def measure_assembled(asm, old, name):
     nlabels = len(re.findall(r'^__(?:f|c)[0-9a-fA-F]{2}:\s*$', asm, re.M))
     # Grouped calling-convention benchmark: count all function bodies
     # together, so caller + callee overhead is measured consistently.
-    if name == "word_call_unit":
+    if name == "word_call_unit" | name == "ass_scope_find_unit":
         assert nlabels > 1, (name,nlabels)
     else:
         assert nlabels == 1, (name,nlabels)
@@ -198,7 +198,9 @@ def main():
     targets.append(("ass_append_fixup",ass_prefix+"\n"+ass_function("append_fixup")))
     targets.append(("ass_relative_byte",ass_function("relative_byte")))
     targets.append(("ass_trim_fixups",ass_prefix+"\n"+ass_function("trim_fixups")))
-    targets.append(("ass_scope_for_name",ass_prefix+"\n"+ass_function("scope_for_name")))
+    targets.append(("ass_scope_find_unit",ass_prefix+"\n"+
+                    ass_function("scope_for_name")+"\n"+
+                    ass_function("find_symbol")))
     ass_count=7
     # The original nanoc1 host compiler rejects this composed-call fixture.
     # It stays in independent native VICE correctness testing; the physical
@@ -225,7 +227,7 @@ def main():
         if name in ("reverse_mixed","reverse_sub","byte_sum_word",
                     "ass_upper_char","ass_same_text","ass_apply_byte_prefix",
                     "ass_append_fixup","ass_relative_byte","ass_trim_fixups",
-                    "ass_scope_for_name"):
+                    "ass_scope_find_unit"):
             assert new_bytes <= old_bytes, (name,old_bytes,new_bytes)
         # A previous full-word identity simplification accidentally
         # introduced a 12-byte in-place self-copy into the real assembler.
