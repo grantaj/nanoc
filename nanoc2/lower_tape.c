@@ -1182,6 +1182,12 @@ char nd_return(unsigned expr)
         }
         return nd_chain(expr,nc2_return_type,0,1);
     }
+    if (nc2_kind[expr]==4 | nc2_kind[expr]==5) {
+        /* A pointer/byte-array subscript is already a byte in A.
+         * The native byte-result ABI returns A with X zeroed. */
+        if(nd_index(expr,0)==0) return 0;
+        return nd_add(26,0,0,0,0);
+    }
     if (nc2_kind[expr]==8) {
         if (nd_add(25,0,0,0,0)==0) return 0;
         return nd_add(26,0,0,0,0);
