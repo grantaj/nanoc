@@ -244,6 +244,19 @@ char nd_index_address(char area, char symbol, char kind,
             else opcode=85;
             return nd_add(opcode,ptr,0,0,nc2_number[index_node]);
         }
+        if(nc2_kind[index_node]==6 &
+           (nc2_a[index_node]=='+' | nc2_a[index_node]=='-') &
+           nc2_kind[nc2_left[index_node]]==2 &
+           nc2_number[nc2_left[index_node]]==1 &
+           nc2_kind[nc2_right[index_node]]==1) {
+            unsigned offset;
+            offset=nc2_number[nc2_right[index_node]];
+            if(offset>255) {nd_error=12;return 0;}
+            if(nc2_a[index_node]=='-') offset=(0-offset)&255;
+            idx=nd_scalar(nc2_left[index_node]);
+            if(idx<0) return 0;
+            return nd_add(107,ptr,idx,mode,offset);
+        }
         idx=nd_scalar(index_node);
         if (idx<0) return 0;
         if (mode==0) opcode=6;
