@@ -359,6 +359,7 @@ char tb_stage_byte(char callee,char argument)
  */
 char tb_call_byte(char callee, char return_type)
 {
+    char slot;
     if(tb_x!=0) {
         if(tb_location("stx",1,tb_x,"")==0) return 0;
     }
@@ -380,6 +381,23 @@ char tb_call_byte(char callee, char return_type)
     }
     if(tb_y!=0) {
         if(tb_location("ldy",1,tb_y,"")==0) return 0;
+    }
+    /* A callee can legitimately reuse both user zero-page pointer
+     * cursors. Reconstruct each caller cursor from its original static
+     * pointer home after the JSR; A/X return bytes are already saved. */
+    slot=0;
+    while(slot<tb_pointer_count) {
+        if(tb_source_pointer("lda",tb_pointer_area[slot],
+                             tb_pointer_symbol[slot],"")==0) return 0;
+        if(tb_text("\tsta __tptr")==0) return 0;
+        if(tb_hex2(slot)==0) return 0;
+        if(tb_char('\n')==0) return 0;
+        if(tb_source_pointer("lda",tb_pointer_area[slot],
+                             tb_pointer_symbol[slot],"+1")==0) return 0;
+        if(tb_text("\tsta __tptr")==0) return 0;
+        if(tb_hex2(slot)==0) return 0;
+        if(tb_text("+1\n")==0) return 0;
+        slot=slot+1;
     }
     return 1;
 }
