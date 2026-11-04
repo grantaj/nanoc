@@ -249,13 +249,13 @@ char nd_index_address(char area, char symbol, char kind,
            nc2_kind[nc2_left[index_node]]==2 &
            nc2_number[nc2_left[index_node]]==1 &
            nc2_kind[nc2_right[index_node]]==1) {
-            unsigned offset;
-            offset=nc2_number[nc2_right[index_node]];
-            if(offset>255) {nd_error=12;return 0;}
-            if(nc2_a[index_node]=='-') offset=(0-offset)&255;
+            offset_node=nc2_number[nc2_right[index_node]];
+            if(offset_node>255) {nd_error=12;return 0;}
+            if(nc2_a[index_node]=='-')
+                offset_node=(0-offset_node)&255;
             idx=nd_scalar(nc2_left[index_node]);
             if(idx<0) return 0;
-            return nd_add(107,ptr,idx,mode,offset);
+            return nd_add(107,ptr,idx,mode,offset_node);
         }
         idx=nd_scalar(index_node);
         if (idx<0) return 0;
