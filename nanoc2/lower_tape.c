@@ -862,6 +862,13 @@ char nd_assignment(char area, char symbol, unsigned rhs)
     int entry;
     unsigned lhs;
     unsigned extra;
+    unsigned left_term;
+    unsigned right_term;
+    unsigned shift;
+    unsigned literal;
+    int left_home;
+    int right_home;
+    char right_kind;
     char op;
     if (rhs==0) { nd_error=19; return 0; }
     if (area==1) target_type=global_type[symbol];
@@ -961,13 +968,6 @@ char nd_assignment(char area, char symbol, unsigned rhs)
          * final store last also handles result/source aliasing.
          * E.g. value = (value << 4) | digit in the assembler parser. */
         if(nc2_kind[rhs]==6 & nc2_a[rhs]=='|') {
-            unsigned left_term;
-            unsigned right_term;
-            unsigned shift;
-            unsigned literal;
-            int left_home;
-            int right_home;
-            char right_kind;
             left_term=nc2_left[rhs];
             right_term=nc2_right[rhs];
             shift=0;
@@ -1012,7 +1012,6 @@ char nd_assignment(char area, char symbol, unsigned rhs)
            (nc2_number[nc2_left[rhs]]==2 |
             nc2_number[nc2_left[rhs]]==3) &
            nc2_kind[nc2_right[rhs]]==1) {
-            unsigned shift;
             shift=nc2_number[nc2_right[rhs]];
             if(shift>15) {nd_error=25;return 0;}
             src=nd_word(nc2_left[rhs]);
