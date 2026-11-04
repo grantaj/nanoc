@@ -190,3 +190,22 @@ result = subprocess.run([str(DRIVER),"native"],input=bad.encode(),
                         capture_output=True)
 assert result.returncode != 0, "composed comparison operand accepted incorrectly"
 print("original parser: full-width mixed C comparisons and literal order passed")
+
+
+# Arithmetic conditions reuse the same bounded typed tape. A left-associated
+# numeric value stays in __tacc until the final signed/unsigned CMP, or is
+# tested directly with ORA for zero/nonzero. Reject right-nested source.
+expr_source = (ROOT.parent/"tests"/"nanoc2"/"expression-condition.c").read_text()
+compiled = subprocess.run([str(DRIVER),"native"],input=expr_source.encode(),
+                          capture_output=True)
+assert compiled.returncode == 0, compiled.stderr.decode()
+asm = compiled.stdout.decode()
+assert "INVALID_HOME" not in asm
+assert "\tlda __tacc" in asm and "\tora __tacc+1" in asm
+assert "\tlda __tacc+1" in asm and "\tcmp " in asm
+bad = expr_source.replace("left + right < limit",
+                          "left + (right + 1) < limit")
+rejected = subprocess.run([str(DRIVER),"native"],input=bad.encode(),
+                          capture_output=True)
+assert rejected.returncode != 0, "right-nested comparison silently accepted"
+print("original parser: arithmetic conditions and composed-value CMP passed")
