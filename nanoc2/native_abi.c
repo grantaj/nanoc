@@ -182,7 +182,7 @@ char n2_begin()
     n2_first_function=255;
     if(tb_text("NC_BSS = $4800\n")==0) return 0;
     if(tb_text("__tptr00 = $f0\n__tptr01 = $f2\n")==0) return 0;
-    if(tb_text("__twlo = $f4\n__twhi = $f5\n")==0) return 0;
+    if(tb_text("__twlo = $f4\n__twhi = $f5\n__tret = $f6\n")==0) return 0;
     if(tb_text("\t* = $0800\n__nc_start:\n\tjmp __nc_entry\n")==0) return 0;
     return 1;
 }
