@@ -11,18 +11,27 @@ Fast CI feeds the **complete unmodified** 1,792-line Phase-1 assembler to
 the original parser and new emitter, then finds the longest consecutive
 function prefix accepted with **all the real global declarations present**.
 
-**Checkpoint (4 November 2026): 7/44 real functions accepted and
-natively verified**: `upper_char`, `same_text`, `apply_byte_prefix`,
-`hex_nibble`, `append_fixup`, `relative_byte`, `trim_fixups`.
+**Checkpoint (4 November 2026): 10/44 consecutive original functions
+compile and have native execution coverage**: `upper_char`,
+`same_text`, `apply_byte_prefix`, `hex_nibble`, `append_fixup`,
+`relative_byte`, `trim_fixups`, `resolve_fixups_for_symbol`,
+`scope_for_name`, `find_symbol`.
 
-This phase added 16-bit indices into global byte and word arrays with
-the correct element stride, direct `base + 16-bit offset` using 6502 carry,
-and the affine index `fixup_count - 1` for byte-array reads. The source
-frontier now stops in `resolve_fixups_for_symbol` (source line 312,
-`nc2_fault=11`), at the **computed expression inside a call argument**.
-This function also needs general word-array reads and more complicated
-expression composition; tackle these as general Phase-1 facilities,
-not source-name-specific patterns.
+This stage adds bounded arithmetic arguments to calls, 16-bit indexed word
+array reads and writes, word-array arithmetic, signed/unsigned comparisons
+against indexed bytes, and independent ZP cursor lanes for a named pointer
+and a computed global-array address. Static two-byte pointer parameters
+are passed without conflating their values with transient ZP cursors.
+The native ABI reloads callers' pointers after JSR and seeds the selected
+X/Y registers from incoming parameter homes before indexed reads.
+
+The actual 6502 VICE tests exercise fixup resolution, scope checking,
+symbol lookup across offset and index page boundaries, forwarded char
+pointers and pointer indexing, as well as the earlier arithmetic tests.
+The next original source failure is **`allocate_symbol` (function 11,
+line 421, lowerer 13)**. Full `ass.c` and its runtime/image still do
+not compile: 10/44 is a source acceptance frontier, not a whole-program
+or self-hosting milestone.
 
 Initialized scalar/array globals are now emitted as physical 6502
 `byte` data labels, while only uninitialized objects use `NC_BSS`;
@@ -191,8 +200,8 @@ the three-byte entry trampoline, not linked complete applications.
 | `ass_wide_index` | 1,497 B | First seven original `ass.c` functions, fixup tables, 16-bit indexes, wraparound |
 | `two_functions` | 78 B | Two separately streamed functions, static homes, IRQ enabled |
 
-All fifteen passed in
-[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41781262420).
+All nineteen native programs passed in
+[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41793244260).
 Native smoke remains opt-in through the `native-smoke` PR label or
 manual dispatch, not the fast default PR gate.
 
@@ -229,17 +238,18 @@ caller and callee costs under the same statically allocated ABI).
 
 | Measured scope | Count | nanoc1 bodies | nanoc2 bodies | Reduction |
 | --- | ---: | ---: | ---: | ---: |
-| Original seven | 7 | 1,013 B | 316 B | 68.8% |
+| Original seven | 7 | 1,013 B | 331 B | 67.3% |
 | Word scalar | 4 | 162 B | 84 B | 48.1% |
 | Word arithmetic/branch | 12 | 610 B | 378 B | 38.0% |
-| Complete word-call unit | 13 functions | 459 B | 363 B | 20.9% |
-| Mixed-width/composed arithmetic | 23 | 1,156 B | 732 B | 36.7% |
-| Mixed signed/unsigned comparisons | 35 | 1,831 B | 1,111 B | 39.3% |
-| Arithmetic in conditions | 9 | 840 B | 587 B | 30.1% |
-| First six measured `ass.c` bodies | 6 | 1,312 B | 587 B | 55.3% |
-| **Combined** | **109 function bodies** | **7,383 B** | **4,158 B** | **43.7%** |
+| Complete word-call unit | 13 functions | 459 B | 366 B | 20.3% |
+| Mixed-width/composed arithmetic | 23 | 1,156 B | 735 B | 36.4% |
+| Mixed signed/unsigned comparisons | 35 | 1,831 B | 1,114 B | 39.2% |
+| Arithmetic in conditions | 9 | 840 B | 590 B | 29.8% |
+| Verbatim `ass.c` bodies (including combined `scope_for_name` and `find_symbol`) | 8 functions | 2,144 B | 1,054 B | 50.8% |
+| Indexed word-array tests | 4 | 249 B | 263 B | -5.6% |
+| **Combined** | **115 function bodies** | **8,464 B** | **4,915 B** | **41.9%** |
 
-The suite now has 97 source measurement cases, including the multi-function
+The suite now has 102 source measurement cases, including the multi-function
 unit. For word calls, a single span includes all 13 functions; no runtime,
 test caller or entry trampoline is counted. The smaller call, word-branch and chained-expression reductions reveal
 remaining code-generation quality gaps, not a reason to substitute the
@@ -251,7 +261,7 @@ scratch out of KERNAL ZP. The earlier 72% result used an unsafe scratch map
 and is **superseded**, not another comparable image.
 
 The size and VICE tests passed together in
-[workflow run 41781262420](https://github.com/grantaj/nanoc/actions/runs/41781262420).
+[workflow run 41793244260](https://github.com/grantaj/nanoc/actions/runs/41793244260).
 A subsequent general identity-mask change briefly regressed the actual
 `ass.c` `apply_byte_prefix` code by 12 bytes; the redundant word
 self-copy was removed and an exact **23-byte** size limit added to
@@ -261,11 +271,11 @@ proof the new compiler binary itself will fit C64 memory.
 
 ## Unfinished work
 
-1. Advance the exact `bootstrap/ass.c` acceptance frontier from **7/44**.
-   `resolve_fixups_for_symbol` needs evaluated expressions in call arguments,
-   word-array loads and index expressions involving arrays. Preserve the
-   side-effect ordering and source widths. Then continue with pointer
-   arguments/arithmetic, calls beyond two arguments and runtime services.
+1. Advance the exact `bootstrap/ass.c` acceptance frontier from **10/44**.
+   `allocate_symbol` currently fails on a computed global-array
+   subscript (lowerer 13). Preserve the source width and object stride
+   while extending indexed memory accesses, then tackle general
+   pointer arithmetic, argument arities beyond two and runtime services.
 2. Preserve the one-pass-per-function, bounded-memory design while removing
    remaining old output scaffolding from the inherited parser.
 3. Run the full native Phase-1 corpus, self-compile the new compiler and
