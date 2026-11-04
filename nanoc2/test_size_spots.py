@@ -215,6 +215,10 @@ def main():
                     "ass_upper_char","ass_same_text","ass_apply_byte_prefix",
                     "ass_append_fixup","ass_relative_byte","ass_trim_fixups"):
             assert new_bytes <= old_bytes, (name,old_bytes,new_bytes)
+        # A previous full-word identity simplification accidentally
+        # introduced a 12-byte in-place self-copy into the real assembler.
+        if name=="ass_apply_byte_prefix":
+            assert new_bytes <= 23, (name,new_bytes,"word self-copy regression")
         print("%s: old %d B, new %d B, saved %d B (%.1f%%); "
               "PHA/PLA %d/%d vs %d/%d" %
               (name,old_bytes,new_bytes,old_bytes-new_bytes,
