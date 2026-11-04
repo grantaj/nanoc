@@ -581,6 +581,10 @@ char nd_assignment(char area, char symbol, unsigned rhs)
         if(nc2_kind[rhs]==1) {
             return nd_add(27,dst,0,0,nc2_number[rhs]);
         }
+        /* Unary negation of a literal is a constant, not a runtime
+         * expression tree. Phase-1 words wrap modulo 65536. */
+        if(nc2_kind[rhs]==7 & nc2_kind[nc2_left[rhs]]==1)
+            return nd_add(27,dst,0,0,0-nc2_number[nc2_left[rhs]]);
         if(nc2_kind[rhs]==8) {
             if(global_type[nc2_a[rhs]]==2)
                 return nd_add(42,dst,0,0,0);
@@ -682,6 +686,8 @@ char nd_assignment(char area, char symbol, unsigned rhs)
         if (nc2_number[rhs]>255) { nd_error=20; return 0; }
         return nd_add(2,dst,0,0,nc2_number[rhs]);
     }
+    if(nc2_kind[rhs]==7 & nc2_kind[nc2_left[rhs]]==1)
+        return nd_add(2,dst,0,0,(0-nc2_number[nc2_left[rhs]])&255);
     if (nc2_kind[rhs]==2) {
         if(nc2_number[rhs]==1) src=nd_scalar(rhs);
         else src=nd_word(rhs); /* narrowing keeps the low byte */
@@ -726,6 +732,8 @@ char nd_return(unsigned expr)
     if (nc2_return_type==2 | nc2_return_type==3) {
         if(nc2_kind[expr]==1)
             return nd_add(29,0,0,0,nc2_number[expr]);
+        if(nc2_kind[expr]==7 & nc2_kind[nc2_left[expr]]==1)
+            return nd_add(29,0,0,0,0-nc2_number[nc2_left[expr]]);
         if(nc2_kind[expr]==8) {
             if(global_type[nc2_a[expr]]==2)
                 return nd_add(43,0,0,0,0);
@@ -825,6 +833,8 @@ char nd_return(unsigned expr)
         if (nc2_number[expr]>255) { nd_error=21; return 0; }
         return nd_add(13,0,0,0,nc2_number[expr]);
     }
+    if(nc2_kind[expr]==7 & nc2_kind[nc2_left[expr]]==1)
+        return nd_add(13,0,0,0,(0-nc2_number[nc2_left[expr]])&255);
     if (nc2_kind[expr]==2) {
         if(nc2_number[expr]==1) src=nd_scalar(expr);
         else src=nd_word(expr); /* byte return truncates word */
