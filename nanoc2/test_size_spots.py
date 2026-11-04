@@ -153,6 +153,22 @@ def main():
             source="char out_even[256];\n" + source
         targets.append((name,source))
     mixed_count = len(mixed_names)
+    compare_source = ROOT/"tests"/"nanoc2"/"mixed-compare.c"
+    relation_names = ("lt","le","gt","ge","eq","ne")
+    compare_names = tuple(prefix+"_"+relation for relation in relation_names
+                          for prefix in ("mix","rev","umix","urev"))
+    compare_names += (
+        "byte_lt_256","byte_eq_256","literal_gt_byte",
+        "literal_eq_byte","literal_lt_word","literal_eq_word",
+        "literal_gt_unsigned","byte_ge_257","word_lt_byte_literal",
+        "mark_below_word","advance_word_until_byte",
+    )
+    for name in compare_names:
+        source=exact_c_function(compare_source,name)
+        if name=="mark_below_word":
+            source="char compare_marks[256];\n"+source
+        targets.append((name,source))
+    compare_count=len(compare_names)
     results = []
     for name, source in targets:
         old_asm = compile_host(old_driver,source)
@@ -180,14 +196,16 @@ def main():
           "saved %d B (%.1f%%)" %
           (old_total,new_total,old_total-new_total,
            100.0*(old_total-new_total)/old_total))
-    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1+mixed_count
+    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1+mixed_count+compare_count
     calls_index=baseline_count+word_scalar_count+word_ops_count
+    compare_index=calls_index+1+mixed_count
     for title,subset in [
         ("legacy-seven",results[:baseline_count]),
         ("word-scalar",results[baseline_count:baseline_count+word_scalar_count]),
         ("word-ops",results[baseline_count+word_scalar_count:calls_index]),
         ("word-call-unit",results[calls_index:calls_index+1]),
-        ("mixed-composed",results[calls_index+1:]),
+        ("mixed-composed",results[calls_index+1:compare_index]),
+        ("mixed-comparisons",results[compare_index:]),
     ]:
         old_size=sum(x[1] for x in subset)
         new_size=sum(x[2] for x in subset)
