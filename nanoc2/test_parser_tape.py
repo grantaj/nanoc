@@ -231,3 +231,16 @@ rejected=subprocess.run([str(DRIVER),"native"],input=bad.encode(),
                        capture_output=True)
 assert rejected.returncode!=0, "right-nested RHS unexpectedly accepted"
 print("original parser: computed RHS comparison accepted; nested RHS rejected")
+
+# Builtin I/O uses the same typed Phase-1 parser and ordered call tape.
+# Array decay must carry the real global array address, not an indexed byte.
+io_source=(ROOT.parent/"tests"/"nanoc2"/"io-builtins.c").read_text()
+io_result=subprocess.run([str(DRIVER),"native"],input=io_source.encode(),
+                         capture_output=True)
+assert io_result.returncode==0,io_result.stderr.decode()
+io_asm=io_result.stdout.decode()
+assert 'include "nanoc2/target/io-runtime.asm"' in io_asm
+assert "lda #<__g" in io_asm and "lda #>__g" in io_asm
+assert "jsr __c00" in io_asm and "jsr __c04" in io_asm
+assert "__v00_00 = __c_io_open__v00" in io_asm
+print("original parser: native I/O call capture and array pointer ABI passed")
