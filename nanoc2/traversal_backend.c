@@ -35,7 +35,8 @@
  * 68 compare mixed-width scalar/literal numeric operands,
  * 69 zero/nonzero test of the composed-arithmetic accumulator,
  * 70 word AND constant, 71 masked byte return,
- * 72 unsigned word >> 8 byte extraction, 73 masked word return.
+ * 72 unsigned word >> 8 byte extraction, 73 masked word return,
+ * 74 compute a full 16-bit array address, 75 write byte/word element.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -527,6 +528,80 @@ char tb_numeric_compare(char left, char right, char descriptor,
     return tb_label(done);
 }
 
+/* A fixed array with a word index uses a 16-bit effective address.
+ * For byte elements, add the word index directly; for word elements,
+ * double the index before adding the (linker-resolved) base address.
+ * Keep the final pointer in the same user-owned $FB/$FC pair as other
+ * indirect traversals, but never in a function with live pointer cursors.
+ * A full 16-bit carry chain handles page crossings without branches.
+ */
+char tb_wide_array_address(char array, char index, char width)
+{
+    if(width!=1 & width!=2) {tb_error=74;return 0;}
+    if(width==2) {
+        if(tb_location("lda",1,index,"")==0) return 0;
+        if(tb_operand("sta","__twlo")==0) return 0;
+        if(tb_location("lda",1,index,"+1")==0) return 0;
+        if(tb_operand("sta","__twhi")==0) return 0;
+        if(tb_operand("asl","__twlo")==0) return 0;
+        if(tb_operand("rol","__twhi")==0) return 0;
+    }
+    if(tb_simple("clc")==0) return 0;
+    if(width==1) {
+        if(tb_location("lda",1,index,"")==0) return 0;
+    } else {
+        if(tb_operand("lda","__twlo")==0) return 0;
+    }
+    if(tb_text("\tadc #<")==0) return 0;
+    if(tb_text(tb_name(2,array))==0) return 0;
+    if(tb_char('\n')==0) return 0;
+    if(tb_operand("sta","__tptr00")==0) return 0;
+    if(width==1) {
+        if(tb_location("lda",1,index,"+1")==0) return 0;
+    } else {
+        if(tb_operand("lda","__twhi")==0) return 0;
+    }
+    if(tb_text("\tadc #>")==0) return 0;
+    if(tb_text(tb_name(2,array))==0) return 0;
+    if(tb_char('\n')==0) return 0;
+    return tb_operand("sta","__tptr00+1");
+}
+
+/* The address is already in __tptr00. Read from the original static
+ * Nano C variable home, not the accumulator left by address calculation.
+ * A char local currently carried in Y must be sampled *before* the Y=0
+ * cursor; the live Y index is restored after the store.
+ */
+char tb_wide_array_store(char kind,char source,char width,unsigned literal)
+{
+    if(width!=1 & width!=2) {tb_error=75;return 0;}
+    if(kind==1) {
+        if(tb_immediate("lda",literal&255)==0) return 0;
+    } else if(kind==2) {
+        if(tb_load_var(source)==0) return 0;
+    } else if(kind==3) {
+        if(tb_location("lda",1,source,"")==0) return 0;
+    } else {tb_error=75;return 0;}
+    if(tb_y!=0) {
+        if(tb_operand("sty","__tidxsave")==0) return 0;
+    }
+    if(tb_immediate("ldy",0)==0) return 0;
+    if(tb_operand("sta","(__tptr00),y")==0) return 0;
+    if(width==2) {
+        if(tb_simple("iny")==0) return 0;
+        if(kind==1) {
+            if(tb_immediate("lda",literal>>8)==0) return 0;
+        } else if(kind==2) {
+            if(tb_immediate("lda",0)==0) return 0;
+        } else {
+            if(tb_location("lda",1,source,"+1")==0) return 0;
+        }
+        if(tb_operand("sta","(__tptr00),y")==0) return 0;
+    }
+    if(tb_y!=0) return tb_operand("ldy","__tidxsave");
+    return 1;
+}
+
 char tb_compile()
 {
     unsigned i;
@@ -932,6 +1007,10 @@ char tb_compile()
             }
             if(tb_operand("lda","__twlo")==0) return 0;
             if(tb_simple("rts")==0) return 0;
+        } else if (op == 74) {
+            if(tb_wide_array_address(d,a,b)==0) return 0;
+        } else if (op == 75) {
+            if(tb_wide_array_store(d,a,b,k)==0) return 0;
         } else if (op == 25) {
             if (tb_operand("lda","__tret")==0) return 0;
         } else if (op == 26) {
