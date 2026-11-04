@@ -291,6 +291,43 @@ def call_arity_test():
     return lines
 
 
+def word_assert(low, high, number):
+    return [
+        "\tcmp #$%02x" % low,
+        "\tbeq .word_a%02x" % number,
+        "\tjmp native_fail",
+        ".word_a%02x:" % number,
+        "\tcpx #$%02x" % high,
+        "\tbeq .word_x%02x" % number,
+        "\tjmp native_fail",
+        ".word_x%02x:" % number,
+    ]
+
+
+def word_scalar_test():
+    lines = ["\t* = $1000", "main:", "\tjsr $0800"]
+    lines += word_assert(0x34,0x12,0)
+    lines += [
+        "\tlda n2_target",
+        "\tcmp #$34", "\tbeq .target_lo",
+        "\tjmp native_fail",
+        ".target_lo:",
+        "\tlda n2_target+1",
+        "\tcmp #$12", "\tbeq .target_hi",
+        "\tjmp native_fail",
+        ".target_hi:",
+        "\tjsr n2_constant_word",
+    ]
+    lines += word_assert(0x34,0x12,1)
+    lines += [
+        "\tlda #$cd", "\tsta n2_echo_word_value",
+        "\tlda #$ab", "\tsta n2_echo_word_value+1",
+        "\tjsr n2_echo_word",
+    ]
+    lines += word_assert(0xcd,0xab,2)
+    return lines
+
+
 def run_native(name, source, test_lines, driver):
     output = subprocess.run([str(driver), "native"], input=source.encode(),
                             capture_output=True, check=True)
@@ -384,6 +421,8 @@ def main():
     run_native("call_index", call_source, call_index_test(), driver)
     arity_source = (ROOT / "tests" / "nanoc2" / "call-arity.c").read_text()
     run_native("call_arity", arity_source, call_arity_test(), driver)
+    word_source = (ROOT / "tests" / "nanoc2" / "word-scalar.c").read_text()
+    run_native("word_scalar", word_source, word_scalar_test(), driver)
     # One source unit, two real Phase-1 definitions. The parser must emit
     # each bounded function tape before it is reset for the next function.
     multi_source = (
