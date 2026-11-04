@@ -907,6 +907,36 @@ char nd_condition(unsigned expr, unsigned exit_label)
     else {nd_error=17;return 0;}
     left=nc2_left[expr];
     right=nc2_right[expr];
+    /* A pure arithmetic RHS must be evaluated before comparing. Reuse
+     * the existing 16-bit chain accumulator, as for arithmetic LHS
+     * conditions, and let the typed numeric comparator read its low/high
+     * bytes from __tacc. The LHS is an independent source scalar or
+     * literal: never let evaluating it overwrite the completed RHS.
+     * In particular, i < length - 1 compares full promoted integers,
+     * not truncated unsigned bytes. */
+    if(nc2_kind[right]==6 &
+       (nc2_a[right]=='+' | nc2_a[right]=='-') &
+       (nc2_kind[left]==2 | nc2_kind[left]==1)) {
+        if(nc2_kind[left]==2) {
+            if(nc2_number[left]!=1 &
+               nc2_number[left]!=2 &
+               nc2_number[left]!=3) {nd_error=18;return 0;}
+            l=nd_record(nc2_a[left],nc2_b[left],1);
+            if(l<0) return 0;
+        } else l=0;
+        if(nd_chain(right,2,0,2)==0) return 0;
+        if(nc2_kind[left]==1) {
+            if(nd_numeric_compare(1,0,3,0,nc2_b[expr],
+                                  nc2_number[left])==0) return 0;
+        } else if(nc2_number[left]==1) {
+            if(nd_numeric_compare(2,l,3,0,nc2_b[expr],0)==0)
+                return 0;
+        } else {
+            if(nd_numeric_compare(3,l,3,0,nc2_b[expr],0)==0)
+                return 0;
+        }
+        return nd_add(10,0,rel,0,exit_label);
+    }
     /* All Phase-1 numeric scalars are at most 16 bits. A mask by
      * $FFFF preserves their entire value even when the mask occurs
      * inside a condition instead of an assignment. */
