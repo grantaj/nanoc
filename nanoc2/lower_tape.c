@@ -224,10 +224,14 @@ char nd_wide_index_read(char area,char symbol,
     unsigned leaf;
     unsigned displacement;
     char width;
+    char element_type;
     int index;
     int array;
-    if(area!=1 | global_kind[symbol]!=2 |
-       global_type[symbol]!=1 | mode!=0) {
+    if(area!=1 | global_kind[symbol]!=2 | mode!=0) {
+        nd_error=34;return 0;
+    }
+    element_type=global_type[symbol];
+    if(element_type!=1 & element_type!=2 & element_type!=3) {
         nd_error=34;return 0;
     }
     leaf=index_node;
@@ -245,17 +249,18 @@ char nd_wide_index_read(char area,char symbol,
     if(nc2_kind[leaf]!=2) {nd_error=34;return 0;}
     if(nc2_number[leaf]==1) {
         index=nd_scalar(leaf);
-        width=5; /* stride 1, byte source index */
+        width=4+type_size(element_type); /* byte index, typed stride */
     } else if(nc2_number[leaf]==2 | nc2_number[leaf]==3) {
         index=nd_word(leaf);
-        width=1; /* stride 1, word source index */
+        width=type_size(element_type); /* word index, typed stride */
     } else {nd_error=34;return 0;}
     if(index<0) return 0;
     array=nd_record(1,symbol,2);
     if(array<0) return 0;
     nd_wide_index_used=1;
     if(nd_add(74,array,index,width,displacement)==0) return 0;
-    return nd_add(76,0,0,0,0);
+    if(element_type==1) return nd_add(76,0,0,0,0);
+    return nd_add(78,0,0,0,0);
 }
 
 /* All indexed operations share one address decision: fixed byte array
@@ -337,6 +342,10 @@ char nd_index(unsigned node, char mode)
 {
     unsigned base_node;
     if (nc2_kind[node]==4) {
+        if(nc2_number[node]==2 & nc2_a[node]==1 &
+           global_type[nc2_b[node]]!=1)
+            return nd_wide_index_read(nc2_a[node],nc2_b[node],
+                                      nc2_left[node],mode);
         return nd_index_address(nc2_a[node],nc2_b[node],
                                 nc2_number[node],nc2_left[node],mode);
     }
