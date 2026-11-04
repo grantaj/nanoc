@@ -517,6 +517,18 @@ char nd_call(unsigned node, char callee)
                     if(value<0) return 0;
                     if(nd_add(46,callee,i,value,0)==0) return 0;
                 } else {nd_error=28;return 0;}
+            } else if(nc2_kind[argument]==6) {
+                /* The word argument is evaluated into the private
+                 * two-byte accumulator, then copied into its static
+                 * callee slot *before* evaluating the next argument.
+                 * An identity AND $FFFF changes neither value nor
+                 * evaluation order. */
+                if(nc2_a[argument]=='&' &
+                   nc2_kind[nc2_right[argument]]==1 &
+                   nc2_number[nc2_right[argument]]==65535)
+                    argument=nc2_left[argument];
+                if(nd_chain(argument,2,0,2)==0) return 0;
+                if(nd_add(77,callee,i,0,0)==0) return 0;
             } else {nd_error=28;return 0;}
         } else {nd_error=28;return 0;}
         i=i+1;
