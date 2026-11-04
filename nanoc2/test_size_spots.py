@@ -29,7 +29,7 @@ def compile_host(driver, source, *args):
 def exact_c_function(path, name):
     # Extract an actual checked-in C function, not a substitute algorithm.
     text = path.read_text()
-    m = re.search(r'^char\s+' + re.escape(name) + r'\s*\([^)]*\)\s*\{',
+    m = re.search(r'^(?:char|int|unsigned)\s+' + re.escape(name) + r'\s*\([^)]*\)\s*\{',
                   text, re.M)
     assert m, name
     depth, end = 1, m.end()
@@ -115,6 +115,20 @@ def main():
         ("map_byte", exact_c_function(
             ROOT/"tests"/"nanoc2"/"call-index.c", "map_byte")),
     ]
+    baseline_count = len(targets)
+    # Compare identical Phase-1 C algorithms and physical assembled bytes,
+    # not a handwritten assembler versus an unrelated C implementation.
+    scalar = ROOT/"tests"/"nanoc2"/"word-scalar.c"
+    ops = ROOT/"tests"/"nanoc2"/"word-ops.c"
+    for name in ("constant_word", "echo_word", "add_word", "subtract_word"):
+        targets.append((name,exact_c_function(scalar,name)))
+    word_scalar_count = len(targets)-baseline_count
+    for name in ("sum_word", "diff_word", "inplace_sum_left",
+                 "inplace_sum_right", "return_sum", "return_diff",
+                 "signed_lt", "signed_ge", "signed_eq",
+                 "signed_const_lt", "word_truth", "word_count"):
+        targets.append((name,exact_c_function(ops,name)))
+    word_ops_count = len(targets)-baseline_count-word_scalar_count
     results = []
     for name, source in targets:
         old_asm = compile_host(old_driver,source)
@@ -137,7 +151,17 @@ def main():
           "saved %d B (%.1f%%)" %
           (old_total,new_total,old_total-new_total,
            100.0*(old_total-new_total)/old_total))
-    assert len(results)==7
+    assert len(results)==baseline_count+word_scalar_count+word_ops_count
+    for title,subset in [
+        ("legacy-seven",results[:baseline_count]),
+        ("word-scalar",results[baseline_count:baseline_count+word_scalar_count]),
+        ("word-ops",results[baseline_count+word_scalar_count:]),
+    ]:
+        old_size=sum(x[1] for x in subset)
+        new_size=sum(x[2] for x in subset)
+        print("GROUP %s: %d functions; old %d B; new %d B; saved %d B (%.1f%%)" %
+              (title,len(subset),old_size,new_size,old_size-new_size,
+               100.0*(old_size-new_size)/old_size),flush=True)
 
 if __name__=="__main__":
     main()
