@@ -541,7 +541,8 @@ char nd_assignment(char area, char symbol, unsigned rhs)
            (nc2_a[rhs]=='+' | nc2_a[rhs]=='-')) {
             lhs=nc2_left[rhs];
             extra=nc2_right[rhs];
-            if(nc2_kind[extra]==1) {
+            if(nc2_kind[extra]==1 & nc2_kind[lhs]==2 &
+               (nc2_number[lhs]==2 | nc2_number[lhs]==3)) {
                 src=nd_word(lhs);
                 if(src<0) return 0;
                 if(nc2_a[rhs]=='+') op=31;
@@ -639,7 +640,8 @@ char nd_return(unsigned expr)
            (nc2_a[expr]=='+' | nc2_a[expr]=='-')) {
             lhs=nc2_left[expr];
             extra=nc2_right[expr];
-            if(nc2_kind[extra]==1) {
+            if(nc2_kind[extra]==1 & nc2_kind[lhs]==2 &
+               (nc2_number[lhs]==2 | nc2_number[lhs]==3)) {
                 src=nd_word(lhs);
                 if(src<0) return 0;
                 if(nc2_a[expr]=='+') op=33;
