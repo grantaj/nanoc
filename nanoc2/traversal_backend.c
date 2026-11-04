@@ -53,11 +53,11 @@
  * pointer slot 0/1 is a shared zero-page address.
  * Branch tests: 1 EQ, 2 NE, 3 CC, 4 CS. 0 is unconditional.
  */
-char tb_op[192];
-char tb_dst[192];
-char tb_a[192];
-char tb_b[192];
-unsigned tb_num[192];
+char tb_op[384];
+char tb_dst[384];
+char tb_a[384];
+char tb_b[384];
+unsigned tb_num[384];
 unsigned tb_count;
 char tb_x;
 char tb_y;
@@ -152,7 +152,7 @@ char tb_jump(char *op, unsigned id)
 
 char tb_add(char op, char dest, char a, char b, unsigned number)
 {
-    if (tb_count >= 192) { tb_error = 1; return 0; }
+    if (tb_count >= 384) { tb_error = 1; return 0; }
     tb_op[tb_count] = op;
     tb_dst[tb_count] = dest;
     tb_a[tb_count] = a;
