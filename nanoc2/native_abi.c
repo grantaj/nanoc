@@ -132,8 +132,13 @@ char n2_local_bss()
     slot=0;
     while(slot<nc2_local_slots) {
         if(n2_home(2,slot,offset)==0) return 0;
-        if(n2_alias(2,slot,local_name+((unsigned)slot*32),
-                    local_name_len[slot])==0) return 0;
+        /* Unqualified source-name aliases exist solely for the single-
+         * function native test caller. A second function may reuse a local
+         * name and must not create a duplicate assembler equate. */
+        if(nc2_function_count==1) {
+            if(n2_alias(2,slot,local_name+((unsigned)slot*32),
+                        local_name_len[slot])==0) return 0;
+        }
         offset=offset+type_size(local_type[slot]);
         slot=slot+1;
     }
