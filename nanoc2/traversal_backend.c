@@ -42,7 +42,8 @@
  * 78 load word-array element, 79 store word from accumulator,
  * 82 load word-array RHS into independent two-byte term,
  * 83-85 pointer load/compare/store at literal Y displacement,
- * 86 static two-byte pointer argument staging.
+ * 86 static two-byte pointer argument staging,
+ * 88 save an indexed byte before a full-width numeric comparison.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -552,7 +553,11 @@ char tb_numeric_compare(char left, char right, char descriptor,
     if(lk==1) {
         if(tb_immediate("lda",literal&255)==0) return 0;
     } else if(lk==2) {
-        if(tb_load_var(left)==0) return 0;
+        if(left==0) {
+            if(tb_operand("lda","__tbyte")==0) return 0;
+        } else {
+            if(tb_load_var(left)==0) return 0;
+        }
     } else {
         if(left==0) {
             if(tb_operand("lda","__tacc")==0) return 0;
@@ -1168,6 +1173,8 @@ char tb_compile()
             if(tb_location("sta",1,d,"")==0) return 0;
             if(tb_operand("lda","__tacc+1")==0) return 0;
             if(tb_location("sta",1,d,"+1")==0) return 0;
+        } else if (op == 88) {
+            if(tb_operand("sta","__tbyte")==0) return 0;
         } else if (op == 86) {
             if(tb_source_pointer("lda",b,k,"")==0) return 0;
             if(tb_param("sta",d,a,"")==0) return 0;
