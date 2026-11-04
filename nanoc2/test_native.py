@@ -71,7 +71,7 @@ def check_call(expected, check):
 
 def same_bytes_test():
     lines = [
-        "\t* = $0200", "main:",
+        "\t* = $1000", "main:",
         # This is how an ordinary Nano C caller stages pointer parameters.
         # The compiler itself copies these two-byte homes to ZP at entry.
         "\tlda #<$300f", "\tsta n2_a",
@@ -105,7 +105,7 @@ def find_global_test():
     # comparison, 175th record and early mismatch. Every length relevant
     # to the search is explicitly initialized, not assumed zero-filled.
     lines = [
-        "\t* = $0200", "main:",
+        "\t* = $1000", "main:",
         "\tlda #$00", "\tldy #$00",
         ".zero:", "\tsta n2_global_name_len,y",
         "\tiny", "\tcpy #$b0", "\tbne .zero",
@@ -138,7 +138,7 @@ def find_global_test():
 
 def copy_pointer_test():
     lines = [
-        "\t* = $0200", "main:",
+        "\t* = $1000", "main:",
         "\tlda #<$31f9", "\tsta n2_dst",
         "\tlda #>$31f9", "\tsta n2_dst+1",
         "\tlda #<$300f", "\tsta n2_src",
@@ -165,7 +165,7 @@ def copy_pointer_test():
 
 def copy_array_test():
     lines = [
-        "\t* = $0200", "main:",
+        "\t* = $1000", "main:",
         "\tlda #$c8", "\tsta n2_n",
         "\tldx #$00",
         ".prepare:", "\ttxa", "\tsta n2_source_bytes,x",
@@ -189,7 +189,7 @@ def multi_function_test():
     # Two functions share the same Phase-1 static ABI but have distinct
     # parameter slots and independent X/Y/zero-page traversal decisions.
     lines = [
-        "\t* = $0200", "main:",
+        "\t* = $1000", "main:",
         "\tcli",  # explicitly exercise C64 IRQs during repeated pointer loops
         "\tlda #<$31f9", "\tsta n2_fill_bytes_dst",
         "\tlda #>$31f9", "\tsta n2_fill_bytes_dst+1",
@@ -231,7 +231,7 @@ def call_index_test():
     # Callee must not destroy the caller's logical induction variable,
     # even though its return convention clobbers physical X.
     lines = [
-        "\t* = $0200", "main:",
+        "\t* = $1000", "main:",
         "\tldx #$00",
         ".prepare:",
         "\ttxa", "\teor #$5a",
@@ -273,7 +273,8 @@ def run_native(name, source, test_lines, driver):
     ]
     # vasm treats separate "* = $0200" and "* = $0800" origins as
     # independent segments. The normal project test pattern is therefore
-    # two PRGs, with the code PRG preloaded at $0800.
+    # two PRGs, with the code PRG preloaded at $0800. Callers use $1000, not the
+    # IRQ-owned keyboard-buffer/system-variable RAM at $0200-$02ff.
     generated_source = OUT / (name + "-generated.asm")
     generated_source.write_text(asm)
     code_prg = OUT / (name + "-generated.prg")
@@ -317,7 +318,7 @@ def run_native(name, source, test_lines, driver):
     subprocess.run([VASM, "-Fbin", "-cbm-prg", "-o", str(prg),
                     str(asm_path)], cwd=ROOT, check=True)
     raw = prg.read_bytes()
-    assert raw[:2] == b"\x00\x02", (name, raw[:2])
+    assert raw[:2] == b"\x00\x10", (name, raw[:2])
     env = os.environ.copy()
     env["BUILD_DIR"] = str(OUT)
     env["VICE_TIMEOUT"] = "35"
