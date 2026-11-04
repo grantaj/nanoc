@@ -4,6 +4,30 @@
 subset plus basic 16-bit scalar operations. Native multi-function/call execution passes on the 6510. Not yet a
 complete Phase-1 or self-hosting compiler. Draft PR #131.**
 
+## Source-driven acceptance: `bootstrap/ass.c`
+
+Run `python3 nanoc2/test_ass_frontier.py` from the repository root.
+Fast CI feeds the **complete unmodified** 1,792-line Phase-1 assembler to
+the original parser and new emitter, then finds the longest consecutive
+function prefix accepted with **all the real global declarations present**.
+
+**Checkpoint (4 November 2026): 4/44 functions accepted**:
+`upper_char`, `same_text`, `apply_byte_prefix`, `hex_nibble`.
+The next rejected function is `append_fixup`, at its
+`fixup_kind[n]` access with a **16-bit** array index (`lowerer 7`).
+That is the next machine-level implementation target: 16-bit indexing
+and two-byte elements in the actual global fixup tables, not a new optimizer
+or another unrelated expression fixture.
+
+Initialized scalar/array globals are now emitted as physical 6502
+`byte` data labels, while only uninitialized objects use `NC_BSS`;
+the original Phase-1 parser remains authoritative for initializer syntax.
+The `ass_prefix` native VICE test executes the first four verbatim
+function bodies with initialized `VALUE_PREFIX_LOW` and
+`mode_width` data, checking actual memory, pointer parameters,
+negative word results and A/X returns. The fast frontier remains the
+full-global-declaration test, not a substituted source program.
+
 ## Architecture
 
 `parser_tape.c` retains the original `nanoc1` scanner, bounded expression
@@ -53,10 +77,11 @@ order. A pure left-associated arithmetic chain may also appear directly
 in an `if` or `while` condition, or on the **left** of a comparison;
 the two-byte accumulator is tested without writing a source home.
 The high/low comparison reuses the same typed numeric lowering, with
-no boolean materialization. Right-nested trees, calls inside arithmetic
-expressions, multiplication, unary arithmetic, right-hand arithmetic
-comparison operands and pointer arithmetic still fail closed; they are
-not silently reordered or truncated.
+no boolean materialization. Right-nested trees, calls inside arithmetic expressions, multiplication,
+non-literal unary arithmetic, right-hand arithmetic comparison operands
+and general pointer arithmetic still fail closed. Literal unary minus,
+word-constant AND and unsigned high-byte extraction (`>> 8`) are now
+lowered directly using 6502 idioms.
 
 Calls now accept **zero, one or two byte or word parameters**, and byte or
 word results. The callee must already be defined; arguments are evaluated
@@ -152,10 +177,11 @@ the three-byte entry trampoline, not linked complete applications.
 | `mixed_arithmetic` | 735 B | 174 checks: mixed widths, composed chains, aliasing, live X non-unit stride |
 | `mixed_compare` | 1,114 B | 35 signed/unsigned width, literal-order and live-index comparison functions |
 | `expression_condition` | 590 B | 73 arithmetic-condition result checks and indexed memory validation |
+| `ass_prefix` | 327 B | First four verbatim `ass.c` functions, initialized globals and pointer/word ABI |
 | `two_functions` | 78 B | Two separately streamed functions, static homes, IRQ enabled |
 
-All thirteen passed in
-[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41774800166).
+All fourteen passed in
+[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41778497963).
 Native smoke remains opt-in through the `native-smoke` PR label or
 manual dispatch, not the fast default PR gate.
 
@@ -199,9 +225,10 @@ caller and callee costs under the same statically allocated ABI).
 | Mixed-width/composed arithmetic | 23 | 1,156 B | 732 B | 36.7% |
 | Mixed signed/unsigned comparisons | 35 | 1,831 B | 1,111 B | 39.3% |
 | Arithmetic in conditions | 9 | 840 B | 587 B | 30.1% |
-| **Combined** | **103 function bodies** | **6,071 B** | **3,571 B** | **41.2%** |
+| First three real `ass.c` functions | 3 | 504 B | 154 B | 69.4% |
+| **Combined** | **106 function bodies** | **6,575 B** | **3,725 B** | **43.3%** |
 
-The suite now has 91 source measurement cases, including the multi-function
+The suite now has 94 source measurement cases, including the multi-function
 unit. For word calls, a single span includes all 13 functions; no runtime,
 test caller or entry trampoline is counted. The smaller call, word-branch and chained-expression reductions reveal
 remaining code-generation quality gaps, not a reason to substitute the
@@ -213,18 +240,18 @@ scratch out of KERNAL ZP. The earlier 72% result used an unsafe scratch map
 and is **superseded**, not another comparable image.
 
 The size and VICE tests passed together in
-[workflow run 41774800166](https://github.com/grantaj/nanoc/actions/runs/41774800166).
+[workflow run 41778497963](https://github.com/grantaj/nanoc/actions/runs/41778497963).
 These are function-body results, **not** a compiled `ass.c` image and not
 proof the new compiler binary itself will fit C64 memory.
 
 ## Unfinished work
 
-1. Extend expression lowering beyond pure left-associated +/- chains:
-   right-nested/composed subexpressions, unary operations, side-effectful
-   arguments and arithmetic on the right of a comparison, while retaining
-   explicit source order. Then address pointer arithmetic, initialized globals,
-   pointer arguments and runtime service calls. Formalize pointer-cursor invalidation across calls;
-   byte/word scalar calls are already supported.
+1. Advance the exact `bootstrap/ass.c` acceptance frontier. The immediate
+   blocker is a general **16-bit array index** across the assembler's byte
+   and word fixup tables; preserve source-index widths and array element
+   widths in the direct 6502 addressing choice. Then extend calls beyond
+   two parameters, pointer arguments/arithmetic and their lifetimes,
+   and the missing general operators and runtime services.
 2. Preserve the one-pass-per-function, bounded-memory design while removing
    remaining old output scaffolding from the inherited parser.
 3. Run the full native Phase-1 corpus, self-compile the new compiler and
