@@ -453,6 +453,8 @@ char nd_wide_index_store(char area, char symbol, unsigned index_node,
     unsigned mask_node;
     unsigned shift_node;
     unsigned literal;
+    unsigned left_value;
+    unsigned right_value;
     int array;
     int index;
     int source;
@@ -516,7 +518,25 @@ char nd_wide_index_store(char area, char symbol, unsigned index_node,
         operand=nc2_left[operand];
     }
     literal=0;
-    if(nc2_kind[operand]==1) {
+    if((element_type==2 | element_type==3) &
+       nc2_kind[operand]==6 &
+       (nc2_a[operand]=='+' | nc2_a[operand]=='-')) {
+        left_value=nc2_left[operand];
+        right_value=nc2_right[operand];
+        if(nc2_kind[left_value]!=2 |
+           (nc2_number[left_value]!=2 &
+            nc2_number[left_value]!=3) |
+           nc2_kind[right_value]!=1) {
+            nd_error=32;return 0;
+        }
+        source=nd_word(left_value);
+        if(source<0) return 0;
+        if(nd_add(50,3,source,0,0)==0) return 0;
+        if(nd_add(51,nc2_a[operand],1,0,
+                  nc2_number[right_value])==0) return 0;
+        kind=7; /* staged two-byte accumulator */
+        source=0;
+    } else if(nc2_kind[operand]==1) {
         if(shifted!=0 | masked!=0) {nd_error=32;return 0;}
         kind=1;
         source=0;
