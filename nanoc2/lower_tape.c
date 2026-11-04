@@ -640,6 +640,8 @@ char nd_call(unsigned node, char callee)
     int other;
     unsigned left_arg;
     unsigned right_arg;
+    unsigned mask;
+    unsigned shifted;
     if(node==0 | nc2_kind[node]!=8 | nc2_a[node]!=callee |
        nc2_b[node]>8) {nd_error=28;return 0;}
     argc=nc2_b[node];
@@ -667,6 +669,42 @@ char nd_call(unsigned node, char callee)
                 } else {nd_error=28;return 0;}
             } else if(nc2_kind[argument]==4 | nc2_kind[argument]==5) {
                 if(nd_index(argument,0)==0) return 0;
+            } else if(nc2_kind[argument]==6 &
+                      (nc2_a[argument]=='&' |
+                       nc2_a[argument]==147)) {
+                /* A word's low or high byte can be passed directly
+                 * into a char parameter, optionally with a mask. */
+                left_arg=argument;
+                mask=255;
+                shifted=0;
+                if(nc2_a[left_arg]=='&') {
+                    right_arg=nc2_right[left_arg];
+                    if(nc2_kind[right_arg]!=1) {
+                        nd_error=28;return 0;
+                    }
+                    mask=nc2_number[right_arg]&255;
+                    left_arg=nc2_left[left_arg];
+                }
+                if(nc2_kind[left_arg]==6 &
+                   nc2_a[left_arg]==147) {
+                    right_arg=nc2_right[left_arg];
+                    if(nc2_kind[right_arg]!=1 |
+                       nc2_number[right_arg]!=8) {
+                        nd_error=28;return 0;
+                    }
+                    shifted=256;
+                    left_arg=nc2_left[left_arg];
+                }
+                if(nc2_kind[left_arg]!=2 |
+                   (nc2_number[left_arg]!=2 &
+                    nc2_number[left_arg]!=3)) {
+                    nd_error=28;return 0;
+                }
+                value=nd_word(left_arg);
+                if(value<0) return 0;
+                if(nd_add(102,callee,i,value,mask+shifted)==0)
+                    return 0;
+                staged=1;
             } else if(nc2_kind[argument]==6 &
                       nc2_a[argument]=='-') {
                 left_arg=nc2_left[argument];
