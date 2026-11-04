@@ -689,7 +689,7 @@ char emit_include(char *path)
 char emit_byte_data(char value)
 {
     if(nc2_native_stream!=0) {
-        if(tb_text("\tdc.b $")==0) return 0;
+        if(tb_text("\tbyte $")==0) return 0;
         if(tb_hex2(value)==0) return 0;
         return tb_char('\n');
     }
