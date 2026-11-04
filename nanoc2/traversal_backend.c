@@ -26,7 +26,10 @@
  * 39/40 signed or unsigned word compare (variable/literal),
  * 41 word truth test, 42/43 word-call result store/return,
  * 44/45 word literal/variable argument, 46 byte-to-word argument,
- * 47 word-to-byte argument, 48/49 byte-call result promoted to word.
+ * 47 word-to-byte argument, 48/49 byte-call result promoted to word,
+ * 50 init scratch word, 51 apply +/- leaf, 52 store chain,
+ * 53 return chain, 54 zero-extend byte scalar to word home,
+ * 58-61 word +/- byte scalar direct store/return.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -603,6 +606,119 @@ char tb_compile()
         } else if (op == 47) {
             if(tb_location("lda",1,b,"")==0) return 0;
             if(tb_param("sta",d,a,"")==0) return 0;
+        } else if (op == 50) {
+            /* Materialise the leftmost scalar or literal into a private
+             * two-byte accumulator. No source home is changed yet. */
+            if(d==1) {
+                if(tb_immediate("lda",k&255)==0) return 0;
+            } else if(d==2) {
+                if(tb_load_var(a)==0) return 0;
+            } else if(d==3) {
+                if(tb_location("lda",1,a,"")==0) return 0;
+            } else {tb_error=50;return 0;}
+            if(tb_operand("sta","__tacc")==0) return 0;
+            if(d==1) {
+                if(tb_immediate("lda",k>>8)==0) return 0;
+            } else if(d==2) {
+                if(tb_immediate("lda",0)==0) return 0;
+            } else {
+                if(tb_location("lda",1,a,"+1")==0) return 0;
+            }
+            if(tb_operand("sta","__tacc+1")==0) return 0;
+        } else if (op == 51) {
+            /* Operands in X/Y may have stale static homes while the loop
+             * register is live. Snapshot the byte before changing A. */
+            if(a==2 & b==tb_x) {
+                if(tb_operand("stx","__twlo")==0) return 0;
+            }
+            if(a==2 & b==tb_y) {
+                if(tb_operand("sty","__twlo")==0) return 0;
+            }
+            if(d=='+') {
+                if(tb_simple("clc")==0) return 0;
+                word_op="adc";
+            } else if(d=='-') {
+                if(tb_simple("sec")==0) return 0;
+                word_op="sbc";
+            } else {tb_error=51;return 0;}
+            if(tb_operand("lda","__tacc")==0) return 0;
+            if(a==1) {
+                if(tb_immediate(word_op,k&255)==0) return 0;
+            } else if(a==2 & (b==tb_x | b==tb_y)) {
+                if(tb_operand(word_op,"__twlo")==0) return 0;
+            } else if(a==2 | a==3) {
+                if(tb_location(word_op,1,b,"")==0) return 0;
+            } else {tb_error=51;return 0;}
+            if(tb_operand("sta","__tacc")==0) return 0;
+            if(tb_operand("lda","__tacc+1")==0) return 0;
+            if(a==1) {
+                if(tb_immediate(word_op,k>>8)==0) return 0;
+            } else if(a==2) {
+                if(tb_immediate(word_op,0)==0) return 0;
+            } else {
+                if(tb_location(word_op,1,b,"+1")==0) return 0;
+            }
+            if(tb_operand("sta","__tacc+1")==0) return 0;
+        } else if (op == 52) {
+            if(tb_operand("lda","__tacc")==0) return 0;
+            if(a==1) {
+                if(tb_store_var(d)==0) return 0;
+            } else if(a==2 | a==3) {
+                if(tb_location("sta",1,d,"")==0) return 0;
+                if(tb_operand("lda","__tacc+1")==0) return 0;
+                if(tb_location("sta",1,d,"+1")==0) return 0;
+            } else {tb_error=52;return 0;}
+        } else if (op == 53) {
+            if(d==1) {
+                if(tb_operand("lda","__tacc")==0) return 0;
+                if(tb_immediate("ldx",0)==0) return 0;
+            } else if(d==2 | d==3) {
+                if(tb_operand("ldx","__tacc+1")==0) return 0;
+                if(tb_operand("lda","__tacc")==0) return 0;
+            } else {tb_error=53;return 0;}
+            if(tb_simple("rts")==0) return 0;
+        } else if (op == 54) {
+            if(tb_load_var(a)==0) return 0;
+            if(tb_location("sta",1,d,"")==0) return 0;
+            if(tb_immediate("lda",0)==0) return 0;
+            if(tb_location("sta",1,d,"+1")==0) return 0;
+        } else if (op == 58 | op == 59 | op == 60 | op == 61) {
+            /* Single word +/- byte: the 6502 carry chain naturally
+             * handles the implicit zero high byte without a scratch
+             * accumulator. Preserve the loop index in X/Y. */
+            if(b==tb_x) {
+                if(tb_operand("stx","__twlo")==0) return 0;
+            }
+            if(b==tb_y) {
+                if(tb_operand("sty","__twlo")==0) return 0;
+            }
+            if(op==58 | op==60) {
+                if(tb_simple("clc")==0) return 0;
+                word_op="adc";
+            } else {
+                if(tb_simple("sec")==0) return 0;
+                word_op="sbc";
+            }
+            if(tb_location("lda",1,a,"")==0) return 0;
+            if(b==tb_x | b==tb_y) {
+                if(tb_operand(word_op,"__twlo")==0) return 0;
+            } else {
+                if(tb_location(word_op,1,b,"")==0) return 0;
+            }
+            if(op==58 | op==59) {
+                if(tb_location("sta",1,d,"")==0) return 0;
+            } else {
+                if(tb_operand("sta","__twlo")==0) return 0;
+            }
+            if(tb_location("lda",1,a,"+1")==0) return 0;
+            if(tb_immediate(word_op,0)==0) return 0;
+            if(op==58 | op==59) {
+                if(tb_location("sta",1,d,"+1")==0) return 0;
+            } else {
+                if(tb_simple("tax")==0) return 0;
+                if(tb_operand("lda","__twlo")==0) return 0;
+                if(tb_simple("rts")==0) return 0;
+            }
         } else if (op == 25) {
             if (tb_operand("lda","__tret")==0) return 0;
         } else if (op == 26) {
