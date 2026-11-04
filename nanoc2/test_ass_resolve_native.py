@@ -78,6 +78,22 @@ def resolve_test():
     check("n2_fixup_kind",2)
     check("n2_fixup_count",1)
     check("n2_ass_image+300",0x5a)
+
+    # The next original function uses name[0] with a literal pointer
+    # offset, including dot-scoped labels and the special empty name.
+    for first,length,scope,expected in (
+        (46,0,0,65535),(46,1,0,65535),
+        (46,1,1,1),(46,1,0x1234,0x1234),
+        (65,1,0,0),(65,1,0x1234,0),
+    ):
+        put_word("n2_scope_for_name_name",0x3300)
+        put_byte("n2_scope_for_name_length",length)
+        put_byte("$3300",first)
+        put_word("n2_current_scope",scope)
+        lines.append("\tjsr n2_scope_for_name")
+        lines.extend(word_assert(expected&255,(expected>>8)&255,
+                                 28000+number))
+        number+=1
     return lines
 
 def run_resolve_tests(driver):
@@ -85,5 +101,5 @@ def run_resolve_tests(driver):
     source+="\n".join(ass_function(name) for name in (
         "upper_char","same_text","apply_byte_prefix","hex_nibble",
         "append_fixup","relative_byte","trim_fixups",
-        "resolve_fixups_for_symbol"))
+        "resolve_fixups_for_symbol","scope_for_name"))
     run_native("ass_resolve",source,resolve_test(),driver)
