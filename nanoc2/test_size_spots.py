@@ -199,6 +199,15 @@ def main():
     targets.append(("ass_relative_byte",ass_function("relative_byte")))
     targets.append(("ass_trim_fixups",ass_prefix+"\n"+ass_function("trim_fixups")))
     ass_count=6
+    targets.append(("computed_call_unit",
+                    (ROOT/"tests"/"nanoc2"/"computed-call.c").read_text()))
+    word_array=ROOT/"tests"/"nanoc2"/"word-array-read.c"
+    word_array_names=("read_sample","copy_sample",
+                      "sample_equals","read_previous_sample")
+    for name in word_array_names:
+        targets.append((name,"unsigned word_samples[640];\n"+
+                        exact_c_function(word_array,name)))
+    new_count=1+len(word_array_names)
     results = []
     for name, source in targets:
         old_asm = compile_host(old_driver,source)
@@ -232,11 +241,12 @@ def main():
           "saved %d B (%.1f%%)" %
           (old_total,new_total,old_total-new_total,
            100.0*(old_total-new_total)/old_total))
-    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1+mixed_count+compare_count+expression_count+ass_count
+    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1+mixed_count+compare_count+expression_count+ass_count+new_count
     calls_index=baseline_count+word_scalar_count+word_ops_count
     compare_index=calls_index+1+mixed_count
     expression_index=compare_index+compare_count
     ass_index=expression_index+expression_count
+    added_index=ass_index+ass_count
     for title,subset in [
         ("legacy-seven",results[:baseline_count]),
         ("word-scalar",results[baseline_count:baseline_count+word_scalar_count]),
@@ -245,7 +255,8 @@ def main():
         ("mixed-composed",results[calls_index+1:compare_index]),
         ("mixed-comparisons",results[compare_index:expression_index]),
         ("arithmetic-conditions",results[expression_index:ass_index]),
-        ("real-ass.c",results[ass_index:]),
+        ("real-ass.c",results[ass_index:added_index]),
+        ("computed-calls-and-word-array",results[added_index:]),
     ]:
         old_size=sum(x[1] for x in subset)
         new_size=sum(x[2] for x in subset)
