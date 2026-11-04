@@ -1613,7 +1613,11 @@ char reduce_binary(char op)
     }
     if (op==142 | op==143 | op=='<' | op=='>' | op==144 | op==145)
         result=2;
-    nc2_last=nc2_node(6,op,0,nc2_value[value_top-2],nc2_value[value_top-1],0);
+    /* A comparison node carries the original parser's usual-arithmetic-
+     * conversion decision. If either operand is unsigned, compare unsigned.
+     * This preserves typed semantics without reconstructing them later. */
+    nc2_last=nc2_node(6,op,(left==3 | right==3),
+                      nc2_value[value_top-2],nc2_value[value_top-1],0);
     value_top=value_top-1;
     value_type[value_top-1]=result;
     nc2_value[value_top-1]=nc2_last;
