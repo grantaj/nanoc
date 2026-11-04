@@ -28,6 +28,7 @@ def pointer_call_test():
                     "\tlda #$%02x"%offset,
                     "\tsta n2_%s_offset"%name,
                 ))
+            lines.extend(("\tlda #$%02x"%n,"\tsta $03"))
             lines.append("\tjsr n2_"+name)
             lines.extend(word_assert(value,0,33000+n))
             n+=1
