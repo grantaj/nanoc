@@ -50,7 +50,7 @@ def measure_assembled(asm, old, name):
     # Grouped calling-convention benchmark: count all function bodies
     # together, so caller + callee overhead is measured consistently.
     if name in ("word_call_unit", "ass_scope_find_unit",
-                "ass_allocate_unit"):
+                "ass_allocate_unit", "ass_symbol_api_unit"):
         assert nlabels > 1, (name,nlabels)
     else:
         assert nlabels == 1, (name,nlabels)
@@ -208,7 +208,13 @@ def main():
     targets.append(("ass_allocate_unit",ass_prefix+"\n"+
                     ass_function("scope_for_name")+"\n"+
                     ass_function("allocate_symbol")))
-    ass_count=8
+    # Include every original callee in the same physical function span;
+    # this is a five-function assembly comparison, not a surrogate body.
+    targets.append(("ass_symbol_api_unit",ass_prefix+"\n"+
+                    "\n".join(ass_function(name) for name in (
+                        "scope_for_name","find_symbol","allocate_symbol",
+                        "intern_label","define_constant"))))
+    ass_count=9
     # The original nanoc1 host compiler rejects this composed-call fixture.
     # It stays in independent native VICE correctness testing; the physical
     # comparison stays strictly apples-to-apples with accepted source.
