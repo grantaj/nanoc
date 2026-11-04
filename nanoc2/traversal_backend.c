@@ -192,11 +192,11 @@ char tb_plan()
     while (i < tb_count) {
         a = tb_b[i];
         if (tb_op[i] == 6 | tb_op[i] == 7 | tb_op[i] == 20) {
-            if (indirect != 0 & indirect != a) {
-                tb_error = 2;
-                return 0;
-            }
-            indirect = a;
+            /* Reserve Y for the first indirect index. Other indices
+             * borrow Y transiently and restore it around their access.
+             * Rejecting all distinct indices needlessly disallowed
+             * ordinary functions with two different pointer loops. */
+            if(indirect==0) indirect=a;
         }
         if (tb_op[i] == 4 | tb_op[i] == 5 | tb_op[i] == 19) {
             if (direct == 0) direct = a;
@@ -212,15 +212,34 @@ char tb_plan()
 char tb_load_index(char index, char *op, char array, char indirect)
 {
     if (indirect != 0) {
-        if (index != tb_y) {
-            tb_error = 3;
-            return 0;
+        /* When the subscript is not the chosen Y induction variable,
+         * compute it from its scalar home (or X) for just this access.
+         * Save A for CMP/STA and restore the live Y and C/Z afterwards.
+         * The generated load/compare/store still uses ordinary (zp),Y. */
+        if(index!=tb_y) {
+            if(tb_y!=0) {
+                if(tb_operand("sty","__tidxsave")==0) return 0;
+            }
+            if(op[0]!='l') {
+                if(tb_operand("sta","__tbyte")==0) return 0;
+            }
+            if(tb_load_var(index)==0) return 0;
+            if(tb_simple("tay")==0) return 0;
+            if(op[0]!='l') {
+                if(tb_operand("lda","__tbyte")==0) return 0;
+            }
         }
         if (tb_text("\t") == 0) return 0;
         if (tb_text(op) == 0) return 0;
         if (tb_text(" (__tptr") == 0) return 0;
         if (tb_hex2(array) == 0) return 0;
-        return tb_text("),y\n");
+        if(tb_text("),y\n")==0) return 0;
+        if(index!=tb_y & tb_y!=0) {
+            if(tb_simple("php")==0) return 0;
+            if(tb_operand("ldy","__tidxsave")==0) return 0;
+            if(tb_simple("plp")==0) return 0;
+        }
+        return 1;
     }
     if (index == tb_x) return tb_location(op, 2, array, ",x");
     if (index == tb_y) return tb_location(op, 2, array, ",y");
