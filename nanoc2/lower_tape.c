@@ -951,6 +951,16 @@ char nd_assignment(char area, char symbol, unsigned rhs)
             if (dst<0) return 0;
             return nd_add(3,dst,0,0,0);
         }
+        if (op=='*' & target_type==1 & nc2_kind[lhs]==2 &
+            nc2_number[lhs]==1 & nc2_kind[extra]==1) {
+            /* A small constant byte stride is one or a few 6502
+             * shifts and an optional carry-cleared ADC. Keep the
+             * byte result modulo 256 as required by char assignment. */
+            dst=nd_record(area,symbol,1);
+            src=nd_scalar(lhs);
+            if(dst<0 | src<0) return 0;
+            return nd_add(100,dst,src,0,nc2_number[extra]);
+        }
         if (op=='*' & target_type==2 & nc2_kind[lhs]==2 & nc2_kind[extra]==1) {
             /* C source recurrence: base = index * constant stride.
              * Keep a ZP pointer representation, but only when an indexed
