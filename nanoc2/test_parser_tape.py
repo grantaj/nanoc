@@ -65,10 +65,10 @@ result=subprocess.run([str(DRIVER),'native'],input=initialized.encode(),
                       capture_output=True)
 assert result.returncode == 0, result.stderr.decode()
 asm = result.stdout.decode()
-assert re.search(r"^__g[0-9A-F]{2}:\n\tdc\\.b \\$07$",asm,re.M), asm
-assert re.search(r"^__g[0-9A-F]{2} = NC_BSS\\+\\$0000$",asm,re.M), asm
-assert re.search(r"^__g[0-9A-F]{2}:\n\tdc\\.b \\$01$",asm,re.M), asm
-assert re.search(r"^__g[0-9A-F]{2}:\n\tdc\\.b \\$34\n\tdc\\.b \\$12$",asm,re.M), asm
+assert re.search(r"^__g[0-9A-F]{2}:\n\tdc\.b \$07$",asm,re.M), asm
+assert re.search(r"^__g[0-9A-F]{2} = NC_BSS\+\$0000$",asm,re.M), asm
+assert re.search(r"^__g[0-9A-F]{2}:\n\tdc\.b \$01$",asm,re.M), asm
+assert re.search(r"^__g[0-9A-F]{2}:\n\tdc\.b \$34\n\tdc\.b \$12$",asm,re.M), asm
 assert len(re.findall(r"^__g[0-9A-F]{2} = NC_BSS",asm,re.M)) == 1, asm
 print("native ABI Phase-1 initialized globals, byte/word tables and BSS segregation passed")
 
