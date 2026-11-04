@@ -108,10 +108,11 @@ def main():
     # Full source compilation is necessary but not sufficient for native
     # correctness or size. A regression in isolated real C is always fatal.
     # Other failures are deliberately visible as our development frontier.
-    # Ten consecutive original ass.c functions compile with the full
-    # unmodified global declarations. This now includes two-byte array
-    # values, computed calls, pointer arguments and cross-cursor lookup.
-    assert successful >= 10, "ass.c prefix coverage regressed below ten functions"
+    # Fifteen consecutive original ass.c functions now compile with
+    # every original global declaration: symbol allocation/definition,
+    # four-argument calls and linked 16-bit image patching all execute
+    # under native VICE as well. Preserve this substantive milestone.
+    assert successful >= 15, "ass.c prefix coverage regressed below fifteen functions"
     if whole.returncode == 0:
         assert first_blocker is None, "full source accepted, prefix rejected"
 
