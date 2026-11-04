@@ -13,7 +13,7 @@ reports the first failed function, retaining all original global
 declarations, and rejects regressions below the verified prefix.
 
 **4 November 2026: 31/44 consecutive real functions compile**, from
-`upper_char` through `find_opcode`. The complete source is rejected at
+`upper_char` through `assemble_data_list`. The complete source is rejected at
 function 32, `assemble_string` (source line 1323, `lowerer 18`),
 which requires arithmetic on the right-hand side of a comparison:
 `while (i < length - 1)`. The original 15-function prefix has
