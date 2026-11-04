@@ -147,3 +147,25 @@ for incorrect in (
                             capture_output=True)
     assert reject.returncode != 0, "invalid wide-call arity accepted"
 print("original parser: typed word arguments/returns and arity rejection passed")
+
+# Mixed scalar widths and left-associated arithmetic share the same
+# Phase-1 semantic capture. No alternate parser or text substitution.
+mixed = (ROOT.parent/"tests"/"nanoc2"/"mixed-arithmetic.c").read_text()
+compiled = subprocess.run([str(DRIVER),"native"],input=mixed.encode(),
+                          capture_output=True)
+assert compiled.returncode == 0, compiled.stderr.decode()
+assembly = compiled.stdout.decode()
+assert "INVALID_HOME" not in assembly
+assert "sta __tacc" in assembly and "sta __tacc+1" in assembly
+assert "adc #$00" in assembly and "sbc #$00" in assembly
+# A right-nested expression is not a left-associated chain: it cannot be
+# silently evaluated in the wrong order or with an overwritten operand.
+for invalid in (
+    mixed.replace("return wide + delta;", "return wide * delta;"),
+    mixed.replace("return wide + delta;",
+                  "return wide + (delta + 1);"),
+):
+    rejected = subprocess.run([str(DRIVER),"native"],input=invalid.encode(),
+                              capture_output=True)
+    assert rejected.returncode != 0, "unsupported expression silently accepted"
+print("original parser: mixed widths, left-associated chains and strict rejections passed")
