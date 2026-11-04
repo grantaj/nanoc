@@ -82,7 +82,7 @@ arity = (ROOT.parent/"tests"/"nanoc2"/"call-arity.c").read_text()
 ok = subprocess.run([str(DRIVER),"native"],input=arity.encode(),
                     capture_output=True)
 assert ok.returncode == 0, ok.stderr.decode()
-assert ok.stdout.decode().count("\n\\trts\n") >= 3
+assert sum(line.strip()=="rts" for line in ok.stdout.decode().splitlines()) >= 3
 for bad in (
     arity.replace("guarded(call_source[i], 90)",
                   "guarded(call_source[i])"),
