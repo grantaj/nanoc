@@ -346,6 +346,70 @@ def word_scalar_test():
     return lines
 
 
+
+def word_ops_test():
+    # This fixture deliberately includes signed and unsigned 16-bit values
+    # around $7fff/$8000 and byte carry/borrow boundaries. Directly drive
+    # the original static ABI with an independently assembled 6510 caller.
+    lines = ["\t* = $1000", "main:"]
+    case = 0
+
+    def call(name, left, right, answer):
+        nonlocal case
+        lines.extend([
+            "\tlda #$%02x" % (left & 255),
+            "\tsta n2_%s_left" % name,
+            "\tlda #$%02x" % ((left >> 8) & 255),
+            "\tsta n2_%s_left+1" % name,
+        ])
+        if right is not None:
+            lines.extend([
+                "\tlda #$%02x" % (right & 255),
+                "\tsta n2_%s_right" % name,
+                "\tlda #$%02x" % ((right >> 8) & 255),
+                "\tsta n2_%s_right+1" % name,
+            ])
+        lines.append("\tjsr n2_%s" % name)
+        lines.extend(word_assert(answer & 255, (answer >> 8) & 255, 1000+case))
+        case += 1
+
+    arith = [
+        (0, 0), (0xff, 1), (0x100, 1), (0, 1),
+        (0xffff, 1), (0x8000, 0x7fff), (0x1234, 0x0234),
+    ]
+    for left, right in arith:
+        for name in ("sum_word", "inplace_sum_left", "inplace_sum_right", "return_sum"):
+            call(name, left, right, (left+right) & 65535)
+        for name in ("diff_word", "inplace_diff_left", "inplace_diff_right", "return_diff"):
+            call(name, left, right, (left-right) & 65535)
+
+    ordered = [
+        (0, 0), (0, 1), (1, 0), (0xff, 0x100),
+        (0x100, 0xff), (0x7fff, 0x8000), (0x8000, 0x7fff),
+        (0xffff, 0), (0, 0xffff), (0x8000, 0xffff),
+    ]
+    relations = (
+        ("lt", lambda a,b: a < b), ("le", lambda a,b: a <= b),
+        ("gt", lambda a,b: a > b), ("ge", lambda a,b: a >= b),
+        ("eq", lambda a,b: a == b), ("ne", lambda a,b: a != b),
+    )
+    for a, b in ordered:
+        signed_a = a if a < 0x8000 else a-0x10000
+        signed_b = b if b < 0x8000 else b-0x10000
+        for suffix, compare in relations:
+            call("signed_"+suffix, a, b, int(compare(signed_a, signed_b)))
+            call("unsigned_"+suffix, a, b, int(compare(a, b)))
+        call("mixed_gt", a, b, int(a > b))
+    for left in (0, 1, 255, 256, 32767, 32768, 65535):
+        signed_left = left if left < 32768 else left-65536
+        call("signed_const_lt", left, None, int(signed_left < 256))
+        call("unsigned_const_gt", left, None, int(left > 32768))
+        call("word_truth", left, None, int(left != 0))
+    for left in (0, 1, 255, 256):
+        call("word_count", left, None, left)
+    return lines
+
+
 def run_native(name, source, test_lines, driver):
     output = subprocess.run([str(driver), "native"], input=source.encode(),
                             capture_output=True, check=True)
@@ -441,6 +505,8 @@ def main():
     run_native("call_arity", arity_source, call_arity_test(), driver)
     word_source = (ROOT / "tests" / "nanoc2" / "word-scalar.c").read_text()
     run_native("word_scalar", word_source, word_scalar_test(), driver)
+    word_ops_source = (ROOT / "tests" / "nanoc2" / "word-ops.c").read_text()
+    run_native("word_ops", word_ops_source, word_ops_test(), driver)
     # One source unit, two real Phase-1 definitions. The parser must emit
     # each bounded function tape before it is reset for the next function.
     multi_source = (
