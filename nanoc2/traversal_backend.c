@@ -38,7 +38,8 @@
  * 72 unsigned word >> 8 byte extraction, 73 masked word return,
  * 74 compute a full 16-bit array address, 75 write byte/word element,
  * 76 read an indexed byte, preserving A and its flags,
- * 77 stage evaluated 16-bit arithmetic call argument.
+ * 77 stage evaluated 16-bit arithmetic call argument,
+ * 78 load word-array element, 79 store word from accumulator.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -616,6 +617,26 @@ char tb_wide_array_load()
     return 1;
 }
 
+/* Two-byte elements are little-endian. Staging in __tacc matches the
+ * existing Phase-1 composed-expression and word-result ABI; no new
+ * variable representation or evaluator stack is introduced. */
+char tb_wide_array_load_word()
+{
+    if(tb_y!=0) {
+        if(tb_operand("sty","__tidxsave")==0) return 0;
+    }
+    if(tb_immediate("ldy",0)==0) return 0;
+    if(tb_operand("lda","(__tptr00),y")==0) return 0;
+    if(tb_operand("sta","__tacc")==0) return 0;
+    if(tb_simple("iny")==0) return 0;
+    if(tb_operand("lda","(__tptr00),y")==0) return 0;
+    if(tb_operand("sta","__tacc+1")==0) return 0;
+    if(tb_y!=0) {
+        if(tb_operand("ldy","__tidxsave")==0) return 0;
+    }
+    return 1;
+}
+
 /* The address is already in __tptr00. Read from the original static
  * Nano C variable home, not the accumulator left by address calculation.
  * A char local currently carried in Y must be sampled *before* the Y=0
@@ -1062,6 +1083,13 @@ char tb_compile()
             if(tb_wide_array_store(d,a,b,k)==0) return 0;
         } else if (op == 76) {
             if(tb_wide_array_load()==0) return 0;
+        } else if (op == 78) {
+            if(tb_wide_array_load_word()==0) return 0;
+        } else if (op == 79) {
+            if(tb_operand("lda","__tacc")==0) return 0;
+            if(tb_location("sta",1,d,"")==0) return 0;
+            if(tb_operand("lda","__tacc+1")==0) return 0;
+            if(tb_location("sta",1,d,"+1")==0) return 0;
         } else if (op == 77) {
             /* Word expression evaluated before the call, one argument
              * at a time. Callee static parameter homes are ABI storage,
