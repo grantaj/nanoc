@@ -75,4 +75,18 @@ def run_ass_wide_tests(driver):
     source+="\n".join(ass_function(name) for name in (
         "upper_char","same_text","apply_byte_prefix","hex_nibble",
         "append_fixup"))
+    import subprocess
+    output=subprocess.run([str(driver),"native"],input=source.encode(),
+                          capture_output=True,check=True)
+    asm=output.stdout.decode()
+    entry=asm.rfind("__c")
+    import re
+    labels=re.findall(r"^__c[0-9A-Fa-f]{2}:$",asm,re.M)
+    assert labels
+    start=asm.index(labels[-1]+"\n")
+    print("ASS_APPEND_NATIVE_LISTING\n"+asm[start:start+12000],flush=True)
+    print("ASS_ARRAY_HOMES\n"+"\n".join(
+        x for x in asm.splitlines() if x.startswith(("n2_fixup_kind ",
+           "n2_fixup_stage ","n2_fixup_count ","n2_append_fixup_kind ",
+           "__tptr00 ","n2_fixup_prefix "))),flush=True)
     run_native("ass_wide_index",source,ass_wide_test(),driver)
