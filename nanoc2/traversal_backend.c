@@ -32,7 +32,8 @@
  * 58-61 word +/- byte scalar direct store/return,
  * 62/63 byte - word return/store, 64/65 byte+byte as word,
  * 66/67 byte+byte as byte store/return,
- * 68 compare mixed-width scalar/literal numeric operands.
+ * 68 compare mixed-width scalar/literal numeric operands,
+ * 69 zero/nonzero test of the composed-arithmetic accumulator.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -447,7 +448,11 @@ char tb_numeric_high(char kind, char home, unsigned literal, char bias)
     if(kind==1) return tb_immediate("lda",(literal >> 8)^bias);
     if(kind==2) return tb_immediate("lda",bias);
     if(kind==3) {
-        if(tb_location("lda",1,home,"+1")==0) return 0;
+        if(home==0) {
+            if(tb_operand("lda","__tacc+1")==0) return 0;
+        } else {
+            if(tb_location("lda",1,home,"+1")==0) return 0;
+        }
         if(bias!=0) return tb_immediate("eor",bias);
         return 1;
     }
@@ -494,7 +499,11 @@ char tb_numeric_compare(char left, char right, char descriptor,
     } else if(lk==2) {
         if(tb_load_var(left)==0) return 0;
     } else {
-        if(tb_location("lda",1,left,"")==0) return 0;
+        if(left==0) {
+            if(tb_operand("lda","__tacc")==0) return 0;
+        } else {
+            if(tb_location("lda",1,left,"")==0) return 0;
+        }
     }
     if(rk==1) {
         if(tb_immediate("cmp",literal&255)==0) return 0;
@@ -864,6 +873,9 @@ char tb_compile()
             }
         } else if (op == 68) {
             if(tb_numeric_compare(d,a,b,k)==0) return 0;
+        } else if (op == 69) {
+            if(tb_operand("lda","__tacc")==0) return 0;
+            if(tb_operand("ora","__tacc+1")==0) return 0;
         } else if (op == 25) {
             if (tb_operand("lda","__tret")==0) return 0;
         } else if (op == 26) {
