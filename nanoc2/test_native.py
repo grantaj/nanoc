@@ -787,7 +787,7 @@ def run_native(name, source, test_lines, driver):
         # Function aliases depend on labels defined in the *other* PRG.
         # Resolve their physical addresses with vasm rather than forwarding
         # an undefined __cXX symbol into the separately assembled caller.
-        if re.match(r'^n2_\w+\s*=\s*__(?:(?:c|g)[0-9A-Fa-f]{2}|nc_io_init)\s*
+        if re.match(r'^n2_\w+\s*=\s*__(?:(?:c|g)[0-9A-Fa-f]{2}|nc_io_init)\s*$', line):
             function_aliases.append(line.split('=')[0].strip())
         elif re.match(r'^(?:NC_BSS|__tptr\w*|__tw\w*|__g\w*|__v\w*|n2_\w+)\s*=', line):
             symbols.append(line)
