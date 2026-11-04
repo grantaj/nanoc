@@ -187,6 +187,7 @@ char n2_begin()
 {
     n2_started=0;
     n2_first_function=255;
+    nc2_builtin_used=0;
     if(tb_text("NC_BSS = $4800\n")==0) return 0;
     /* C64 KERNAL interrupts use $f0-$fa. Only $fb-$fe are available
      * for user-owned indirect-index cursors, and the existing Nano C
@@ -237,8 +238,38 @@ char n2_end()
         if(global_param_count[main_symbol]!=0) { tb_error=37; return 0; }
         entry=main_symbol;
     } else entry=n2_first_function;
-    if(tb_text("__nc_entry = __c")==0) return 0;
-    if(tb_hex2(entry)==0) return 0;
-    if(tb_char('\n')==0) return 0;
-    return n2_global_bss();
+    if(nc2_builtin_used!=0) {
+        /* Builtins are normal typed call events, with original static
+         * two-byte parameter homes. Only their final linker names differ.
+         * Keep these aliases out of no-I/O units entirely. */
+        if(tb_text("__c00 = __c_io_open\n__c01 = __c_io_read\n")==0)
+            return 0;
+        if(tb_text("__c02 = __c_io_create\n__c03 = __c_io_write\n")==0)
+            return 0;
+        if(tb_text("__c04 = __c_io_close\n")==0) return 0;
+        if(tb_text("__v00_00 = __c_io_open__v00\n")==0) return 0;
+        if(tb_text("__v00_01 = __c_io_open__v01\n")==0) return 0;
+        if(tb_text("__v01_00 = __c_io_read__v00\n")==0) return 0;
+        if(tb_text("__v02_00 = __c_io_create__v00\n")==0) return 0;
+        if(tb_text("__v02_01 = __c_io_create__v01\n")==0) return 0;
+        if(tb_text("__v03_00 = __c_io_write__v00\n")==0) return 0;
+        if(tb_text("__v03_01 = __c_io_write__v01\n")==0) return 0;
+        if(tb_text("__v04_00 = __c_io_close__v00\n")==0) return 0;
+        /* Startup initializes six I/O handle slots before entering
+         * user C. Individual native test callers can initialize them
+         * explicitly through the exported n2_io_init alias. */
+        if(tb_text("n2_io_init = __nc_io_init\n")==0) return 0;
+        if(tb_text("__nc_entry:\n\tjsr __nc_io_init\n\tjmp __c")==0)
+            return 0;
+        if(tb_hex2(entry)==0) return 0;
+        if(tb_char('\n')==0) return 0;
+    } else {
+        if(tb_text("__nc_entry = __c")==0) return 0;
+        if(tb_hex2(entry)==0) return 0;
+        if(tb_char('\n')==0) return 0;
+    }
+    if(n2_global_bss()==0) return 0;
+    if(nc2_builtin_used!=0)
+        return tb_text("\tinclude \"nanoc2/target/io-runtime.asm\"\n");
+    return 1;
 }
