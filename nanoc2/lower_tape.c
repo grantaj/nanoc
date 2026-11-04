@@ -795,17 +795,16 @@ char nd_call(unsigned node, char callee)
                 if(nc2_kind[right_arg]==1) {
                     if(nd_add(106,callee,i,0,
                               nc2_number[right_arg])==0) return 0;
-                    i=i+1;
-                    continue;
+                } else {
+                    if(nc2_kind[right_arg]!=2) {nd_error=28;return 0;}
+                    actual=nc2_number[right_arg];
+                    if(actual==1) value=nd_scalar(right_arg);
+                    else if(actual==2 | actual==3)
+                        value=nd_word(right_arg);
+                    else {nd_error=28;return 0;}
+                    if(value<0) return 0;
+                    if(nd_add(99,callee,i,value,actual)==0) return 0;
                 }
-                if(nc2_kind[right_arg]!=2) {nd_error=28;return 0;}
-                actual=nc2_number[right_arg];
-                if(actual==1) value=nd_scalar(right_arg);
-                else if(actual==2 | actual==3)
-                    value=nd_word(right_arg);
-                else {nd_error=28;return 0;}
-                if(value<0) return 0;
-                if(nd_add(99,callee,i,value,actual)==0) return 0;
             }
         } else {nd_error=28;return 0;}
         i=i+1;
