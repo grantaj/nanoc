@@ -3,9 +3,9 @@
  * and structured-statement parser. This first replacement experiment records
  * semantic nodes and statement events from those same code paths.
  *
- * It currently keeps the old emitter as a disposable baseline while the new
- * semantic tape becomes complete. The emitted old text is ignored by tests.
- * The duplicate lexer and handwritten tape are NOT used.
+ * The old instruction-selection bodies are replaced by semantic recording;
+ * some now-unused top-level assembly/output scaffolding remains to remove.
+ * There is no duplicate lexer, handwritten tape or second source parser.
  *
  * Copy made from exact main nanoc1/nanoc1.c. Only semantic hooks below were
  * added; the parser's Phase-1 checks remain the same.
