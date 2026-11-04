@@ -729,13 +729,19 @@ char nd_call(unsigned node, char callee)
                       nc2_a[argument]=='-') {
                 left_arg=nc2_left[argument];
                 right_arg=nc2_right[argument];
-                if(nc2_kind[left_arg]!=2 | nc2_number[left_arg]!=1 |
-                   nc2_kind[right_arg]!=2 | nc2_number[right_arg]!=1) {
+                if(nc2_kind[left_arg]!=2 |
+                   nc2_number[left_arg]!=1) {
                     nd_error=28;return 0;
                 }
                 value=nd_scalar(left_arg);
-                other=nd_scalar(right_arg);
-                if(value<0 | other<0) return 0;
+                if(value<0) return 0;
+                if(nc2_kind[right_arg]==1) {
+                    other=256+(nc2_number[right_arg]&255);
+                } else if(nc2_kind[right_arg]==2 &
+                          nc2_number[right_arg]==1) {
+                    other=nd_scalar(right_arg);
+                } else {nd_error=28;return 0;}
+                if(other<0) return 0;
                 if(nd_add(98,callee,i,value,other)==0) return 0;
                 staged=1;
             } else {nd_error=28;return 0;}
@@ -786,6 +792,12 @@ char nd_call(unsigned node, char callee)
             if(nd_add(86,callee,i,nc2_a[left_arg],
                       nc2_b[left_arg])==0) return 0;
             if(right_arg!=0) {
+                if(nc2_kind[right_arg]==1) {
+                    if(nd_add(106,callee,i,0,
+                              nc2_number[right_arg])==0) return 0;
+                    i=i+1;
+                    continue;
+                }
                 if(nc2_kind[right_arg]!=2) {nd_error=28;return 0;}
                 actual=nc2_number[right_arg];
                 if(actual==1) value=nd_scalar(right_arg);
