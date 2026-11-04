@@ -33,7 +33,9 @@
  * 62/63 byte - word return/store, 64/65 byte+byte as word,
  * 66/67 byte+byte as byte store/return,
  * 68 compare mixed-width scalar/literal numeric operands,
- * 69 zero/nonzero test of the composed-arithmetic accumulator.
+ * 69 zero/nonzero test of the composed-arithmetic accumulator,
+ * 70 word AND constant, 71 masked byte return,
+ * 72 unsigned word >> 8 byte extraction, 73 masked word return.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -876,6 +878,60 @@ char tb_compile()
         } else if (op == 69) {
             if(tb_operand("lda","__tacc")==0) return 0;
             if(tb_operand("ora","__tacc+1")==0) return 0;
+        } else if (op == 70) {
+            /* 6502 word AND immediate, low and high independently.
+             * In-place identity masks emit no instructions. */
+            if(d!=a | (k&255)!=255) {
+                if(tb_location("lda",1,a,"")==0) return 0;
+                if((k&255)!=255) {
+                    if(tb_immediate("and",k&255)==0) return 0;
+                }
+                if(tb_location("sta",1,d,"")==0) return 0;
+            }
+            if(d!=a | (k>>8)!=255) {
+                if(tb_location("lda",1,a,"+1")==0) return 0;
+                if((k>>8)!=255) {
+                    if(tb_immediate("and",k>>8)==0) return 0;
+                }
+                if(tb_location("sta",1,d,"+1")==0) return 0;
+            }
+        } else if (op == 71) {
+            if(a==1) {
+                if(tb_load_var(d)==0) return 0;
+            } else {
+                if(tb_location("lda",1,d,"")==0) return 0;
+            }
+            if((k&255)!=255) {
+                if(tb_immediate("and",k&255)==0) return 0;
+            }
+            if(tb_immediate("ldx",0)==0) return 0;
+            if(tb_simple("rts")==0) return 0;
+        } else if (op == 72) {
+            /* A logical 16-bit >> 8 is the high byte, directly in A.
+             * A subsequent byte mask can be folded into the same load. */
+            if(tb_location("lda",1,d,"+1")==0) return 0;
+            if((k&255)!=255) {
+                if(tb_immediate("and",k&255)==0) return 0;
+            }
+            if(tb_immediate("ldx",0)==0) return 0;
+            if(tb_simple("rts")==0) return 0;
+        } else if (op == 73) {
+            if(tb_location("lda",1,d,"")==0) return 0;
+            if((k&255)!=255) {
+                if(tb_immediate("and",k&255)==0) return 0;
+            }
+            if(tb_operand("sta","__twlo")==0) return 0;
+            if((k>>8)==0) {
+                if(tb_immediate("ldx",0)==0) return 0;
+            } else {
+                if(tb_location("lda",1,d,"+1")==0) return 0;
+                if((k>>8)!=255) {
+                    if(tb_immediate("and",k>>8)==0) return 0;
+                }
+                if(tb_simple("tax")==0) return 0;
+            }
+            if(tb_operand("lda","__twlo")==0) return 0;
+            if(tb_simple("rts")==0) return 0;
         } else if (op == 25) {
             if (tb_operand("lda","__tret")==0) return 0;
         } else if (op == 26) {
