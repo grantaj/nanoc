@@ -1410,6 +1410,17 @@ char tb_compile()
             /* A holds the byte loaded from the RHS array; the earlier
              * char call's result is in the preserved return slot. */
             if(tb_operand("cmp","__tret")==0) return 0;
+        } else if (op == 106) {
+            /* Literal pointer displacement, full carry chain into
+             * the high address byte. Unlike a variable displacement
+             * this does not occupy an index register or scratch byte. */
+            if(tb_simple("clc")==0) return 0;
+            if(tb_param("lda",d,a,"")==0) return 0;
+            if(tb_immediate("adc",k&255)==0) return 0;
+            if(tb_param("sta",d,a,"")==0) return 0;
+            if(tb_param("lda",d,a,"+1")==0) return 0;
+            if(tb_immediate("adc",k>>8)==0) return 0;
+            if(tb_param("sta",d,a,"+1")==0) return 0;
         } else if (op == 98) {
             /* Byte difference as a call argument: C char arithmetic
              * wraps on assignment to the byte parameter. Save a live
@@ -1422,7 +1433,9 @@ char tb_compile()
             }
             if(tb_load_var(b)==0) return 0;
             if(tb_simple("sec")==0) return 0;
-            if(k==tb_x | k==tb_y) {
+            if((k&256)!=0) {
+                if(tb_immediate("sbc",k&255)==0) return 0;
+            } else if(k==tb_x | k==tb_y) {
                 if(tb_operand("sbc","__twlo")==0) return 0;
             } else {
                 if(tb_location("sbc",1,k,"")==0) return 0;
