@@ -44,7 +44,13 @@ def measure_assembled(asm, old, name):
                    r'^(__c[0-9a-fA-F]{2}):\s*$'), asm, re.M)
     assert m, (name, "missing function entry label")
     entry = m.group(1)
-    assert len(re.findall(r'^__(?:f|c)[0-9a-fA-F]{2}:\s*$', asm, re.M)) == 1, name
+    nlabels = len(re.findall(r'^__(?:f|c)[0-9a-fA-F]{2}:\s*$', asm, re.M))
+    # Grouped calling-convention benchmark: count all function bodies
+    # together, so caller + callee overhead is measured consistently.
+    if name == "word_call_unit":
+        assert nlabels > 1, (name,nlabels)
+    else:
+        assert nlabels == 1, (name,nlabels)
     if old:
         # This equate is emitted immediately after the final user function,
         # before the production runtime is appended. Its address is the
@@ -129,6 +135,8 @@ def main():
                  "signed_const_lt", "word_truth", "word_count"):
         targets.append((name,exact_c_function(ops,name)))
     word_ops_count = len(targets)-baseline_count-word_scalar_count
+    targets.append(("word_call_unit",
+                    (ROOT/"tests"/"nanoc2"/"word-call.c").read_text()))
     results = []
     for name, source in targets:
         old_asm = compile_host(old_driver,source)
@@ -151,11 +159,12 @@ def main():
           "saved %d B (%.1f%%)" %
           (old_total,new_total,old_total-new_total,
            100.0*(old_total-new_total)/old_total))
-    assert len(results)==baseline_count+word_scalar_count+word_ops_count
+    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1
     for title,subset in [
         ("legacy-seven",results[:baseline_count]),
         ("word-scalar",results[baseline_count:baseline_count+word_scalar_count]),
-        ("word-ops",results[baseline_count+word_scalar_count:]),
+        ("word-ops",results[baseline_count+word_scalar_count:-1]),
+        ("word-call-unit",results[-1:]),
     ]:
         old_size=sum(x[1] for x in subset)
         new_size=sum(x[2] for x in subset)
