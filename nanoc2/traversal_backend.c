@@ -868,6 +868,75 @@ char tb_wide_array_store(char kind,char source,char width,unsigned literal)
     return 1;
 }
 
+/* A pointer indexed by the sum of two char scalars needs the carry
+ * into its high address byte. Compute that effective address in the
+ * pointer's existing zero-page lane, then restore the caller's original
+ * cursor before leaving this operation. Both the byte value and C/Z
+ * flags survive restoration, so load, compare and store share one path.
+ * The Nano C static pointer home is the authority, never the cursor. */
+char tb_pointer_sum(char ptr,char first,char second,char mode)
+{
+    char *operation;
+    if(ptr>=tb_pointer_count | mode>2) {tb_error=109;return 0;}
+    if(mode==0) operation="lda";
+    else if(mode==1) operation="cmp";
+    else operation="sta";
+    if(tb_y!=0) {
+        if(tb_operand("sty","__tidxsave")==0) return 0;
+    }
+    if(mode!=0) {
+        if(tb_operand("sta","__tbyte")==0) return 0;
+    }
+    if(tb_load_var(first)==0) return 0;
+    if(tb_operand("sta","__twlo")==0) return 0;
+    if(tb_load_var(second)==0) return 0;
+    if(tb_simple("clc")==0) return 0;
+    if(tb_operand("adc","__twlo")==0) return 0;
+    if(tb_operand("sta","__twlo")==0) return 0;
+    if(tb_immediate("lda",0)==0) return 0;
+    if(tb_immediate("adc",0)==0) return 0;
+    if(tb_operand("sta","__twhi")==0) return 0;
+    if(tb_simple("clc")==0) return 0;
+    if(tb_source_pointer("lda",tb_pointer_area[ptr],
+                         tb_pointer_symbol[ptr],"")==0) return 0;
+    if(tb_operand("adc","__twlo")==0) return 0;
+    if(tb_text("\tsta __tptr")==0) return 0;
+    if(tb_hex2(ptr)==0) return 0;
+    if(tb_char('\n')==0) return 0;
+    if(tb_source_pointer("lda",tb_pointer_area[ptr],
+                         tb_pointer_symbol[ptr],"+1")==0) return 0;
+    if(tb_operand("adc","__twhi")==0) return 0;
+    if(tb_text("\tsta __tptr")==0) return 0;
+    if(tb_hex2(ptr)==0) return 0;
+    if(tb_text("+1\n")==0) return 0;
+    if(mode!=0) {
+        if(tb_operand("lda","__tbyte")==0) return 0;
+    }
+    if(tb_immediate("ldy",0)==0) return 0;
+    if(tb_text("\t")==0) return 0;
+    if(tb_text(operation)==0) return 0;
+    if(tb_text(" (__tptr")==0) return 0;
+    if(tb_hex2(ptr)==0) return 0;
+    if(tb_text("),y\n")==0) return 0;
+    if(tb_operand("sta","__tbyte")==0) return 0;
+    if(tb_simple("php")==0) return 0;
+    if(tb_source_pointer("lda",tb_pointer_area[ptr],
+                         tb_pointer_symbol[ptr],"")==0) return 0;
+    if(tb_text("\tsta __tptr")==0) return 0;
+    if(tb_hex2(ptr)==0) return 0;
+    if(tb_char('\n')==0) return 0;
+    if(tb_source_pointer("lda",tb_pointer_area[ptr],
+                         tb_pointer_symbol[ptr],"+1")==0) return 0;
+    if(tb_text("\tsta __tptr")==0) return 0;
+    if(tb_hex2(ptr)==0) return 0;
+    if(tb_text("+1\n")==0) return 0;
+    if(tb_y!=0) {
+        if(tb_operand("ldy","__tidxsave")==0) return 0;
+    }
+    if(tb_operand("lda","__tbyte")==0) return 0;
+    return tb_simple("plp");
+}
+
 char tb_compile()
 {
     unsigned i;
@@ -904,6 +973,8 @@ char tb_compile()
             }
         } else if (op == 107) {
             if(tb_pointer_offset_index(d,a,b,k)==0) return 0;
+        } else if (op == 109) {
+            if(tb_pointer_sum(d,a,b,k)==0) return 0;
         } else if (op == 83 | op == 84 | op == 85) {
             if(op==83) word_op="lda";
             else if(op==84) word_op="cmp";
