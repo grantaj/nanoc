@@ -49,7 +49,8 @@ def measure_assembled(asm, old, name):
     nlabels = len(re.findall(r'^__(?:f|c)[0-9a-fA-F]{2}:\s*$', asm, re.M))
     # Grouped calling-convention benchmark: count all function bodies
     # together, so caller + callee overhead is measured consistently.
-    if name in ("word_call_unit", "ass_scope_find_unit"):
+    if name in ("word_call_unit", "ass_scope_find_unit",
+                "ass_allocate_unit"):
         assert nlabels > 1, (name,nlabels)
     else:
         assert nlabels == 1, (name,nlabels)
@@ -201,7 +202,13 @@ def main():
     targets.append(("ass_scope_find_unit",ass_prefix+"\n"+
                     ass_function("scope_for_name")+"\n"+
                     ass_function("find_symbol")))
-    ass_count=7
+    # The real allocate_symbol needs scope_for_name and the complete
+    # original global table declaration block; count both bodies in
+    # each compiler so that ABI calls are measured consistently.
+    targets.append(("ass_allocate_unit",ass_prefix+"\n"+
+                    ass_function("scope_for_name")+"\n"+
+                    ass_function("allocate_symbol")))
+    ass_count=8
     # The original nanoc1 host compiler rejects this composed-call fixture.
     # It stays in independent native VICE correctness testing; the physical
     # comparison stays strictly apples-to-apples with accepted source.
