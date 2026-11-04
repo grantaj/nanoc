@@ -126,7 +126,9 @@ with tempfile.TemporaryDirectory() as tmp:
         # 2/3/4/8/10 now have direct 6502 byte multiply idioms.
         # Other factors must still fail closed until implemented.
         original_function('same_bytes').replace('i = i + 1;', 'i = i * 7;'),
-        original_function('same_bytes').replace('a[i]', 'a[i + 1]'),
+        # A single literal displacement now uses transient Y correctly.
+        # Keep a more complex nested index as the explicit rejection case.
+        original_function('same_bytes').replace('a[i]', 'a[i + 1 + 1]'),
     ]
     for source in extra:
         p=subprocess.run([str(driver)],input=source.encode(),capture_output=True)
