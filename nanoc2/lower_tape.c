@@ -622,6 +622,15 @@ char nd_call(unsigned node, char callee)
                 if(nd_chain(argument,2,0,2)==0) return 0;
                 if(nd_add(77,callee,i,0,0)==0) return 0;
             } else {nd_error=28;return 0;}
+        } else if(expected==4) {
+            if(nc2_kind[argument]!=2 | nc2_number[argument]!=4) {
+                nd_error=28;return 0;
+            }
+            /* A pointer is an ordinary two-byte static Phase-1 value
+             * when passed. Its dereference cursor is separate state
+             * that must be reconciled across the eventual JSR. */
+            if(nd_add(86,callee,i,nc2_a[argument],nc2_b[argument])==0)
+                return 0;
         } else {nd_error=28;return 0;}
         i=i+1;
     }
