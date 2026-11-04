@@ -24,7 +24,9 @@
  * 31/32 word +/- literal store, 33/34 word +/- literal return,
  * 35/36 word +/- word store, 37/38 word +/- word return,
  * 39/40 signed or unsigned word compare (variable/literal),
- * 41 test word scalar for zero.
+ * 41 word truth test, 42/43 word-call result store/return,
+ * 44/45 word literal/variable argument, 46 byte-to-word argument,
+ * 47 word-to-byte argument, 48/49 byte-call result promoted to word.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -262,13 +264,21 @@ char tb_scaled_pointer(char ptr, char array, char index, unsigned stride)
  * argument slot is not an allocator temporary; it has a stable __vFF_00
  * home determined by the original Phase-1 symbol table.
  */
-char tb_stage_byte(char callee,char argument)
+char tb_param(char *mnemonic, char callee, char argument, char *suffix)
 {
-    if(tb_text("\tsta __v")==0) return 0;
+    if(tb_char('\t')==0) return 0;
+    if(tb_text(mnemonic)==0) return 0;
+    if(tb_text(" __v")==0) return 0;
     if(tb_hex2(callee)==0) return 0;
     if(tb_char('_')==0) return 0;
     if(tb_hex2(argument)==0) return 0;
+    if(tb_text(suffix)==0) return 0;
     return tb_char('\n');
+}
+
+char tb_stage_byte(char callee,char argument)
+{
+    return tb_param("sta",callee,argument,"");
 }
 
 /* A call ends a traversal register lifetime. Sync induction registers to
@@ -277,7 +287,7 @@ char tb_stage_byte(char callee,char argument)
  * Indirect pointer cursors are forbidden at the lowering boundary until
  * their full call-clobber contract is implemented.
  */
-char tb_call_byte(char callee)
+char tb_call_byte(char callee, char return_type)
 {
     if(tb_x!=0) {
         if(tb_location("stx",1,tb_x,"")==0) return 0;
@@ -288,8 +298,13 @@ char tb_call_byte(char callee)
     if(tb_text("\tjsr __c")==0) return 0;
     if(tb_hex2(callee)==0) return 0;
     if(tb_char('\n')==0) return 0;
-    /* Preserve the returned A before restoring X/Y. */
+    /* The callee returns a word in A/X, but X may also hold the
+     * caller's induction variable. Save X before restoring that home.
+     * Do not pay an extra STX for ordinary byte calls. */
     if(tb_operand("sta","__tret")==0) return 0;
+    if(return_type==2) {
+        if(tb_operand("stx","__trethi")==0) return 0;
+    }
     if(tb_x!=0) {
         if(tb_location("ldx",1,tb_x,"")==0) return 0;
     }
@@ -467,7 +482,7 @@ char tb_compile()
         } else if (op == 22) {
             if (tb_stage_byte(d,a)==0) return 0;
         } else if (op == 23) {
-            if (tb_call_byte(d)==0) return 0;
+            if (tb_call_byte(d,a)==0) return 0;
         } else if (op == 27) {
             /* Two-byte Nano C int/unsigned static home. */
             if (tb_immediate("lda",k & 255)==0) return 0;
@@ -553,6 +568,41 @@ char tb_compile()
         } else if (op == 41) {
             if(tb_location("lda",1,d,"")==0) return 0;
             if(tb_location("ora",1,d,"+1")==0) return 0;
+        } else if (op == 42 | op == 48) {
+            if(tb_operand("lda","__tret")==0) return 0;
+            if(tb_location("sta",1,d,"")==0) return 0;
+            if(op==42) {
+                if(tb_operand("lda","__trethi")==0) return 0;
+            } else {
+                if(tb_immediate("lda",0)==0) return 0;
+            }
+            if(tb_location("sta",1,d,"+1")==0) return 0;
+        } else if (op == 43 | op == 49) {
+            if(op==43) {
+                if(tb_operand("ldx","__trethi")==0) return 0;
+            } else {
+                if(tb_immediate("ldx",0)==0) return 0;
+            }
+            if(tb_operand("lda","__tret")==0) return 0;
+            if(tb_simple("rts")==0) return 0;
+        } else if (op == 44) {
+            if(tb_immediate("lda",k&255)==0) return 0;
+            if(tb_param("sta",d,a,"")==0) return 0;
+            if(tb_immediate("lda",k>>8)==0) return 0;
+            if(tb_param("sta",d,a,"+1")==0) return 0;
+        } else if (op == 45) {
+            if(tb_location("lda",1,b,"")==0) return 0;
+            if(tb_param("sta",d,a,"")==0) return 0;
+            if(tb_location("lda",1,b,"+1")==0) return 0;
+            if(tb_param("sta",d,a,"+1")==0) return 0;
+        } else if (op == 46) {
+            if(tb_load_var(b)==0) return 0;
+            if(tb_param("sta",d,a,"")==0) return 0;
+            if(tb_immediate("lda",0)==0) return 0;
+            if(tb_param("sta",d,a,"+1")==0) return 0;
+        } else if (op == 47) {
+            if(tb_location("lda",1,b,"")==0) return 0;
+            if(tb_param("sta",d,a,"")==0) return 0;
         } else if (op == 25) {
             if (tb_operand("lda","__tret")==0) return 0;
         } else if (op == 26) {
