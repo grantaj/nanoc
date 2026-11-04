@@ -195,7 +195,7 @@ char n2_begin()
      * Other scratch needs ordinary private RAM; never borrow IRQ ZP.
      */
     if(tb_text("__tptr00 = $fb\n__tptr01 = $fd\n")==0) return 0;
-    if(tb_text("__twlo = $cf20\n__twhi = $cf21\n__tret = $cf22\n__trethi = $cf23\n__tacc = $cf24\n__tidxsave = $cf26\n")==0) return 0;
+    if(tb_text("__twlo = $cf20\n__twhi = $cf21\n__tret = $cf22\n__trethi = $cf23\n__tacc = $cf24\n__tidxsave = $cf26\n__targ = $cf27\n")==0) return 0;
     if(tb_text("\t* = $0800\n__nc_start:\n\tjmp __nc_entry\n")==0) return 0;
     return 1;
 }
