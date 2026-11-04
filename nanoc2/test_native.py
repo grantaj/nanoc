@@ -410,6 +410,49 @@ def word_ops_test():
     return lines
 
 
+
+def word_call_test():
+    lines = ["\t* = $1000", "main:", "\tjsr $0800"]
+    lines += word_assert(0x34, 0x12, 3000)
+    calls = [
+        ("pass_one", (("value", 0xabcd, 2),), 0xabcd),
+        ("add_pair", (("left", 0xffff, 2), ("right", 1, 2)), 0),
+        ("add_pair", (("left", 0x7fff, 2), ("right", 1, 2)), 0x8000),
+        ("word_relay", (("value", 0xabcd, 2),), 0xabcd),
+        ("pair_relay", (("left", 0x00ff, 2), ("right", 1, 2)), 0x100),
+        ("pair_relay", (("left", 0xffff, 2), ("right", 1, 2)), 0),
+        ("const_pair", (), 4661),
+        ("echo_byte", (("value", 0x84, 1),), 0x84),
+        ("byte_to_word", (("value", 0x84, 1),), 0x84),
+        ("word_to_byte", (("value", 0x12ab, 2),), 0xab),
+        ("byte_to_word_store", (("value", 0x12ab, 2),), 0xab),
+        ("mixed_pair", (("left", 0xabcd, 2), ("tag", 0x91, 1)), 0xabcd),
+        ("mixed_relay", (("left", 0xabcd, 2), ("tag", 0x91, 1)), 0xabcd),
+        ("indexed_word_call", (("i", 0x02, 1),), 4660),
+    ]
+    for num, (name, arguments, expected) in enumerate(calls):
+        for arg, value, size in arguments:
+            lines.extend([
+                "\tlda #$%02x" % (value & 255),
+                "\tsta n2_%s_%s" % (name, arg),
+            ])
+            if size == 2:
+                lines.extend([
+                    "\tlda #$%02x" % ((value >> 8) & 255),
+                    "\tsta n2_%s_%s+1" % (name, arg),
+                ])
+        lines.append("\tjsr n2_%s" % name)
+        lines.extend(word_assert(expected & 255, expected >> 8, 3001+num))
+    for i in range(3):
+        lines.extend([
+            "\tlda n2_out_bytes+%d" % i,
+            "\tcmp #$%02x" % i,
+            "\tbeq .array_ok_%d" % i,
+            "\tjmp native_fail",
+            ".array_ok_%d:" % i,
+        ])
+    return lines
+
 def run_native(name, source, test_lines, driver):
     output = subprocess.run([str(driver), "native"], input=source.encode(),
                             capture_output=True, check=True)
@@ -507,6 +550,8 @@ def main():
     run_native("word_scalar", word_source, word_scalar_test(), driver)
     word_ops_source = (ROOT / "tests" / "nanoc2" / "word-ops.c").read_text()
     run_native("word_ops", word_ops_source, word_ops_test(), driver)
+    word_call_source = (ROOT / "tests" / "nanoc2" / "word-call.c").read_text()
+    run_native("word_call", word_call_source, word_call_test(), driver)
     # One source unit, two real Phase-1 definitions. The parser must emit
     # each bounded function tape before it is reset for the next function.
     multi_source = (
