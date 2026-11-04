@@ -269,6 +269,7 @@ char nd_call(unsigned node, char callee)
     int value;
     char expected;
     char actual;
+    char staged;
     if(node==0 | nc2_kind[node]!=8 | nc2_a[node]!=callee |
        nc2_b[node]>2) {nd_error=28;return 0;}
     argc=nc2_b[node];
@@ -278,6 +279,7 @@ char nd_call(unsigned node, char callee)
         else argument=nc2_right[node];
         if(argument==0) {nd_error=28;return 0;}
         expected=param_type[global_param_start[callee]+i];
+        staged=0;
         if(expected==1) {
             if(nc2_kind[argument]==1) {
                 if(nd_add(21,0,0,0,nc2_number[argument]&255)==0)
@@ -292,13 +294,14 @@ char nd_call(unsigned node, char callee)
                     value=nd_word(argument);
                     if(value<0) return 0;
                     if(nd_add(47,callee,i,value,0)==0) return 0;
-                    i=i+1;
-                    continue;
+                    staged=1;
                 } else {nd_error=28;return 0;}
             } else if(nc2_kind[argument]==4 | nc2_kind[argument]==5) {
                 if(nd_index(argument,0)==0) return 0;
             } else {nd_error=28;return 0;}
-            if(nd_add(22,callee,i,0,0)==0) return 0;
+            if(staged==0) {
+                if(nd_add(22,callee,i,0,0)==0) return 0;
+            }
         } else if(expected==2 | expected==3) {
             if(nc2_kind[argument]==1) {
                 if(nd_add(44,callee,i,0,nc2_number[argument])==0)
