@@ -890,6 +890,14 @@ char nd_condition(unsigned expr, unsigned exit_label)
        nc2_kind[nc2_right[left]]==1 &
        nc2_number[nc2_right[left]]==65535)
         left=nc2_left[left];
+    if(nc2_kind[left]==8 & global_type[nc2_a[left]]==1 &
+       nc2_kind[right]==1 & nc2_number[right]<=255) {
+        /* Call values are already materialized by an earlier ordered
+         * event. A comparison to a char literal needs only the saved
+         * return byte, leaving the X/Y induction homes unchanged. */
+        if(nd_add(104,0,0,0,nc2_number[right])==0) return 0;
+        return nd_add(10,0,rel,0,exit_label);
+    }
     /* A previous ordered call has its byte result in __tret.
      * Compare it with a subsequently indexed char without losing
      * the call value while calculating the table index. */
