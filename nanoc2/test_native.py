@@ -863,6 +863,8 @@ def main():
     run_allocation_tests(driver)
     from test_ass_symbol_api_native import run_symbol_api_tests
     run_symbol_api_tests(driver)
+    from test_ass_patch_native import run_patch_tests
+    run_patch_tests(driver)
     from test_computed_call_native import run_computed_call_tests
     run_computed_call_tests(driver)
     from test_word_array_native import run_word_array_tests
