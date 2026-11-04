@@ -28,11 +28,18 @@ X/Y-carried induction variables synchronized to their existing scalar homes
 before `JSR` and reloaded after return.
 
 Two-byte `int`/`unsigned` scalar loads, copies, literal assignments and
-returns now use the original static homes, with low-byte results in A and
-high-byte results in X. A scalar word plus/minus a literal is lowered directly
-to a two-byte `CLC/ADC` or `SEC/SBC` carry chain, both for assignment and
-return. Other word expressions are still rejected, rather than quietly
-truncated to byte operations. Native tests cover carry, borrow and wraparound.
+returns use the original static homes, with low-byte results in A and
+high-byte results in X. Word plus/minus a literal **or another word scalar**
+lowers to a two-byte `CLC/ADC` or `SEC/SBC` carry chain, including in-place
+updates and direct expression returns. Full-width comparisons `==`, `!=`,
+`<`, `<=`, `>` and `>=` compare high byte first, then low byte only on
+a high-byte tie. Signed comparisons bias the high byte by `$80`; the parser
+records usual signed/unsigned conversion before lowering. Equality and ordering
+branches directly consume the final comparison flags, rather than materialising
+a Boolean. A bare word variable condition uses `LDA/ORA` across both bytes.
+These are general typed operations, not source-loop patterns. Complex expression
+trees, word multiplication, mixed byte/word arithmetic and pointer arithmetic
+remain unsupported and are explicitly rejected.
 
 The current supported calls have **zero, one or two char parameters** and a
 char result, with the callee already defined and only simple side-effect-free
@@ -80,7 +87,10 @@ the native test/benchmark Python harnesses without installing VICE.
 Call tests include a **non-identity one-byte callee** to verify that the actual
 return value is consumed. An earlier identity-only test concealed a bug in
 `nc2_last`, now corrected. The parser tests enforce zero/two-byte arity and
-reject incorrect argument counts.
+reject incorrect argument counts. The committed `word-ops.c` fixture tests
+word arithmetic and signed/unsigned branch lowering, rejects unsupported word
+multiplication and checks that no unresolved `INVALID_HOME` operand escapes
+the generated assembly.
 
 ## Target-native tests
 
@@ -104,10 +114,11 @@ the three-byte entry trampoline, not linked complete applications.
 | `call_index` | 64 B | Non-identity char call inside X-indexed loop |
 | `call_arity` | 89 B | Zero/two-arg calls; return and argument values |
 | `word_scalar` | 116 B | Word loads, copies, literal add/sub, A/X returns; carry, borrow and wraparound |
+| `word_ops` | 804 B | 211 native checks: word+word, aliasing, six signed/unsigned relations, constants and word loop conditions |
 | `two_functions` | 78 B | Two separately streamed functions, static homes, IRQ enabled |
 
-All eight passed in
-[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41766489168).
+All nine passed in
+[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41768542141).
 Native smoke remains opt-in through the `native-smoke` PR label or
 manual dispatch, not the fast default PR gate.
 
@@ -141,15 +152,17 @@ scratch out of KERNAL ZP. The earlier 72% result used an unsafe scratch map
 and is **superseded**, not another comparable image.
 
 The size and VICE tests passed together in
-[workflow run 41766489168](https://github.com/grantaj/nanoc/actions/runs/41766489168).
+[workflow run 41768542141](https://github.com/grantaj/nanoc/actions/runs/41768542141).
 These are function-body results, **not** a compiled `ass.c` image and not
 proof the new compiler binary itself will fit C64 memory.
 
 ## Unfinished work
 
-1. Complete Phase-1 16-bit operations beyond word +/- constant, remaining pointer expressions, general
-   byte arithmetic, initialized globals, calls with pointer args and runtime
-   service calls. Formalize pointer-cursor invalidation across calls.
+1. Complete general 16-bit expressions beyond simple word +/- scalar/literal
+   (mixed widths, composed arithmetic, unary expressions and comparison
+   operands), then remaining pointer expressions, initialized globals, calls
+   with word/pointer arguments and runtime service calls. Formalize pointer-
+   cursor invalidation across calls.
 2. Preserve the one-pass-per-function, bounded-memory design while removing
    remaining old output scaffolding from the inherited parser.
 3. Run the full native Phase-1 corpus, self-compile the new compiler and
