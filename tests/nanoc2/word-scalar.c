@@ -14,6 +14,20 @@ int echo_word(int value)
     return value;
 }
 
+int add_word(int value)
+{
+    int local;
+    local = value + 255;
+    return local + 1;
+}
+
+int subtract_word(int value)
+{
+    int local;
+    local = value - 257;
+    return local - 1;
+}
+
 int main()
 {
     int local;
