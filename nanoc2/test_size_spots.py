@@ -214,7 +214,9 @@ def main():
                     "\n".join(ass_function(name) for name in (
                         "scope_for_name","find_symbol","allocate_symbol",
                         "intern_label","define_constant"))))
-    ass_count=9
+    targets.append(("ass_patch_word_chain",ass_prefix+"\n"+
+                    ass_function("patch_word_chain")))
+    ass_count=10
     # The original nanoc1 host compiler rejects this composed-call fixture.
     # It stays in independent native VICE correctness testing; the physical
     # comparison stays strictly apples-to-apples with accepted source.
