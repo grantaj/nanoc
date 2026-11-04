@@ -26,6 +26,19 @@ def compile_host(driver, source, *args):
                                   result.stderr.decode(errors="replace")))
     return result.stdout.decode()
 
+def exact_c_function(path, name):
+    # Extract an actual checked-in C function, not a substitute algorithm.
+    text = path.read_text()
+    m = re.search(r'^char\s+' + re.escape(name) + r'\s*\([^)]*\)\s*\{',
+                  text, re.M)
+    assert m, name
+    depth, end = 1, m.end()
+    while depth:
+        depth += (text[end] == '{') - (text[end] == '}')
+        end += 1
+    return text[m.start():end]
+
+
 def measure_assembled(asm, old, name):
     m = re.search((r'^(__f[0-9a-fA-F]{2}):\s*$' if old else
                    r'^(__c[0-9a-fA-F]{2}):\s*$'), asm, re.M)
@@ -94,6 +107,13 @@ def main():
         ("copy_pointer", fixture_function("copy_pointer")),
         ("copy_array", "char source_bytes[256];\nchar dest_bytes[256];\n" +
          fixture_function("copy_array")),
+        # Non-traversal controls: constant return and small byte branches.
+        ("constant", exact_c_function(
+            ROOT/"tests"/"nanoc2"/"call-arity.c", "constant")),
+        ("guarded", exact_c_function(
+            ROOT/"tests"/"nanoc2"/"call-arity.c", "guarded")),
+        ("map_byte", exact_c_function(
+            ROOT/"tests"/"nanoc2"/"call-index.c", "map_byte")),
     ]
     results = []
     for name, source in targets:
@@ -117,7 +137,7 @@ def main():
           "saved %d B (%.1f%%)" %
           (old_total,new_total,old_total-new_total,
            100.0*(old_total-new_total)/old_total))
-    assert len(results)==4
+    assert len(results)==7
 
 if __name__=="__main__":
     main()
