@@ -17,6 +17,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 CC = os.environ.get("CC", "cc")
 VASM = os.environ.get("VASM", "vasm6502_oldstyle")
 SOURCE = (ROOT / "nanoc1" / "nanoc1.c").read_text()
+ASS_SOURCE = (ROOT / "bootstrap" / "ass.c").read_text()
 WRITE_FIXTURE = (ROOT / "tests" / "nanoc2" / "indexed-write.c").read_text()
 
 
@@ -29,6 +30,29 @@ def original_function(name):
         n += (SOURCE[p] == "{") - (SOURCE[p] == "}")
         p += 1
     return SOURCE[match.start():p]
+
+
+
+def ass_function(name):
+    """Extract a verbatim function from the actual Phase-1 assembler."""
+    m = re.search(r"^(?:char|int|unsigned)\s+"+re.escape(name)+
+                  r"\s*\([^)]*\)\s*\{",ASS_SOURCE,re.M)
+    assert m,name
+    depth=1
+    end=m.end()
+    while depth:
+        depth += (ASS_SOURCE[end]=="{")-(ASS_SOURCE[end]=="}")
+        end += 1
+    return ASS_SOURCE[m.start():end]
+
+
+def ass_global(name):
+    """Extract a verbatim initialized global declaration from ass.c."""
+    m = re.search(r"^(?:char|int|unsigned)\s+"+re.escape(name)+
+                  r"(?:\[\d+\])?\s*=\s*[^;]+;",
+                  ASS_SOURCE,re.M)
+    assert m,name
+    return m.group()
 
 
 def fixture_function(name):
