@@ -195,8 +195,10 @@ def multi_function_test():
         "\tlda #$c8", "\tsta n2_fill_bytes_n",
         "\tlda #$5a", "\tsta n2_fill_bytes_value",
     ]
+    lines += ["\tlda #$41", "\tsta $03"]
     lines += check_call(200,0)  # first function uses $0800 jump wrapper
     lines += [
+        "\tlda #$42", "\tsta $03",
         "\tldx #$00", ".fill_verify:",
         "\tlda $31f9,x", "\tcmp #$5a",
         "\tbeq .fill_good", "\tjmp native_fail",
@@ -209,12 +211,14 @@ def multi_function_test():
         "\tldx #$00", ".source_prepare:",
         "\ttxa", "\tsta $300f,x",
         "\tinx", "\tcpx #$c8", "\tbne .source_prepare",
+        "\tlda #$43", "\tsta $03",
         "\tjsr n2_copy_bytes",
         "\tcmp #$c8", "\tbeq .return_a",
         "\tjmp native_fail",
         ".return_a:", "\tcpx #$00", "\tbeq .return_x",
         "\tjmp native_fail",
-        ".return_x:", "\tldx #$00", ".copy_verify:",
+        ".return_x:", "\tlda #$44", "\tsta $03",
+        "\tldx #$00", ".copy_verify:",
         "\tlda $300f,x", "\tcmp $31f9,x",
         "\tbeq .copy_good", "\tjmp native_fail",
         ".copy_good:", "\tinx", "\tcpx #$c8", "\tbne .copy_verify",
@@ -232,7 +236,8 @@ def run_native(name, source, test_lines, driver):
     harness = list(test_lines)
     harness += [
         "\tjmp success",
-        "native_fail:", "\tlda #$40", "\tsta $02",
+        "native_fail:", "\tlda $03" if name == "two_functions" else "\tlda #$40",
+        "\tsta $02",
         ".halt:", "\tjmp .halt",
         "success:", "\tlda #$ff", "\tsta $02",
         ".halt:", "\tjmp .halt",
