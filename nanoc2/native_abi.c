@@ -72,6 +72,32 @@ char n2_function_alias()
     return tb_char('\n');
 }
 
+/* Local names repeat between functions. The assembler aliases used by
+ * native tests and diagnostics therefore include the owning function.
+ * The first function also retains legacy unqualified aliases for the
+ * original four-function native smoke tests.
+ */
+char n2_scoped_alias(char slot)
+{
+    char i;
+    if (tb_text("n2_")==0) return 0;
+    i=0;
+    while(i<global_name_len[nc2_function_symbol]) {
+        if(tb_char(global_name[(unsigned)nc2_function_symbol*32+i])==0)
+            return 0;
+        i=i+1;
+    }
+    if(tb_char('_')==0) return 0;
+    i=0;
+    while(i<local_name_len[slot]) {
+        if(tb_char(local_name[(unsigned)slot*32+i])==0) return 0;
+        i=i+1;
+    }
+    if(tb_text(" = ")==0) return 0;
+    if(n2_name(2,slot)==0) return 0;
+    return tb_char('\n');
+}
+
 char n2_local_homes()
 {
     unsigned offset;
@@ -80,8 +106,11 @@ char n2_local_homes()
     i=0;
     while(i<nc2_local_slots) {
         if (n2_home(2,i,offset)==0) return 0;
-        if (n2_alias(2,i,local_name+((unsigned)i*32),
-                     local_name_len[i])==0) return 0;
+        if (n2_scoped_alias(i)==0) return 0;
+        if (nc2_function_count==1) {
+            if (n2_alias(2,i,local_name+((unsigned)i*32),
+                         local_name_len[i])==0) return 0;
+        }
         offset=offset+type_size(local_type[i]);
         i=i+1;
     }
