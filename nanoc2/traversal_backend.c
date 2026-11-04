@@ -209,6 +209,8 @@ char tb_plan()
     return 1;
 }
 
+char tb_load_var(char v); /* index reload is defined below */
+
 char tb_load_index(char index, char *op, char array, char indirect)
 {
     if (indirect != 0) {
