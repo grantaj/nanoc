@@ -935,6 +935,24 @@ char nd_assignment(char area, char symbol, unsigned rhs)
             if(src==dst) return 1; /* an in-place identity is no work */
             return nd_add(28,dst,src,0,0);
         }
+        /* A little-endian byte pair packed as low | (high << 8)
+         * is simply two direct byte reads and stores on the 6502.
+         * This common Phase-1 expression has no side effects, and
+         * neither byte overlaps the other in the resulting word. */
+        if(nc2_kind[rhs]==6 & nc2_a[rhs]=='|' &
+           (nc2_kind[nc2_left[rhs]]==4 |
+            nc2_kind[nc2_left[rhs]]==5) &
+           nc2_kind[nc2_right[rhs]]==6 &
+           nc2_a[nc2_right[rhs]]==146 &
+           (nc2_kind[nc2_left[nc2_right[rhs]]]==4 |
+            nc2_kind[nc2_left[nc2_right[rhs]]]==5) &
+           nc2_kind[nc2_right[nc2_right[rhs]]]==1 &
+           nc2_number[nc2_right[nc2_right[rhs]]]==8) {
+            if(nd_index(nc2_left[rhs],0)==0) return 0;
+            if(nd_add(91,dst,0,0,0)==0) return 0;
+            if(nd_index(nc2_left[nc2_right[rhs]],0)==0) return 0;
+            return nd_add(92,dst,0,0,0);
+        }
         /* The assembler uses masks for opcode fields and 16-bit wrap.
          * Preserve ordinary C bitwise semantics, including destination
          * aliasing. & $FFFF on the same home emits no instructions. */
