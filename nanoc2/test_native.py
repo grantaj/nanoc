@@ -618,6 +618,95 @@ def mixed_compare_test():
              (("start",start,2),("limit",limit,1)),expect)
     return lines
 
+
+def expression_condition_test():
+    lines = ["\t* = $1000", "main:"]
+    case = 0
+
+    def run(name, arguments, expected):
+        nonlocal case
+        for param, value, width in arguments:
+            lines.extend([
+                "\tlda #$%02x" % (value & 255),
+                "\tsta n2_%s_%s" % (name,param),
+            ])
+            if width == 2:
+                lines.extend([
+                    "\tlda #$%02x" % ((value >> 8) & 255),
+                    "\tsta n2_%s_%s+1" % (name,param),
+                ])
+        lines.append("\tjsr n2_%s" % name)
+        lines.extend(word_assert(expected & 255,(expected >> 8) & 255,6000+case))
+        case += 1
+
+    def signed16(n):
+        n = n & 65535
+        return n if n < 32768 else n-65536
+
+    triples = [
+        (0,0,0), (1,2,3), (0xff,1,0x100), (0xfffe,1,0),
+        (0x7fff,0,0x8000), (0x8000,1,0), (0xff00,0x80,0xff80),
+    ]
+    for left,right,limit in triples:
+        value=signed16(left+right)
+        args=(("left",left,2),("right",right,2),("limit",limit,2))
+        run("expr_less",args,int(value < signed16(limit)))
+
+    for left,offset,limit in [
+        (0,0,0), (255,1,255), (0xff00,0x7f,0xff7f),
+        (0x7fff,0,0x7fff), (0x8000,1,0x8000),
+        (0xffff,1,1), (0x100,0xff,0x200),
+    ]:
+        args=(("left",left,2),("offset",offset,1),("limit",limit,2))
+        run("expr_ge_byte",args,int(signed16(left+offset)>=signed16(limit)))
+
+    for left in (0,1,254,255,256,65534,65535):
+        for offset in (0,1,255):
+            val=(left+offset+1)&65535
+            run("expr_chain_equal",(("left",left,2),("offset",offset,1)),
+                int(val==256))
+
+    for value in (0,1,2,127,128,254,255):
+        run("expr_chain_truth",(("value",value,1),),1)
+
+    for left,right in ((0,0),(0,1),(1,0),(255,255),
+                       (0xff00,0xff00),(0x8000,0xffff)):
+        run("expr_difference_truth",
+            (("left",left,2),("right",right,2)),int(left!=right))
+
+    for offset,left,limit in [
+        (0,0,0),(1,0,1),(255,1,256),(0,65535,0),
+        (1,65535,1),(127,100,227),(255,256,511),
+    ]:
+        val=(offset+left)&65535
+        run("expr_reversed_byte",
+            (("offset",offset,1),("left",left,2),("limit",limit,2)),
+            int(val<limit))
+
+    for left,offset,limit in [
+        (0,0,0),(0,1,1),(255,1,0),(255,1,255),
+        (0xff00,0,0),(65535,1,0),(3,255,255),
+    ]:
+        val=(left+offset)&65535
+        run("expr_compare_byte",
+            (("left",left,2),("offset",offset,1),("limit",limit,1)),
+            int(val<=limit))
+
+    for value in (1,2,3,5,10):
+        run("expr_count_down",(("value",value,2),),value-1)
+
+    for limit in (0,1,2,3,6,12):
+        run("expr_index_until",(("limit",limit,1),),max(0,limit-1))
+    for index in (0,1,2,3,4,5,6,7,8,9,10):
+        lines.extend([
+            "\tlda n2_expr_marks+%d" % index,
+            "\tcmp #$%02x" % index,
+            "\tbeq .expr_index_%d" % index,
+            "\tjmp native_fail",
+            ".expr_index_%d:" % index,
+        ])
+    return lines
+
 def run_native(name, source, test_lines, driver):
     output = subprocess.run([str(driver), "native"], input=source.encode(),
                             capture_output=True, check=True)
@@ -721,6 +810,8 @@ def main():
     run_native("mixed_arithmetic", mixed_source, mixed_arithmetic_test(), driver)
     compare_source = (ROOT / "tests" / "nanoc2" / "mixed-compare.c").read_text()
     run_native("mixed_compare", compare_source, mixed_compare_test(), driver)
+    expr_source = (ROOT / "tests" / "nanoc2" / "expression-condition.c").read_text()
+    run_native("expression_condition", expr_source, expression_condition_test(), driver)
     # One source unit, two real Phase-1 definitions. The parser must emit
     # each bounded function tape before it is reset for the next function.
     multi_source = (
