@@ -199,122 +199,6 @@ char nd_wide_index_read(char area,char symbol,
     return nd_add(78,0,0,0,0);
 }
 
-/* Lower a left-associated sequence of + and - operators as a 16-bit
- * accumulator with its initial value read before the destination is written.
- * In particular, "a = a + b + a" must read the old a on the last term.
- * Only pure scalar/literal leaves are accepted; more general expression
- * trees and calls are rejected rather than reordered.
- */
-char nd_chain(unsigned expr, char result_type, int dest, char returning)
-{
-    unsigned current;
-    unsigned right;
-    unsigned n;
-    unsigned j;
-    int value;
-    char kind;
-    char id;
-    unsigned literal;
-
-    current=expr;
-    n=0;
-    while(nc2_kind[current]==6 &
-          (nc2_a[current]=='+' | nc2_a[current]=='-')) {
-        if(n>=32) { nd_error=31;return 0; }
-        nd_chain_right[n]=nc2_right[current];
-        nd_chain_sign[n]=nc2_a[current];
-        n=n+1;
-        current=nc2_left[current];
-        if(current==0) { nd_error=31;return 0; }
-    }
-    if(n==0) { nd_error=31;return 0; }
-    if(nc2_kind[current]==1) {
-        kind=1;
-        id=0;
-        literal=nc2_number[current];
-    } else if(nc2_kind[current]==2) {
-        if(nc2_number[current]==1) kind=2;
-        else if(nc2_number[current]==2 | nc2_number[current]==3)
-            kind=3;
-        else {nd_error=31;return 0;}
-        value=nd_record(nc2_a[current],nc2_b[current],1);
-        if(value<0) return 0;
-        id=value;
-        literal=0;
-    } else if(nc2_kind[current]==6 & nc2_a[current]=='*' &
-              nc2_kind[nc2_left[current]]==2 &
-              nc2_kind[nc2_right[current]]==1 &
-              (nc2_number[nc2_left[current]]==2 |
-               nc2_number[nc2_left[current]]==3)) {
-        /* The decimal grammar uses a word times literal ten as the
-         * beginning of a left-associated +/- chain. The 6502 emitter
-         * implements the constant 10 with an 8x+2x shift/add, leaving
-         * the product in the same two-byte arithmetic accumulator. */
-        value=nd_word(nc2_left[current]);
-        if(value<0) return 0;
-        if(nd_add(50,3,value,0,0)==0) return 0;
-        if(nd_add(96,0,0,0,nc2_number[nc2_right[current]])==0)
-            return 0;
-        kind=4; /* scratch accumulator already initialized */
-    } else if(nc2_kind[current]==4 & nc2_a[current]==1 &
-              nc2_number[current]==2 &
-              (global_type[nc2_b[current]]==2 |
-               global_type[nc2_b[current]]==3)) {
-        if(nd_wide_index_read(nc2_a[current],nc2_b[current],
-                              nc2_left[current],0,0)==0) return 0;
-        kind=4; /* already materialized full word in __tacc */
-    } else {nd_error=31;return 0;}
-    if(kind!=4) {
-        if(nd_add(50,kind,id,0,literal)==0) return 0;
-    }
-    j=n;
-    while(j!=0) {
-        j=j-1;
-        right=nd_chain_right[j];
-        if(nc2_kind[right]==1) {
-            kind=1;
-            id=0;
-            literal=nc2_number[right];
-        } else if(nc2_kind[right]==2) {
-            if(nc2_number[right]==1) kind=2;
-            else if(nc2_number[right]==2 | nc2_number[right]==3)
-                kind=3;
-            else {nd_error=31;return 0;}
-            value=nd_record(nc2_a[right],nc2_b[right],1);
-            if(value<0) return 0;
-            id=value;
-            literal=0;
-        } else if((nc2_kind[right]==4 |
-                    nc2_kind[right]==5) &
-                  nc2_number[right]==1) {
-            /* A byte pointer/array load is a zero-extended arithmetic
-             * operand. Stage A in the independent RHS word scratch
-             * before ADC/SBC consumes the full expression in __tacc. */
-            if(nd_index(right,0)==0) return 0;
-            if(nd_add(97,0,0,0,0)==0) return 0;
-            kind=4;
-            id=0;
-            literal=0;
-        } else if(nc2_kind[right]==4 & nc2_a[right]==1 &
-                  nc2_number[right]==2 &
-                  (global_type[nc2_b[right]]==2 |
-                   global_type[nc2_b[right]]==3)) {
-            /* The left value remains in __tacc. Address and load this
-             * array term into independent __targ, then execute ADC/SBC.
-             * The index address scratch never aliases either value. */
-            if(nd_wide_index_read(nc2_a[right],nc2_b[right],
-                                  nc2_left[right],0,1)==0) return 0;
-            kind=4;
-            id=0;
-            literal=0;
-        } else {nd_error=31;return 0;}
-        if(nd_add(51,nd_chain_sign[j],kind,id,literal)==0) return 0;
-    }
-    if(returning==2) return 1; /* leave full expression in __tacc */
-    if(returning==1) return nd_add(53,result_type,0,0,0);
-    return nd_add(52,dest,result_type,0,0);
-}
-
 /* All indexed operations share one address decision: fixed byte array
  * indexed by X/Y, or a byte pointer indexed by Y.  Mode is load, compare,
  * or store.  No source-loop pattern matching is involved.
@@ -435,6 +319,122 @@ char nd_index(unsigned node, char mode)
     }
     nd_error=11;
     return 0;
+}
+
+/* Lower a left-associated sequence of + and - operators as a 16-bit
+ * accumulator with its initial value read before the destination is written.
+ * In particular, "a = a + b + a" must read the old a on the last term.
+ * Only pure scalar/literal leaves are accepted; more general expression
+ * trees and calls are rejected rather than reordered.
+ */
+char nd_chain(unsigned expr, char result_type, int dest, char returning)
+{
+    unsigned current;
+    unsigned right;
+    unsigned n;
+    unsigned j;
+    int value;
+    char kind;
+    char id;
+    unsigned literal;
+
+    current=expr;
+    n=0;
+    while(nc2_kind[current]==6 &
+          (nc2_a[current]=='+' | nc2_a[current]=='-')) {
+        if(n>=32) { nd_error=31;return 0; }
+        nd_chain_right[n]=nc2_right[current];
+        nd_chain_sign[n]=nc2_a[current];
+        n=n+1;
+        current=nc2_left[current];
+        if(current==0) { nd_error=31;return 0; }
+    }
+    if(n==0) { nd_error=31;return 0; }
+    if(nc2_kind[current]==1) {
+        kind=1;
+        id=0;
+        literal=nc2_number[current];
+    } else if(nc2_kind[current]==2) {
+        if(nc2_number[current]==1) kind=2;
+        else if(nc2_number[current]==2 | nc2_number[current]==3)
+            kind=3;
+        else {nd_error=31;return 0;}
+        value=nd_record(nc2_a[current],nc2_b[current],1);
+        if(value<0) return 0;
+        id=value;
+        literal=0;
+    } else if(nc2_kind[current]==6 & nc2_a[current]=='*' &
+              nc2_kind[nc2_left[current]]==2 &
+              nc2_kind[nc2_right[current]]==1 &
+              (nc2_number[nc2_left[current]]==2 |
+               nc2_number[nc2_left[current]]==3)) {
+        /* The decimal grammar uses a word times literal ten as the
+         * beginning of a left-associated +/- chain. The 6502 emitter
+         * implements the constant 10 with an 8x+2x shift/add, leaving
+         * the product in the same two-byte arithmetic accumulator. */
+        value=nd_word(nc2_left[current]);
+        if(value<0) return 0;
+        if(nd_add(50,3,value,0,0)==0) return 0;
+        if(nd_add(96,0,0,0,nc2_number[nc2_right[current]])==0)
+            return 0;
+        kind=4; /* scratch accumulator already initialized */
+    } else if(nc2_kind[current]==4 & nc2_a[current]==1 &
+              nc2_number[current]==2 &
+              (global_type[nc2_b[current]]==2 |
+               global_type[nc2_b[current]]==3)) {
+        if(nd_wide_index_read(nc2_a[current],nc2_b[current],
+                              nc2_left[current],0,0)==0) return 0;
+        kind=4; /* already materialized full word in __tacc */
+    } else {nd_error=31;return 0;}
+    if(kind!=4) {
+        if(nd_add(50,kind,id,0,literal)==0) return 0;
+    }
+    j=n;
+    while(j!=0) {
+        j=j-1;
+        right=nd_chain_right[j];
+        if(nc2_kind[right]==1) {
+            kind=1;
+            id=0;
+            literal=nc2_number[right];
+        } else if(nc2_kind[right]==2) {
+            if(nc2_number[right]==1) kind=2;
+            else if(nc2_number[right]==2 | nc2_number[right]==3)
+                kind=3;
+            else {nd_error=31;return 0;}
+            value=nd_record(nc2_a[right],nc2_b[right],1);
+            if(value<0) return 0;
+            id=value;
+            literal=0;
+        } else if((nc2_kind[right]==4 |
+                    nc2_kind[right]==5) &
+                  nc2_number[right]==1) {
+            /* A byte pointer/array load is a zero-extended arithmetic
+             * operand. Stage A in the independent RHS word scratch
+             * before ADC/SBC consumes the full expression in __tacc. */
+            if(nd_index(right,0)==0) return 0;
+            if(nd_add(97,0,0,0,0)==0) return 0;
+            kind=4;
+            id=0;
+            literal=0;
+        } else if(nc2_kind[right]==4 & nc2_a[right]==1 &
+                  nc2_number[right]==2 &
+                  (global_type[nc2_b[right]]==2 |
+                   global_type[nc2_b[right]]==3)) {
+            /* The left value remains in __tacc. Address and load this
+             * array term into independent __targ, then execute ADC/SBC.
+             * The index address scratch never aliases either value. */
+            if(nd_wide_index_read(nc2_a[right],nc2_b[right],
+                                  nc2_left[right],0,1)==0) return 0;
+            kind=4;
+            id=0;
+            literal=0;
+        } else {nd_error=31;return 0;}
+        if(nd_add(51,nd_chain_sign[j],kind,id,literal)==0) return 0;
+    }
+    if(returning==2) return 1; /* leave full expression in __tacc */
+    if(returning==1) return nd_add(53,result_type,0,0,0);
+    return nd_add(52,dest,result_type,0,0);
 }
 
 /* A true 16-bit index cannot fit in 6502 X/Y. Compute the full address
