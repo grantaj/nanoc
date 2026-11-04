@@ -318,35 +318,40 @@ char tb_compare_imm(char variable, unsigned value)
     return tb_immediate("cmp",value);
 }
 
-char tb_branch(char condition, unsigned dest)
+/* Small non-recursive primitive for a single processor-flag predicate. */
+char tb_branch_single(char condition, unsigned dest)
 {
     unsigned skip;
     char *inverse;
-    if (condition == 0) return tb_jump("jmp",dest);
-    /* Composite relations preserve both C and Z from the final CMP.
-     * > is false when (C=0 or Z=1); <= is false when (C=1 and Z=0). */
-    if (condition == 5) {
-        if(tb_branch(3,dest)==0) return 0;
-        return tb_branch(1,dest);
+    if (condition==1) inverse="bne";
+    else if (condition==2) inverse="beq";
+    else if (condition==3) inverse="bcs";
+    else if (condition==4) inverse="bcc";
+    else { tb_error=5;return 0; }
+    skip=tb_next_label;
+    tb_next_label=tb_next_label+1;
+    if(tb_jump(inverse,skip)==0) return 0;
+    if(tb_jump("jmp",dest)==0) return 0;
+    return tb_label(skip);
+}
+
+char tb_branch(char condition, unsigned dest)
+{
+    unsigned skip;
+    if(condition==0) return tb_jump("jmp",dest);
+    /* > is false when C=0 or Z=1; <= when C=1 and Z=0. */
+    if(condition==5) {
+        if(tb_branch_single(3,dest)==0) return 0;
+        return tb_branch_single(1,dest);
     }
-    if (condition == 6) {
+    if(condition==6) {
         skip=tb_next_label;
         tb_next_label=tb_next_label+1;
         if(tb_jump("bcc",skip)==0) return 0;
-        if(tb_branch(2,dest)==0) return 0;
+        if(tb_branch_single(2,dest)==0) return 0;
         return tb_label(skip);
     }
-    /* Always-safe long conditional branch; relax only after correctness. */
-    if (condition == 1) inverse = "bne";
-    else if (condition == 2) inverse = "beq";
-    else if (condition == 3) inverse = "bcs";
-    else if (condition == 4) inverse = "bcc";
-    else { tb_error = 5; return 0; }
-    skip = tb_next_label;
-    tb_next_label = tb_next_label + 1;
-    if (tb_jump(inverse,skip) == 0) return 0;
-    if (tb_jump("jmp",dest) == 0) return 0;
-    return tb_label(skip);
+    return tb_branch_single(condition,dest);
 }
 
 /* Leave carry and zero set by a lexicographic 16-bit CMP: compare high
