@@ -395,56 +395,97 @@ char nd_index(unsigned node, char mode)
 char nd_wide_index_store(char area, char symbol, unsigned index_node,
                          unsigned rhs, char element_type)
 {
+    unsigned leaf;
+    unsigned displacement;
+    unsigned operand;
+    unsigned mask;
+    unsigned mask_node;
+    unsigned shift_node;
+    unsigned literal;
     int array;
     int index;
     int source;
+    char stride;
     char kind;
-    unsigned operand;
-    unsigned mask;
-    unsigned literal;
+    char masked;
+    char shifted;
     if(area!=1 | global_kind[symbol]!=2 |
        (element_type!=1 & element_type!=2 & element_type!=3)) {
         nd_error=32; return 0;
     }
-    if(nc2_kind[index_node]!=2 |
-       (nc2_number[index_node]!=2 & nc2_number[index_node]!=3)) {
-        nd_error=32; return 0;
+    leaf=index_node;
+    displacement=0;
+    if(nc2_kind[leaf]==6 &
+       (nc2_a[leaf]=='+' | nc2_a[leaf]=='-')) {
+        mask_node=nc2_right[leaf];
+        if(nc2_kind[mask_node]!=1) {nd_error=32;return 0;}
+        displacement=nc2_number[mask_node];
+        if(nc2_a[leaf]=='-') displacement=(0-displacement)&65535;
+        leaf=nc2_left[leaf];
     }
-    index=nd_word(index_node);
+    if(nc2_kind[leaf]!=2) {nd_error=32;return 0;}
+    stride=type_size(element_type);
+    if(nc2_number[leaf]==1) {
+        index=nd_scalar(leaf);
+        stride=stride+4; /* zero-extended byte index */
+    } else if(nc2_number[leaf]==2 | nc2_number[leaf]==3) {
+        index=nd_word(leaf);
+    } else {nd_error=32;return 0;}
     if(index<0) return 0;
     array=nd_record(1,symbol,2);
     if(array<0) return 0;
     nd_wide_index_used=1;
-    if(nd_add(74,array,index,type_size(element_type),0)==0) return 0;
+    if(nd_add(74,array,index,stride,displacement)==0) return 0;
 
     operand=rhs;
-    /* An AND $FFFF is the identity on a 16-bit Phase-1 value,
-     * including the very common fixup_addend[n] = addend & 65535. */
+    mask=255;
+    masked=0;
+    shifted=0;
+    /* All arithmetic here is a pure scalar read. Defer the read until
+     * after computing the indexed address; no stack temporaries. */
     if(nc2_kind[operand]==6 & nc2_a[operand]=='&') {
-        mask=nc2_right[operand];
-        if(nc2_kind[mask]==1 & nc2_number[mask]==65535) {
+        mask_node=nc2_right[operand];
+        if(nc2_kind[mask_node]!=1) {nd_error=32;return 0;}
+        if(nc2_number[mask_node]==65535) {
+            operand=nc2_left[operand]; /* 16-bit identity */
+        } else {
+            if(element_type!=1) {nd_error=32;return 0;}
+            mask=nc2_number[mask_node]&255;
             operand=nc2_left[operand];
+            masked=1;
         }
+    }
+    if(nc2_kind[operand]==6 & nc2_a[operand]==147) {
+        shift_node=nc2_right[operand];
+        if(element_type!=1 | nc2_kind[shift_node]!=1 |
+           nc2_number[shift_node]!=8) {
+            nd_error=32;return 0;
+        }
+        shifted=1;
+        operand=nc2_left[operand];
     }
     literal=0;
     if(nc2_kind[operand]==1) {
+        if(shifted!=0 | masked!=0) {nd_error=32;return 0;}
         kind=1;
         source=0;
         literal=nc2_number[operand];
     } else if(nc2_kind[operand]==2) {
-        /* Tape kind 1 is a literal, 2 is a char scalar, and 3 is
-         * a word scalar. Source type tags are 1=char, 2=int,
-         * 3=unsigned. Do not accidentally interpret char as #0 or
-         * truncate an int to one byte. */
         if(nc2_number[operand]==1) kind=2;
         else if(nc2_number[operand]==2 | nc2_number[operand]==3)
             kind=3;
         else {nd_error=32;return 0;}
         source=nd_record(nc2_a[operand],nc2_b[operand],1);
         if(source<0) return 0;
-    } else {
-        nd_error=32;return 0;
-    }
+        if(shifted!=0) {
+            if(kind!=3) {nd_error=32;return 0;}
+            kind=6; /* value >> 8, optionally AND a low-byte mask */
+            literal=mask;
+        } else if(masked!=0) {
+            kind=5; /* byte masked source */
+            literal=mask;
+        }
+    } else {nd_error=32;return 0;}
     return nd_add(75,kind,source,type_size(element_type),literal);
 }
 
