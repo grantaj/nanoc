@@ -57,10 +57,21 @@ print("original Phase-1 type rejection passed")
 # handles one function and uninitialized BSS only. Reject unsupported units
 # before treating their emitted assembly as a complete program.
 for candidate in (
-    "char first() { return 1; } char second() { return 2; }",
     "char initialized = 7; char first() { return 1; }",
 ):
     result=subprocess.run([str(DRIVER),'native'],input=candidate.encode(),
                           capture_output=True)
     assert result.returncode != 0, "unsupported native translation unit accepted"
-print("native ABI unit-boundary rejection checks passed")
+print("native ABI initialized-data rejection passed")
+
+# Multiple functions no longer require keeping their previous semantic tapes
+# in memory. All definitions must be present in one generated assembly unit.
+r = subprocess.run(
+    [str(DRIVER), 'native'],
+    input=b'char first() { return 1; } char second() { return 2; }',
+    capture_output=True)
+assert r.returncode == 0, r.stderr.decode()
+generated = r.stdout.decode()
+assert generated.count('\n\trts\n') == 2, generated
+assert generated.count('\n__c') >= 2
+print("original parser streamed two independent functions correctly")
