@@ -257,11 +257,13 @@ char tb_scaled_pointer(char ptr, char array, char index, unsigned stride)
  * argument slot is not an allocator temporary; it has a stable __vFF_00
  * home determined by the original Phase-1 symbol table.
  */
-char tb_stage_byte(char callee)
+char tb_stage_byte(char callee,char argument)
 {
     if(tb_text("\tsta __v")==0) return 0;
     if(tb_hex2(callee)==0) return 0;
-    return tb_text("_00\n");
+    if(tb_char('_')==0) return 0;
+    if(tb_hex2(argument)==0) return 0;
+    return tb_char('\n');
 }
 
 /* A call ends a traversal register lifetime. Sync induction registers to
@@ -398,7 +400,7 @@ char tb_compile()
         } else if (op == 21) {
             if (tb_immediate("lda",k) == 0) return 0;
         } else if (op == 22) {
-            if (tb_stage_byte(d)==0) return 0;
+            if (tb_stage_byte(d,a)==0) return 0;
         } else if (op == 23) {
             if (tb_call_byte(d)==0) return 0;
         } else if (op == 25) {
