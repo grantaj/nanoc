@@ -520,6 +520,9 @@ char nd_index_store(char area,char symbol,unsigned index_node,unsigned rhs)
 {
     char kind;
     int source;
+    int array;
+    int word_base;
+    int byte_offset;
     if (rhs==0 | index_node==0) { nd_error=27; return 0; }
     /* A global byte array indexed by a full 16-bit base plus a byte
      * displacement needs a real 6502 effective address. Evaluate the
@@ -534,9 +537,6 @@ char nd_index_store(char area,char symbol,unsigned index_node,unsigned rhs)
         nc2_number[nc2_left[index_node]]==3) &
        nc2_kind[nc2_right[index_node]]==2 &
        nc2_number[nc2_right[index_node]]==1) {
-        int array;
-        int word_base;
-        int byte_offset;
         if(nc2_kind[rhs]==1) {
             if(nc2_number[rhs]>255) {nd_error=27;return 0;}
             if(nd_add(21,0,0,0,nc2_number[rhs])==0) return 0;
