@@ -95,3 +95,17 @@ for bad in (
                             capture_output=True)
     assert result.returncode != 0, "invalid function call count accepted"
 print("original parser: zero/two-byte calls, argument count rejection passed")
+
+# The word slice uses the same original Phase-1 typed nodes and static BSS
+# slots. Complete 16-bit arithmetic remains an explicit unsupported case.
+word = (ROOT.parent/"tests"/"nanoc2"/"word-scalar.c").read_text()
+result = subprocess.run([str(DRIVER),"native"],input=word.encode(),
+                        capture_output=True)
+assert result.returncode == 0, result.stderr.decode()
+out = result.stdout.decode()
+assert "ldx #$12" in out and "sta __g" in out and "+1" in out
+invalid = word.replace("local = 4660;", "local = local + 1;")
+result = subprocess.run([str(DRIVER),"native"],input=invalid.encode(),
+                        capture_output=True)
+assert result.returncode != 0, "unsupported 16-bit arithmetic silently accepted"
+print("original parser: typed 16-bit scalars and arithmetic rejection passed")
