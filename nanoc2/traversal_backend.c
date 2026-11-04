@@ -1357,6 +1357,50 @@ char tb_compile()
             if(tb_location("sta",1,d,"+1")==0) return 0;
         } else if (op == 88) {
             if(tb_operand("sta","__tbyte")==0) return 0;
+        } else if (op == 98) {
+            /* Byte difference as a call argument: C char arithmetic
+             * wraps on assignment to the byte parameter. Save a live
+             * X/Y RHS before A is consumed by the subtraction. */
+            if(k==tb_x) {
+                if(tb_operand("stx","__twlo")==0) return 0;
+            }
+            if(k==tb_y) {
+                if(tb_operand("sty","__twlo")==0) return 0;
+            }
+            if(tb_load_var(b)==0) return 0;
+            if(tb_simple("sec")==0) return 0;
+            if(k==tb_x | k==tb_y) {
+                if(tb_operand("sbc","__twlo")==0) return 0;
+            } else {
+                if(tb_location("sbc",1,k,"")==0) return 0;
+            }
+            if(tb_param("sta",d,a,"")==0) return 0;
+        } else if (op == 99) {
+            /* Two-byte address + scalar offset: preserve the carry
+             * from the low-byte ADC to the high-byte ADC, promoting
+             * a char offset with zero as its high byte. */
+            if(k==1 & (b==tb_x | b==tb_y)) {
+                if(b==tb_x) {
+                    if(tb_operand("stx","__twlo")==0) return 0;
+                } else {
+                    if(tb_operand("sty","__twlo")==0) return 0;
+                }
+            }
+            if(tb_simple("clc")==0) return 0;
+            if(tb_param("lda",d,a,"")==0) return 0;
+            if(k==1 & (b==tb_x | b==tb_y)) {
+                if(tb_operand("adc","__twlo")==0) return 0;
+            } else {
+                if(tb_location("adc",1,b,"")==0) return 0;
+            }
+            if(tb_param("sta",d,a,"")==0) return 0;
+            if(tb_param("lda",d,a,"+1")==0) return 0;
+            if(k==1) {
+                if(tb_immediate("adc",0)==0) return 0;
+            } else if(k==2 | k==3) {
+                if(tb_location("adc",1,b,"+1")==0) return 0;
+            } else {tb_error=99;return 0;}
+            if(tb_param("sta",d,a,"+1")==0) return 0;
         } else if (op == 86) {
             if(tb_source_pointer("lda",b,k,"")==0) return 0;
             if(tb_param("sta",d,a,"")==0) return 0;
