@@ -836,6 +836,9 @@ def main():
     run_native("mixed_compare", compare_source, mixed_compare_test(), driver)
     expr_source = (ROOT / "tests" / "nanoc2" / "expression-condition.c").read_text()
     run_native("expression_condition", expr_source, expression_condition_test(), driver)
+    # Actual Phase-1 assembler, with unmodified functions and data.
+    from test_ass_native import run_ass_tests
+    run_ass_tests(driver)
     # One source unit, two real Phase-1 definitions. The parser must emit
     # each bounded function tape before it is reset for the next function.
     multi_source = (
