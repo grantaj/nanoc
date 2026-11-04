@@ -901,6 +901,13 @@ char nd_condition(unsigned expr, unsigned exit_label)
     int l;
     int r;
     if(expr==0) {nd_error=16;return 0;}
+    /* A literal condition has no runtime comparison. In particular
+     * while (1) is just its loop body and backward branch; if (0)
+     * jumps to the false target. Both preserve Phase-1 integer truth. */
+    if(nc2_kind[expr]==1) {
+        if(nc2_number[expr]!=0) return 1;
+        return nd_add(11,0,0,0,exit_label);
+    }
     if(nc2_kind[expr]==2) {
         if(nc2_number[expr]==2 | nc2_number[expr]==3) {
             l=nd_word(expr);
