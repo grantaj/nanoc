@@ -534,7 +534,11 @@ char tb_compare_word(char left, char right, char is_unsigned,
     if(literal!=0) {
         if(tb_immediate("cmp",number & 255)==0) return 0;
     } else {
-        if(tb_location("cmp",1,right,"")==0) return 0;
+        if(right==0) {
+            if(tb_operand("cmp","__tacc")==0) return 0;
+        } else {
+            if(tb_location("cmp",1,right,"")==0) return 0;
+        }
     }
     return tb_label(done);
 }
@@ -599,7 +603,11 @@ char tb_numeric_compare(char left, char right, char descriptor,
     /* A signed word RHS needs a high-byte bias. Compute it first,
      * leaving A free to load the LHS, then compare against scratch. */
     if(bias!=0 & rk==3) {
-        if(tb_location("lda",1,right,"+1")==0) return 0;
+        if(right==0) {
+            if(tb_operand("lda","__tacc+1")==0) return 0;
+        } else {
+            if(tb_location("lda",1,right,"+1")==0) return 0;
+        }
         if(tb_immediate("eor",bias)==0) return 0;
         if(tb_operand("sta","__twlo")==0) return 0;
     }
@@ -611,7 +619,11 @@ char tb_numeric_compare(char left, char right, char descriptor,
     } else if(bias!=0) {
         if(tb_operand("cmp","__twlo")==0) return 0;
     } else {
-        if(tb_location("cmp",1,right,"+1")==0) return 0;
+        if(right==0) {
+            if(tb_operand("cmp","__tacc+1")==0) return 0;
+        } else {
+            if(tb_location("cmp",1,right,"+1")==0) return 0;
+        }
     }
     done=tb_next_label;
     tb_next_label=tb_next_label+1;
