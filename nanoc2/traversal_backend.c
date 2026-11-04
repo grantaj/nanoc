@@ -45,7 +45,8 @@
  * 86 static two-byte pointer argument staging,
  * 88 save an indexed byte before a full-width numeric comparison,
  * 89 compute full global byte array base + word index + byte index,
- * 90 store the staged RHS byte at that computed array address.
+ * 90 store the staged RHS byte at that computed array address,
+ * 91/92 store low/high bytes of a packed 16-bit word.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -1227,6 +1228,15 @@ char tb_compile()
             if(tb_simple("rts")==0) return 0;
         } else if (op == 89) {
             if(tb_wide_array_sum(d,a,b)==0) return 0;
+        } else if (op == 91 | op == 92) {
+            /* Pack two little-endian byte-valued C subexpressions
+             * directly into a word home. Each preceding indexed load
+             * leaves its byte in A; no host-sized bitwise operations. */
+            if(op==91) {
+                if(tb_location("sta",1,d,"")==0) return 0;
+            } else {
+                if(tb_location("sta",1,d,"+1")==0) return 0;
+            }
         } else if (op == 90) {
             /* The RHS byte was staged in __tbyte before calculating
              * the address. The named pointer and this array pointer
