@@ -1067,6 +1067,45 @@ char tb_compile()
                 if(tb_location(word_op,1,b,"+1")==0) return 0;
             }
             if(tb_operand("sta","__tacc+1")==0) return 0;
+        } else if (op == 93) {
+            /* 16-bit logical shift left by constant: carry propagates
+             * from low to high byte. The entire result stays in scratch,
+             * so source and destination may be the same C variable. */
+            if(k>15) {tb_error=93;return 0;}
+            while(k!=0) {
+                if(tb_operand("asl","__tacc")==0) return 0;
+                if(tb_operand("rol","__tacc+1")==0) return 0;
+                k=k-1;
+            }
+        } else if (op == 94) {
+            /* Bitwise OR of the complete word and a literal, a char
+             * promoted to 16 bits, or another full 16-bit scalar. */
+            if(d==1) {
+                if((k&255)!=0) {
+                    if(tb_operand("lda","__tacc")==0) return 0;
+                    if(tb_immediate("ora",k&255)==0) return 0;
+                    if(tb_operand("sta","__tacc")==0) return 0;
+                }
+                if((k>>8)!=0) {
+                    if(tb_operand("lda","__tacc+1")==0) return 0;
+                    if(tb_immediate("ora",k>>8)==0) return 0;
+                    if(tb_operand("sta","__tacc+1")==0) return 0;
+                }
+            } else if(d==2 | d==3) {
+                if(tb_operand("lda","__tacc")==0) return 0;
+                if(d==2) {
+                    if(tb_load_var(a)==0) return 0;
+                    if(tb_operand("ora","__tacc")==0) return 0;
+                } else {
+                    if(tb_location("ora",1,a,"")==0) return 0;
+                }
+                if(tb_operand("sta","__tacc")==0) return 0;
+                if(d==3) {
+                    if(tb_operand("lda","__tacc+1")==0) return 0;
+                    if(tb_location("ora",1,a,"+1")==0) return 0;
+                    if(tb_operand("sta","__tacc+1")==0) return 0;
+                }
+            } else {tb_error=94;return 0;}
         } else if (op == 52) {
             if(tb_operand("lda","__tacc")==0) return 0;
             if(a==1) {
