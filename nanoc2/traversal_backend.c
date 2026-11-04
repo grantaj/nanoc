@@ -19,7 +19,8 @@
  * 18 compare A with byte variable, 19 store fixed array indexed,
  * 20 store through zero-page pointer indexed, 21 load immediate byte,
  * 22 stage byte argument, 23 call char function, 25 load call result,
- * 26 return A.
+ * 26 return A, 27 store word literal, 28 copy word scalar,
+ * 29 return word literal, 30 return word scalar.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -403,6 +404,25 @@ char tb_compile()
             if (tb_stage_byte(d,a)==0) return 0;
         } else if (op == 23) {
             if (tb_call_byte(d)==0) return 0;
+        } else if (op == 27) {
+            /* Two-byte Nano C int/unsigned static home. */
+            if (tb_immediate("lda",k & 255)==0) return 0;
+            if (tb_location("sta",1,d,"")==0) return 0;
+            if (tb_immediate("lda",k >> 8)==0) return 0;
+            if (tb_location("sta",1,d,"+1")==0) return 0;
+        } else if (op == 28) {
+            if (tb_location("lda",1,a,"")==0) return 0;
+            if (tb_location("sta",1,d,"")==0) return 0;
+            if (tb_location("lda",1,a,"+1")==0) return 0;
+            if (tb_location("sta",1,d,"+1")==0) return 0;
+        } else if (op == 29) {
+            if (tb_immediate("lda",k & 255)==0) return 0;
+            if (tb_immediate("ldx",k >> 8)==0) return 0;
+            if (tb_simple("rts")==0) return 0;
+        } else if (op == 30) {
+            if (tb_location("lda",1,d,"")==0) return 0;
+            if (tb_location("ldx",1,d,"+1")==0) return 0;
+            if (tb_simple("rts")==0) return 0;
         } else if (op == 25) {
             if (tb_operand("lda","__tret")==0) return 0;
         } else if (op == 26) {
