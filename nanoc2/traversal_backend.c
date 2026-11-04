@@ -17,7 +17,11 @@
  * 13 return constant, 14 prepare scaled pointer, 15 load variable,
  * 16 set variable to A, 17 compare A with immediate,
  * 18 compare A with byte variable, 19 store fixed array indexed,
- * 20 store through zero-page pointer indexed, 21 load immediate byte.
+ * 20 store through zero-page pointer indexed, 21 load immediate byte,
+ * 22 stage byte argument, 23 call char function, 25 load call result,
+ * 26 return A.
+ * Calls synchronize X/Y into their real scalar homes, then reload those
+ * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
  * pointer slot 0/1 is a shared zero-page address.
  * Branch tests: 1 EQ, 2 NE, 3 CC, 4 CS. 0 is unconditional.
@@ -249,6 +253,45 @@ char tb_scaled_pointer(char ptr, char array, char index, unsigned stride)
     return tb_text("+1\n");
 }
 
+/* Arguments use the original Nano C static parameter ABI. A callee's
+ * argument slot is not an allocator temporary; it has a stable __vFF_00
+ * home determined by the original Phase-1 symbol table.
+ */
+char tb_stage_byte(char callee)
+{
+    if(tb_text("\tsta __v")==0) return 0;
+    if(tb_hex2(callee)==0) return 0;
+    return tb_text("_00\n");
+}
+
+/* A call ends a traversal register lifetime. Sync induction registers to
+ * their actual scalar homes before JSR, then reload afterwards. This also
+ * respects a callee's legitimate modification of global byte scalars.
+ * Indirect pointer cursors are forbidden at the lowering boundary until
+ * their full call-clobber contract is implemented.
+ */
+char tb_call_byte(char callee)
+{
+    if(tb_x!=0) {
+        if(tb_location("stx",1,tb_x,"")==0) return 0;
+    }
+    if(tb_y!=0) {
+        if(tb_location("sty",1,tb_y,"")==0) return 0;
+    }
+    if(tb_text("\tjsr __c")==0) return 0;
+    if(tb_hex2(callee)==0) return 0;
+    if(tb_char('\n')==0) return 0;
+    /* Preserve the returned A before restoring X/Y. */
+    if(tb_operand("sta","__tret")==0) return 0;
+    if(tb_x!=0) {
+        if(tb_location("ldx",1,tb_x,"")==0) return 0;
+    }
+    if(tb_y!=0) {
+        if(tb_location("ldy",1,tb_y,"")==0) return 0;
+    }
+    return 1;
+}
+
 char tb_compare(char variable, char other)
 {
     if (variable == tb_x) {
@@ -354,6 +397,15 @@ char tb_compile()
             if (tb_store_var(d) == 0) return 0;
         } else if (op == 21) {
             if (tb_immediate("lda",k) == 0) return 0;
+        } else if (op == 22) {
+            if (tb_stage_byte(d)==0) return 0;
+        } else if (op == 23) {
+            if (tb_call_byte(d)==0) return 0;
+        } else if (op == 25) {
+            if (tb_operand("lda","__tret")==0) return 0;
+        } else if (op == 26) {
+            if (tb_immediate("ldx",0)==0) return 0;
+            if (tb_simple("rts")==0) return 0;
         } else if (op == 17) {
             if (tb_immediate("cmp",k) == 0) return 0;
         } else if (op == 18) {
