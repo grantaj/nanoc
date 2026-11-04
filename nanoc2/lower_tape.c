@@ -364,15 +364,14 @@ char nd_index_address(char area, char symbol, char kind,
         /* General byte-array subscript: a full word offset plus a
          * byte cursor. This is not the separate fixed-record scaling
          * representation used by the original traversal experiments. */
-        int word_index;
         if(nc2_number[base_node]!=2 & nc2_number[base_node]!=3)
             {nd_error=13;return 0;}
-        word_index=nd_word(base_node);
+        ptr=nd_word(base_node);
         idx=nd_scalar(offset_node);
-        if(word_index<0 | idx<0) return 0;
+        if(ptr<0 | idx<0) return 0;
         if(mode!=0) {nd_error=13;return 0;}
         nd_wide_index_used=1;
-        if(nd_add(89,arr,word_index,idx,0)==0) return 0;
+        if(nd_add(89,arr,ptr,idx,0)==0) return 0;
         return nd_add(76,0,0,0,0);
     }
     if (nd_map_event[owner]>=tb_count) { nd_error=14; return 0; }
