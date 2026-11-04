@@ -498,6 +498,9 @@ def mixed_arithmetic_test():
         exercise("reverse_sub",
                  (("delta", delta, 1), ("wide", wide, 2)),
                  (delta - wide) & 65535)
+        reverse = (("delta", delta, 1), ("wide", wide, 2))
+        exercise("reverse_add_store", reverse, (delta + wide) & 65535)
+        exercise("reverse_sub_store", reverse, (delta - wide) & 65535)
         exercise("literal_base", mixed, (1 + wide - delta) & 65535)
         exercise("alias_late", mixed, (2 * wide + delta) & 65535)
 
@@ -519,6 +522,9 @@ def mixed_arithmetic_test():
         exercise("byte_chain", args, expected & 255)
         exercise("byte_return", args, expected & 255)
         exercise("byte_sum_word", args, left + right)
+        exercise("byte_sum_store", args, left + right)
+        exercise("byte_pair_return", args, (left + right) & 255)
+        exercise("byte_pair_store", args, (left + right) & 255)
     return lines
 
 def run_native(name, source, test_lines, driver):
