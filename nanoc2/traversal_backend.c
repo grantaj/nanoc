@@ -36,7 +36,8 @@
  * 69 zero/nonzero test of the composed-arithmetic accumulator,
  * 70 word AND constant, 71 masked byte return,
  * 72 unsigned word >> 8 byte extraction, 73 masked word return,
- * 74 compute a full 16-bit array address, 75 write byte/word element.
+ * 74 compute a full 16-bit array address, 75 write byte/word element,
+ * 76 read an indexed byte, preserving A and its flags.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -535,19 +536,47 @@ char tb_numeric_compare(char left, char right, char descriptor,
  * indirect traversals, but never in a function with live pointer cursors.
  * A full 16-bit carry chain handles page crossings without branches.
  */
-char tb_wide_array_address(char array, char index, char width)
+char tb_wide_array_address(char array, char index, char spec,
+                           unsigned displacement)
 {
-    if(width!=1 & width!=2) {tb_error=74;return 0;}
-    if(width==2) {
-        if(tb_location("lda",1,index,"")==0) return 0;
+    char width;
+    char byte_index;
+    width=spec&3;
+    byte_index=spec&4;
+    if((width!=1 & width!=2) | (spec&248)!=0) {
+        tb_error=74;return 0;
+    }
+    /* Plain word index into bytes needs no temporary: an ordinary
+     * 16-bit CLC/ADC adds the linker-resolved array address. */
+    if(width!=1 | byte_index!=0 | displacement!=0) {
+        if(byte_index!=0) {
+            if(tb_load_var(index)==0) return 0;
+        } else {
+            if(tb_location("lda",1,index,"")==0) return 0;
+        }
         if(tb_operand("sta","__twlo")==0) return 0;
-        if(tb_location("lda",1,index,"+1")==0) return 0;
+        if(byte_index!=0) {
+            if(tb_immediate("lda",0)==0) return 0;
+        } else {
+            if(tb_location("lda",1,index,"+1")==0) return 0;
+        }
         if(tb_operand("sta","__twhi")==0) return 0;
-        if(tb_operand("asl","__twlo")==0) return 0;
-        if(tb_operand("rol","__twhi")==0) return 0;
+        if(displacement!=0) {
+            if(tb_simple("clc")==0) return 0;
+            if(tb_operand("lda","__twlo")==0) return 0;
+            if(tb_immediate("adc",displacement&255)==0) return 0;
+            if(tb_operand("sta","__twlo")==0) return 0;
+            if(tb_operand("lda","__twhi")==0) return 0;
+            if(tb_immediate("adc",displacement>>8)==0) return 0;
+            if(tb_operand("sta","__twhi")==0) return 0;
+        }
+        if(width==2) {
+            if(tb_operand("asl","__twlo")==0) return 0;
+            if(tb_operand("rol","__twhi")==0) return 0;
+        }
     }
     if(tb_simple("clc")==0) return 0;
-    if(width==1) {
+    if(width==1 & byte_index==0 & displacement==0) {
         if(tb_location("lda",1,index,"")==0) return 0;
     } else {
         if(tb_operand("lda","__twlo")==0) return 0;
@@ -556,7 +585,7 @@ char tb_wide_array_address(char array, char index, char width)
     if(tb_text(tb_name(2,array))==0) return 0;
     if(tb_char('\n')==0) return 0;
     if(tb_operand("sta","__tptr00")==0) return 0;
-    if(width==1) {
+    if(width==1 & byte_index==0 & displacement==0) {
         if(tb_location("lda",1,index,"+1")==0) return 0;
     } else {
         if(tb_operand("lda","__twhi")==0) return 0;
@@ -565,6 +594,25 @@ char tb_wide_array_address(char array, char index, char width)
     if(tb_text(tb_name(2,array))==0) return 0;
     if(tb_char('\n')==0) return 0;
     return tb_operand("sta","__tptr00+1");
+}
+
+/* A word-indexed byte read returns the byte in A and the correct
+ * processor flags, even when Y is a live loop index in this region.
+ * PHP/PLP around the Y restoration preserves the LDA condition flags.
+ */
+char tb_wide_array_load()
+{
+    if(tb_y!=0) {
+        if(tb_operand("sty","__tidxsave")==0) return 0;
+    }
+    if(tb_immediate("ldy",0)==0) return 0;
+    if(tb_operand("lda","(__tptr00),y")==0) return 0;
+    if(tb_y!=0) {
+        if(tb_simple("php")==0) return 0;
+        if(tb_operand("ldy","__tidxsave")==0) return 0;
+        if(tb_simple("plp")==0) return 0;
+    }
+    return 1;
 }
 
 /* The address is already in __tptr00. Read from the original static
@@ -1008,9 +1056,11 @@ char tb_compile()
             if(tb_operand("lda","__twlo")==0) return 0;
             if(tb_simple("rts")==0) return 0;
         } else if (op == 74) {
-            if(tb_wide_array_address(d,a,b)==0) return 0;
+            if(tb_wide_array_address(d,a,b,k)==0) return 0;
         } else if (op == 75) {
             if(tb_wide_array_store(d,a,b,k)==0) return 0;
+        } else if (op == 76) {
+            if(tb_wide_array_load()==0) return 0;
         } else if (op == 25) {
             if (tb_operand("lda","__tret")==0) return 0;
         } else if (op == 26) {
