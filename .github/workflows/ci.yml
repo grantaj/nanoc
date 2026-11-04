@@ -35,6 +35,12 @@ jobs:
           cc -std=c90 -funsigned-char -fsyntax-only nanoc1/nanoc1.c
           cc -std=c90 -funsigned-char -fsyntax-only bootstrap/ass.c
 
+      - name: Check nanoc2 Python test harness syntax
+        run: |
+          if [ -d nanoc2 ]; then
+            python3 -m py_compile nanoc2/test_*.py
+          fi
+
       - name: Test traversal-first compiler if present
         run: |
           set -eu
