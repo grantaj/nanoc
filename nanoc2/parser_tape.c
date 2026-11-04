@@ -1709,7 +1709,14 @@ char emit_call_finish(char marker_index)
          * expressions need the later general sequencing pass. */
         if(nc2_kind[operand]!=1 & nc2_kind[operand]!=2 &
            nc2_kind[operand]!=4 & nc2_kind[operand]!=5) {
-            nc2_fault=11;return 0;
+            /* Pure arithmetic is captured as a bounded expression tape.
+             * Its value is staged immediately before the call; the
+             * lowerer still rejects nested calls, unsupported trees
+             * and side-effectful arguments, never silently reorders. */
+            if(nc2_kind[operand]!=6 |
+               (expected!=2 & expected!=3)) {
+                nc2_fault=11;return 0;
+            }
         }
         if(i==0) first=operand;
         else second=operand;
