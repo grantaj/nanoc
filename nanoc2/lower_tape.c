@@ -140,6 +140,64 @@ char nd_add(char op, char dst, char a, char b, unsigned number)
     return 1;
 }
 
+/* Wide source index for a byte array. A 16-bit scalar or a simple
+ * scalar +/- literal is an address displacement, not an 8-bit X/Y index.
+ * For a byte array the emitted load returns A exactly as direct indexing
+ * does, so existing comparison/assignment code is unchanged.
+ *
+ * RHS comparison operands requiring a second indexed read must be staged
+ * separately: don't clobber A while computing the second address.
+ */
+char nd_wide_index_read(char area,char symbol,
+                        unsigned index_node,char mode,char rhs_target)
+{
+    unsigned base;
+    unsigned leaf;
+    unsigned displacement;
+    char width;
+    char element_type;
+    int index;
+    int array;
+    if(area!=1 | global_kind[symbol]!=2 | mode!=0) {
+        nd_error=34;return 0;
+    }
+    element_type=global_type[symbol];
+    if(element_type!=1 & element_type!=2 & element_type!=3) {
+        nd_error=34;return 0;
+    }
+    leaf=index_node;
+    displacement=0;
+    if(nc2_kind[leaf]==6 &
+       (nc2_a[leaf]=='+' | nc2_a[leaf]=='-')) {
+        base=nc2_left[leaf];
+        if(nc2_kind[nc2_right[leaf]]!=1) {
+            nd_error=34;return 0;
+        }
+        displacement=nc2_number[nc2_right[leaf]];
+        if(nc2_a[leaf]=='-') displacement=(0-displacement)&65535;
+        leaf=base;
+    }
+    if(nc2_kind[leaf]!=2) {nd_error=34;return 0;}
+    if(nc2_number[leaf]==1) {
+        index=nd_scalar(leaf);
+        width=4+type_size(element_type); /* byte index, typed stride */
+    } else if(nc2_number[leaf]==2 | nc2_number[leaf]==3) {
+        index=nd_word(leaf);
+        width=type_size(element_type); /* word index, typed stride */
+    } else {nd_error=34;return 0;}
+    if(index<0) return 0;
+    array=nd_record(1,symbol,2);
+    if(array<0) return 0;
+    nd_wide_index_used=1;
+    if(nd_add(74,array,index,width,displacement)==0) return 0;
+    if(element_type==1) {
+        if(rhs_target!=0) {nd_error=34;return 0;}
+        return nd_add(76,0,0,0,0);
+    }
+    if(rhs_target!=0) return nd_add(82,0,0,0,0);
+    return nd_add(78,0,0,0,0);
+}
+
 /* Lower a left-associated sequence of + and - operators as a 16-bit
  * accumulator with its initial value read before the destination is written.
  * In particular, "a = a + b + a" must read the old a on the last term.
@@ -209,60 +267,6 @@ char nd_chain(unsigned expr, char result_type, int dest, char returning)
     return nd_add(52,dest,result_type,0,0);
 }
 
-/* Wide source index for a byte array. A 16-bit scalar or a simple
- * scalar +/- literal is an address displacement, not an 8-bit X/Y index.
- * For a byte array the emitted load returns A exactly as direct indexing
- * does, so existing comparison/assignment code is unchanged.
- *
- * RHS comparison operands requiring a second indexed read must be staged
- * separately: don't clobber A while computing the second address.
- */
-char nd_wide_index_read(char area,char symbol,
-                        unsigned index_node,char mode)
-{
-    unsigned base;
-    unsigned leaf;
-    unsigned displacement;
-    char width;
-    char element_type;
-    int index;
-    int array;
-    if(area!=1 | global_kind[symbol]!=2 | mode!=0) {
-        nd_error=34;return 0;
-    }
-    element_type=global_type[symbol];
-    if(element_type!=1 & element_type!=2 & element_type!=3) {
-        nd_error=34;return 0;
-    }
-    leaf=index_node;
-    displacement=0;
-    if(nc2_kind[leaf]==6 &
-       (nc2_a[leaf]=='+' | nc2_a[leaf]=='-')) {
-        base=nc2_left[leaf];
-        if(nc2_kind[nc2_right[leaf]]!=1) {
-            nd_error=34;return 0;
-        }
-        displacement=nc2_number[nc2_right[leaf]];
-        if(nc2_a[leaf]=='-') displacement=(0-displacement)&65535;
-        leaf=base;
-    }
-    if(nc2_kind[leaf]!=2) {nd_error=34;return 0;}
-    if(nc2_number[leaf]==1) {
-        index=nd_scalar(leaf);
-        width=4+type_size(element_type); /* byte index, typed stride */
-    } else if(nc2_number[leaf]==2 | nc2_number[leaf]==3) {
-        index=nd_word(leaf);
-        width=type_size(element_type); /* word index, typed stride */
-    } else {nd_error=34;return 0;}
-    if(index<0) return 0;
-    array=nd_record(1,symbol,2);
-    if(array<0) return 0;
-    nd_wide_index_used=1;
-    if(nd_add(74,array,index,width,displacement)==0) return 0;
-    if(element_type==1) return nd_add(76,0,0,0,0);
-    return nd_add(78,0,0,0,0);
-}
-
 /* All indexed operations share one address decision: fixed byte array
  * indexed by X/Y, or a byte pointer indexed by Y.  Mode is load, compare,
  * or store.  No source-loop pattern matching is involved.
@@ -282,10 +286,10 @@ char nd_index_address(char area, char symbol, char kind,
        (nc2_a[index_node]=='+' | nc2_a[index_node]=='-') &
        nc2_kind[nc2_left[index_node]]==2 &
        nc2_kind[nc2_right[index_node]]==1)
-        return nd_wide_index_read(area,symbol,index_node,mode);
+        return nd_wide_index_read(area,symbol,index_node,mode,0);
     if(kind==2 & nc2_kind[index_node]==2 &
        (nc2_number[index_node]==2 | nc2_number[index_node]==3))
-        return nd_wide_index_read(area,symbol,index_node,mode);
+        return nd_wide_index_read(area,symbol,index_node,mode,0);
     if (kind != 2) {
         /* A named char pointer. The original parser checked indexing
          * syntax; verify the element really is a byte here as well. */
@@ -345,7 +349,7 @@ char nd_index(unsigned node, char mode)
         if(nc2_number[node]==2 & nc2_a[node]==1 &
            global_type[nc2_b[node]]!=1)
             return nd_wide_index_read(nc2_a[node],nc2_b[node],
-                                      nc2_left[node],mode);
+                                      nc2_left[node],mode,0);
         return nd_index_address(nc2_a[node],nc2_b[node],
                                 nc2_number[node],nc2_left[node],mode);
     }
