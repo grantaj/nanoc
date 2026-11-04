@@ -873,6 +873,8 @@ def main():
     run_ass_value_tests(driver)
     from test_ass_stage_native import run_stage_tests
     run_stage_tests(driver)
+    from test_comparison_rhs_native import run_rhs_tests
+    run_rhs_tests(driver)
     from test_computed_call_native import run_computed_call_tests
     run_computed_call_tests(driver)
     from test_word_array_native import run_word_array_tests
