@@ -169,3 +169,24 @@ for invalid in (
                               capture_output=True)
     assert rejected.returncode != 0, "unsupported expression silently accepted"
 print("original parser: mixed widths, left-associated chains and strict rejections passed")
+
+# Mixed-width numeric conditions must compare *full* integer widths:
+# char is zero extended, signed word is biased only for ordering, and
+# expressions with a literal on the left must not be reversed silently.
+mixed_compare = (ROOT.parent/"tests"/"nanoc2"/"mixed-compare.c").read_text()
+compiled = subprocess.run([str(DRIVER),"native"],input=mixed_compare.encode(),
+                          capture_output=True)
+assert compiled.returncode == 0, compiled.stderr.decode()
+assembly = compiled.stdout.decode()
+assert "INVALID_HOME" not in assembly
+assert "\tcmp #$80" in assembly and "\teor #$80" in assembly
+assert "\tcmp #$00" in assembly
+assert "compare_marks" in assembly
+# The pure-scalar numeric comparator deliberately does not invent semantics
+# for a call or an expression tree inside its operands.
+bad = mixed_compare.replace("if (word < byte)",
+                            "if (word + 1 < byte)")
+result = subprocess.run([str(DRIVER),"native"],input=bad.encode(),
+                        capture_output=True)
+assert result.returncode != 0, "composed comparison operand accepted incorrectly"
+print("original parser: full-width mixed C comparisons and literal order passed")
