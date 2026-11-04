@@ -588,8 +588,11 @@ char nd_index_store(char area,char symbol,unsigned index_node,unsigned rhs)
         if(nc2_kind[rhs]==1) {
             if(nc2_number[rhs]>255) {nd_error=27;return 0;}
             if(nd_add(21,0,0,0,nc2_number[rhs])==0) return 0;
-        } else if(nc2_kind[rhs]==2 & nc2_number[rhs]==1) {
-            source=nd_scalar(rhs);
+        } else if(nc2_kind[rhs]==2 &
+                  (nc2_number[rhs]==1 | nc2_number[rhs]==2 |
+                   nc2_number[rhs]==3)) {
+            /* C narrows int or unsigned to its low byte on char store. */
+            source=nd_record(nc2_a[rhs],nc2_b[rhs],1);
             if(source<0) return 0;
             if(nd_add(15,0,source,0,0)==0) return 0;
         } else if(nc2_kind[rhs]==4 | nc2_kind[rhs]==5) {
@@ -631,7 +634,11 @@ char nd_index_store(char area,char symbol,unsigned index_node,unsigned rhs)
         if (nc2_number[rhs]>255) { nd_error=27; return 0; }
         if (nd_add(21,0,0,0,nc2_number[rhs])==0) return 0;
     } else if (nc2_kind[rhs]==2) {
-        source=nd_scalar(rhs);
+        /* A word-valued RHS stores its low byte into a char element. */
+        if(nc2_number[rhs]==1) source=nd_scalar(rhs);
+        else if(nc2_number[rhs]==2 | nc2_number[rhs]==3)
+            source=nd_word(rhs);
+        else {nd_error=27;return 0;}
         if (source<0) return 0;
         if (nd_add(15,0,source,0,0)==0) return 0;
     } else if (nc2_kind[rhs]==4 | nc2_kind[rhs]==5) {
