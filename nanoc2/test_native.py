@@ -772,7 +772,9 @@ def run_native(name, source, test_lines, driver):
     caller_origin = 0x1000
     while caller_origin <= code_end:
         caller_origin += 0x1000
-    assert caller_origin < 0x4000, (name, code_end)
+    # $4000 is also safe when code ends in $3000-$3fff; the assembled
+    # caller-end assertion below enforces separation from BSS at $4800.
+    assert caller_origin < 0x4800, (name, code_end)
     assert harness[0] == "\t* = $1000", name
     harness[0] = "\t* = $%04x" % caller_origin
 
