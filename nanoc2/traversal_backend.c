@@ -255,6 +255,20 @@ char tb_pointer_immediate(char ptr,char *mnemonic,unsigned offset)
     return 1;
 }
 
+char tb_load_var(char v)
+{
+    if (v == tb_x) return tb_simple("txa");
+    if (v == tb_y) return tb_simple("tya");
+    return tb_location("lda",1,v,"");
+}
+
+char tb_store_var(char v)
+{
+    if (v == tb_x) return tb_simple("tax");
+    if (v == tb_y) return tb_simple("tay");
+    return tb_location("sta",1,v,"");
+}
+
 /* A char pointer indexed by a byte expression with one literal
  * displacement uses a transient Y. Restore any planned live Y after
  * the load/compare/store, preserving the operation's processor flags.
@@ -292,20 +306,6 @@ char tb_pointer_offset_index(char ptr,char index,char mode,unsigned offset)
         if(tb_simple("plp")==0) return 0;
     }
     return 1;
-}
-
-char tb_load_var(char v)
-{
-    if (v == tb_x) return tb_simple("txa");
-    if (v == tb_y) return tb_simple("tya");
-    return tb_location("lda",1,v,"");
-}
-
-char tb_store_var(char v)
-{
-    if (v == tb_x) return tb_simple("tax");
-    if (v == tb_y) return tb_simple("tay");
-    return tb_location("sta",1,v,"");
 }
 
 /* The scaled-address operation is algebraic, not a record-shaped template.
