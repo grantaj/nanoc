@@ -6,46 +6,38 @@ complete Phase-1 or self-hosting compiler. Draft PR #131.**
 
 ## Source-driven acceptance: `bootstrap/ass.c`
 
-Run `python3 nanoc2/test_ass_frontier.py` from the repository root.
-Fast CI feeds the **complete unmodified** 1,792-line Phase-1 assembler to
-the original parser and new emitter, then finds the longest consecutive
-function prefix accepted with **all the real global declarations present**.
+`python3 nanoc2/test_ass_frontier.py` is a fast-CI gate against the
+**complete unmodified** 1,792-line original Phase-1 assembler. It
+reports the first failed function, retaining all original global
+declarations, and rejects regressions below the verified prefix.
 
-**Checkpoint (4 November 2026): 10/44 consecutive original functions
-compile and have native execution coverage**: `upper_char`,
-`same_text`, `apply_byte_prefix`, `hex_nibble`, `append_fixup`,
-`relative_byte`, `trim_fixups`, `resolve_fixups_for_symbol`,
-`scope_for_name`, `find_symbol`.
+**4 November 2026: 15/44 consecutive real functions compile and
+execute correctly under native VICE**, from `upper_char` through
+`define_label`. The complete program is still rejected at function
+16, `parse_atom` (line 645, `lowerer 25`).
 
-This stage adds bounded arithmetic arguments to calls, 16-bit indexed word
-array reads and writes, word-array arithmetic, signed/unsigned comparisons
-against indexed bytes, and independent ZP cursor lanes for a named pointer
-and a computed global-array address. Static two-byte pointer parameters
-are passed without conflating their values with transient ZP cursors.
-The native ABI reloads callers' pointers after JSR and seeds the selected
-X/Y registers from incoming parameter homes before indexed reads.
+The work was driven by real C constructs: typed 16-bit array
+loads/stores; `base_word + byte_index` addressing through separate
+6502 ZP pointer lanes; char-pointer forwarding and restoration across
+JSR; initializing live X/Y from incoming parameter homes; bounded
+source-ordered calls with up to eight typed arguments; full-width
+negative comparisons; and direct low-byte/high-byte-shifted word
+packing. The latter maps the common `lo | (hi << 8)` source idiom to
+two reads/stores, without a generic optimizer or IR.
 
-The actual 6502 VICE tests exercise fixup resolution, scope checking,
-symbol lookup across offset and index page boundaries, forwarded char
-pointers and pointer indexing, as well as the earlier arithmetic tests.
-The next original source failure is **`allocate_symbol` (function 11,
-line 421, lowerer 13)**. Full `ass.c` and its runtime/image still do
-not compile: 10/44 is a source acceptance frontier, not a whole-program
-or self-hosting milestone.
+Native tests exercise the original assembler's fixup tables, symbol
+lookup/allocation and scope, `intern_label`/`define_constant`,
+byte/word linked patches, and `define_label` carrying a pending fixup
+through the actual resolver. Boundary tests include byte addresses
+255/256, 511/512, end-of-buffer writes, and symbol indexes 255/256
+and 895. Unlike source-acceptance testing, these execute on a 6510
+in VICE with an independently assembled caller.
 
-Initialized scalar/array globals are now emitted as physical 6502
-`byte` data labels, while only uninitialized objects use `NC_BSS`;
-the original Phase-1 parser remains authoritative for initializer syntax.
-The `ass_prefix` native VICE test executes the first four verbatim
-function bodies with initialized `VALUE_PREFIX_LOW` and
-`mode_width` data, checking actual memory, pointer parameters,
-negative word results and A/X returns. The `ass_wide_index` native
-VICE test additionally exercises the first seven verbatim functions
-against the entire original global data layout, covering word-array
-writes at indexes 0, 1, 255, 256, 511 and 639, word-indexed reads
-with `n - 1`, unsigned wraparound and full-table behaviour.
-The fast frontier remains the full-global-declaration test, not a
-substituted source program.
+Initialized globals are emitted as physical data labels, distinct
+from uninitialized `NC_BSS`. The complete `ass.c` runtime, entry
+point, self-hosting and whole linked image are **not yet implemented**;
+the numbers below are physically assembled function-body spans,
+not equivalent to the handwritten assembler's full image.
 
 ## Architecture
 
@@ -200,8 +192,8 @@ the three-byte entry trampoline, not linked complete applications.
 | `ass_wide_index` | 1,497 B | First seven original `ass.c` functions, fixup tables, 16-bit indexes, wraparound |
 | `two_functions` | 78 B | Two separately streamed functions, static homes, IRQ enabled |
 
-All nineteen native programs passed in
-[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41793244260).
+All **23** native programs passed in
+[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41797378744).
 Native smoke remains opt-in through the `native-smoke` PR label or
 manual dispatch, not the fast default PR gate.
 
@@ -245,11 +237,17 @@ caller and callee costs under the same statically allocated ABI).
 | Mixed-width/composed arithmetic | 23 | 1,156 B | 735 B | 36.4% |
 | Mixed signed/unsigned comparisons | 35 | 1,831 B | 1,114 B | 39.2% |
 | Arithmetic in conditions | 9 | 840 B | 590 B | 29.8% |
-| Verbatim `ass.c` bodies (including combined `scope_for_name` and `find_symbol`) | 8 functions | 2,144 B | 1,054 B | 50.8% |
+| Overlapping real-`ass.c` measurements (11 cases; 31 function bodies) | 31 | 12,279 B | 6,580 B | 46.4% |
 | Indexed word-array tests | 4 | 249 B | 263 B | -5.6% |
-| **Combined** | **115 function bodies** | **8,464 B** | **4,915 B** | **41.9%** |
+| **Combined** | **138 function-body measurements** | **18,599 B** | **10,441 B** | **43.9%** |
 
-The suite now has 102 source measurement cases, including the multi-function
+The complete **first 15 original `ass.c` function bodies** are also
+measured together as one exact-source assembled unit: **6,302 B**
+with `nanoc1` versus **3,464 B** with `nanoc2` (**45.0% smaller**).
+Some other grouped tests remeasure these same functions; do not
+interpret aggregate body counts as 138 distinct C routines.
+
+The suite now has 106 source measurement cases, including the multi-function
 unit. For word calls, a single span includes all 13 functions; no runtime,
 test caller or entry trampoline is counted. The smaller call, word-branch and chained-expression reductions reveal
 remaining code-generation quality gaps, not a reason to substitute the
@@ -261,7 +259,7 @@ scratch out of KERNAL ZP. The earlier 72% result used an unsafe scratch map
 and is **superseded**, not another comparable image.
 
 The size and VICE tests passed together in
-[workflow run 41793244260](https://github.com/grantaj/nanoc/actions/runs/41793244260).
+[workflow run 41797378744](https://github.com/grantaj/nanoc/actions/runs/41797378744).
 A subsequent general identity-mask change briefly regressed the actual
 `ass.c` `apply_byte_prefix` code by 12 bytes; the redundant word
 self-copy was removed and an exact **23-byte** size limit added to
@@ -271,11 +269,13 @@ proof the new compiler binary itself will fit C64 memory.
 
 ## Unfinished work
 
-1. Advance the exact `bootstrap/ass.c` acceptance frontier from **10/44**.
-   `allocate_symbol` currently fails on a computed global-array
-   subscript (lowerer 13). Preserve the source width and object stride
-   while extending indexed memory accesses, then tackle general
-   pointer arithmetic, argument arities beyond two and runtime services.
+1. Advance original `ass.c` from **15/44**. Function 16,
+   `parse_atom`, introduces nested numeric expressions including
+   hexadecimal `value << 4`, bitwise OR, decimal `value * 10`,
+   digit extraction and signed error branches. Identify its actual
+   failing assignment and implement general Phase-1 6502 idioms
+   without turning the emitter into a framework. Extend both native
+   correctness tests and exact-source size measurements.
 2. Preserve the one-pass-per-function, bounded-memory design while removing
    remaining old output scaffolding from the inherited parser.
 3. Run the full native Phase-1 corpus, self-compile the new compiler and
