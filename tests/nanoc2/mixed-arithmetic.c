@@ -99,3 +99,38 @@ int byte_sum_word(char left, char right)
 {
     return left + right;
 }
+
+/* Direct two-operand variants keep a record of the cases where the
+ * initial generic accumulator path produced larger code than nanoc1. */
+int reverse_add_store(char delta, int wide)
+{
+    int out;
+    out = delta + wide;
+    return out;
+}
+
+int reverse_sub_store(char delta, int wide)
+{
+    int out;
+    out = delta - wide;
+    return out;
+}
+
+int byte_sum_store(char left, char right)
+{
+    int out;
+    out = left + right;
+    return out;
+}
+
+char byte_pair_return(char left, char right)
+{
+    return left + right;
+}
+
+char byte_pair_store(char left, char right)
+{
+    char out;
+    out = left + right;
+    return out;
+}
