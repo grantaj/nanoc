@@ -203,7 +203,8 @@ def main():
         # The initial generic chain regressed on three direct two-leaf
         # cases. Keep the exact assembled-byte comparison as a regression
         # gate, not an instruction-count or arbitrary target estimate.
-        if name in ("reverse_mixed","reverse_sub","byte_sum_word"):
+        if name in ("reverse_mixed","reverse_sub","byte_sum_word",
+                    "ass_upper_char","ass_same_text","ass_apply_byte_prefix"):
             assert new_bytes <= old_bytes, (name,old_bytes,new_bytes)
         print("%s: old %d B, new %d B, saved %d B (%.1f%%); "
               "PHA/PLA %d/%d vs %d/%d" %
