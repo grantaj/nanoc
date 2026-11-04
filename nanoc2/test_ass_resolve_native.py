@@ -83,13 +83,13 @@ def resolve_test():
     # offset, including dot-scoped labels and the special empty name.
     for first,length,scope,expected in (
         (46,0,0,65535),(46,1,0,65535),
-        (46,1,1,1),(46,1,0x1234,0x1234),
-        (65,1,0,0),(65,1,0x1234,0),
+        (46,1,1,1),(46,1,0xa5,0xa5),
+        (65,1,0,0),(65,1,0xa5,0),
     ):
         put_word("n2_scope_for_name_name",0x3300)
         put_byte("n2_scope_for_name_length",length)
         put_byte("$3300",first)
-        put_word("n2_current_scope",scope)
+        put_byte("n2_current_scope",scope)
         put_byte("$03",number&255)
         lines.append("\tjsr n2_scope_for_name")
         lines.extend(word_assert(expected&255,(expected>>8)&255,
