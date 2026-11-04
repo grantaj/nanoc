@@ -258,55 +258,7 @@ def run_native(name, source, test_lines, driver):
         # Function aliases depend on labels defined in the *other* PRG.
         # Resolve their physical addresses with vasm rather than forwarding
         # an undefined __cXX symbol into the separately assembled caller.
-        if re.match(r'^n2_\w+\s*=\s*__c[0-9A-Fa-f]{2}\s*
-    asm_path = OUT / (name + "-caller.asm")
-    asm_path.write_text("\n".join(harness) + "\n" +
-                        "\n".join(symbols) + "\n")
-    prg = OUT / (name + "-caller.prg")
-    subprocess.run([VASM, "-Fbin", "-cbm-prg", "-o", str(prg),
-                    str(asm_path)], cwd=ROOT, check=True)
-    raw = prg.read_bytes()
-    assert raw[:2] == b"\x00\x02", (name, raw[:2])
-    env = os.environ.copy()
-    env["BUILD_DIR"] = str(OUT)
-    env["VICE_TIMEOUT"] = "35"
-    env["VICE_PRELOAD_PRG"] = str(code_prg)
-    subprocess.run(["sh", "tests/run-test.sh", str(prg),
-                    "nanoc2-" + name], cwd=ROOT, env=env, check=True)
-    print("%s: generated %d-byte native program, %d-byte caller; "
-          "ABI, results and memory checks passed" %
-          (name, len(code)-2, len(raw)-2))
-
-
-def main():
-    driver = OUT / "native-compiler"
-    subprocess.run([CC, "-std=c99", "-funsigned-char", "-O0",
-                    str(ROOT / "nanoc2" / "parser_tape_driver.c"),
-                    "-o", str(driver)], cwd=ROOT, check=True)
-    run_native("same_bytes", original_function("same_bytes"),
-               same_bytes_test(), driver)
-    run_native("find_global", globals_for_find() +
-               original_function("find_global"),
-               find_global_test(), driver)
-    run_native("copy_pointer", fixture_function("copy_pointer"),
-               copy_pointer_test(), driver)
-    run_native("copy_array", "char source_bytes[256];\n" +
-               "char dest_bytes[256];\n" + fixture_function("copy_array"),
-               copy_array_test(), driver)
-    # One source unit, two real Phase-1 definitions. The parser must emit
-    # each bounded function tape before it is reset for the next function.
-    multi_source = (
-        fixture_function("fill_pointer").replace("fill_pointer", "fill_bytes")
-        + "\n"
-        + fixture_function("copy_pointer").replace("copy_pointer", "copy_bytes")
-        + "\n"
-    )
-    run_native("two_functions", multi_source, multi_function_test(), driver)
-
-
-if __name__ == "__main__":
-    main()
-, line):
+        if re.match(r'^n2_\w+\s*=\s*__c[0-9A-Fa-f]{2}\s*$', line):
             function_aliases.append(line.split('=')[0].strip())
         elif re.match(r'^(?:NC_BSS|__tptr\w*|__tw\w*|__g\w*|__v\w*|n2_\w+)\s*=', line):
             symbols.append(line)
