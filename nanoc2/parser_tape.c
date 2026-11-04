@@ -1654,18 +1654,21 @@ char reduce_to_marker(char marker)
     return 0;
 }
 
-/* Preserve the original parser's count and type checks. Stage call
- * arguments as semantic operands and record an ordered call event.
- * The first tranche accepts one byte argument, one byte result, and
- * an already defined user function; unsupported cases fail closed.
+/* The original parser owns argument counts, types and source ordering.
+ * Record at most two byte-valued, side-effect-free operands; the lowerer
+ * stages them left-to-right immediately before the call. A zero-argument
+ * call is the same operation with no staging instructions.
  */
 char emit_call_finish(char marker_index)
 {
     char function_id;
     char argc;
     char base;
+    char i;
     char expected;
-    unsigned argument;
+    unsigned operand;
+    unsigned first;
+    unsigned second;
     unsigned result;
     function_id=op_aux[marker_index];
     argc=op_argc[marker_index];
@@ -1674,21 +1677,28 @@ char emit_call_finish(char marker_index)
         compiler_error=5;return 0;
     }
     if(global_kind[function_id]!=3 | global_type[function_id]!=1 |
-       argc!=1) { nc2_fault=11;return 0; }
-    expected=param_type[global_param_start[function_id]];
-    if(expected!=1 | compatible_type(value_type[base],expected)==0) {
-        compiler_error=5;return 0;
+       argc>2) {nc2_fault=11;return 0;}
+    first=0;
+    second=0;
+    i=0;
+    while(i<argc) {
+        expected=param_type[global_param_start[function_id]+i];
+        if(expected!=1 | compatible_type(value_type[base+i],expected)==0) {
+            compiler_error=5;return 0;
+        }
+        operand=nc2_value[base+i];
+        if(operand==0) {nc2_fault=11;return 0;}
+        /* Calls are ordered effects. Nested calls or complex argument
+         * expressions need the later general sequencing pass. */
+        if(nc2_kind[operand]!=1 & nc2_kind[operand]!=2 &
+           nc2_kind[operand]!=4 & nc2_kind[operand]!=5) {
+            nc2_fault=11;return 0;
+        }
+        if(i==0) first=operand;
+        else second=operand;
+        i=i+1;
     }
-    argument=nc2_value[base];
-    if(argument==0) {nc2_fault=11;return 0;}
-    /* A call is an effect in program order, not a postponed leaf read.
-     * Do not allow a nested call/complex argument until sequencing is
-     * fully represented by the event tape. */
-    if(nc2_kind[argument]!=1 & nc2_kind[argument]!=2 &
-       nc2_kind[argument]!=4 & nc2_kind[argument]!=5) {
-        nc2_fault=11;return 0;
-    }
-    result=nc2_node(8,function_id,argc,argument,0,0);
+    result=nc2_node(8,function_id,argc,first,second,0);
     if(result==0) return 0;
     if(nc2_event(7,0,function_id,result,0)==0) return 0;
     value_top=base;
