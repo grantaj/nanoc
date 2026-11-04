@@ -1385,6 +1385,19 @@ char tb_compile()
             if(tb_location("sta",1,d,"+1")==0) return 0;
         } else if (op == 88) {
             if(tb_operand("sta","__tbyte")==0) return 0;
+        } else if (op == 102) {
+            /* A C byte argument from a full word needs only one
+             * original scalar-byte read (low or high), optional AND,
+             * then a store into its static callee parameter home. */
+            if((k&256)!=0) {
+                if(tb_location("lda",1,b,"+1")==0) return 0;
+            } else {
+                if(tb_location("lda",1,b,"")==0) return 0;
+            }
+            if((k&255)!=255) {
+                if(tb_immediate("and",k&255)==0) return 0;
+            }
+            if(tb_param("sta",d,a,"")==0) return 0;
         } else if (op == 101) {
             /* A holds the byte loaded from the RHS array; the earlier
              * char call's result is in the preserved return slot. */
