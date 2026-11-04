@@ -102,7 +102,8 @@ int main(int argc,char **argv)
     if (native_mode && n2_begin()==0) return 7;
     if (next_source_char() == 0 || scan_token() == 0) return 4;
     if (parse_unit() == 0 || nc2_fault != 0) {
-        fprintf(stderr,"parser error %d, tape error %d, lowerer %u, backend %u, function %u, token %d, node %u, event %u\n",
+        fprintf(stderr,"source line %u: parser error %d, tape error %d, lowerer %u, backend %u, function %u, token %d, node %u, event %u\n",
+                (unsigned)source_line,
                 compiler_error,nc2_fault,(unsigned)nd_error,(unsigned)tb_error,
                 (unsigned)nc2_function_symbol,token_kind,nc2_nodes,nc2_events);
         return 5;
