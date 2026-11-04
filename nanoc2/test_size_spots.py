@@ -11,7 +11,8 @@ import re
 import subprocess
 import tempfile
 
-from test_native import ROOT, original_function, fixture_function, globals_for_find
+from test_native import (ROOT, original_function, fixture_function,
+                         globals_for_find, ass_function, ass_global)
 
 OUT = ROOT / "build" / "nanoc2-size-spots"
 OUT.mkdir(parents=True, exist_ok=True)
@@ -182,6 +183,14 @@ def main():
             source="char expr_marks[256];\n"+source
         targets.append((name,source))
     expression_count=len(expression_names)
+    # The actual assembler drives the next slice. These are exact
+    # unmodified Phase-1 functions, not synthetic arithmetic lookalikes.
+    for name in ("upper_char","same_text","apply_byte_prefix"):
+        source=ass_function(name)
+        if name=="apply_byte_prefix":
+            source=ass_global("VALUE_PREFIX_LOW")+"\n"+source
+        targets.append(("ass_"+name,source))
+    ass_count=3
     results = []
     for name, source in targets:
         old_asm = compile_host(old_driver,source)
@@ -209,10 +218,11 @@ def main():
           "saved %d B (%.1f%%)" %
           (old_total,new_total,old_total-new_total,
            100.0*(old_total-new_total)/old_total))
-    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1+mixed_count+compare_count+expression_count
+    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1+mixed_count+compare_count+expression_count+ass_count
     calls_index=baseline_count+word_scalar_count+word_ops_count
     compare_index=calls_index+1+mixed_count
     expression_index=compare_index+compare_count
+    ass_index=expression_index+expression_count
     for title,subset in [
         ("legacy-seven",results[:baseline_count]),
         ("word-scalar",results[baseline_count:baseline_count+word_scalar_count]),
@@ -220,7 +230,8 @@ def main():
         ("word-call-unit",results[calls_index:calls_index+1]),
         ("mixed-composed",results[calls_index+1:compare_index]),
         ("mixed-comparisons",results[compare_index:expression_index]),
-        ("arithmetic-conditions",results[expression_index:]),
+        ("arithmetic-conditions",results[expression_index:ass_index]),
+        ("real-ass.c",results[ass_index:]),
     ]:
         old_size=sum(x[1] for x in subset)
         new_size=sum(x[2] for x in subset)
