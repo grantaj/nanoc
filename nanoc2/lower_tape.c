@@ -701,6 +701,16 @@ char nd_numeric_compare(char left_kind, char left_home,
 char nd_condition_word(char left_id, unsigned right, char unsigned_compare)
 {
     int r;
+    unsigned literal;
+    /* A signed negative integer constant is still a 16-bit scalar
+     * operand. Preserve all bits; comparing only its low byte would
+     * incorrectly conflate -2 with 254. */
+    if(nc2_kind[right]==7 & nc2_kind[nc2_left[right]]==1) {
+        literal=(0-nc2_number[nc2_left[right]])&65535;
+        if(left_id!=0)
+            return nd_add(40,left_id,unsigned_compare,0,literal);
+        return nd_numeric_compare(3,0,1,0,unsigned_compare,literal);
+    }
     if(nc2_kind[right]==1) {
         if(left_id!=0)
             return nd_add(40,left_id,unsigned_compare,0,nc2_number[right]);
