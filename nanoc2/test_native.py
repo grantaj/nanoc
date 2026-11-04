@@ -867,6 +867,8 @@ def main():
     run_patch_tests(driver)
     from test_ass_define_native import run_define_label_tests
     run_define_label_tests(driver)
+    from test_ass_atom_native import run_ass_atom_tests
+    run_ass_atom_tests(driver)
     from test_computed_call_native import run_computed_call_tests
     run_computed_call_tests(driver)
     from test_word_array_native import run_word_array_tests
