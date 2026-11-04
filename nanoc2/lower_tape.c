@@ -338,10 +338,14 @@ char nd_wide_index_store(char area, char symbol, unsigned index_node,
         kind=1;
         source=0;
     } else if(nc2_kind[operand]==2) {
-        kind=nc2_number[operand];
-        if(kind!=1 & kind!=2 & kind!=3) {
-            nd_error=32;return 0;
-        }
+        /* Tape kind 1 is a literal, 2 is a char scalar, and 3 is
+         * a word scalar. Source type tags are 1=char, 2=int,
+         * 3=unsigned. Do not accidentally interpret char as #0 or
+         * truncate an int to one byte. */
+        if(nc2_number[operand]==1) kind=2;
+        else if(nc2_number[operand]==2 | nc2_number[operand]==3)
+            kind=3;
+        else {nd_error=32;return 0;}
         source=nd_record(nc2_a[operand],nc2_b[operand],1);
         if(source<0) return 0;
     } else {
