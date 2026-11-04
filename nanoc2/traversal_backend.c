@@ -781,6 +781,9 @@ char tb_wide_array_store(char kind,char source,char width,unsigned literal)
         if(tb_load_var(source)==0) return 0;
     } else if(kind==3) {
         if(tb_location("lda",1,source,"")==0) return 0;
+    } else if(kind==7) {
+        if(width!=2) {tb_error=75;return 0;}
+        if(tb_operand("lda","__tacc")==0) return 0;
     } else if(kind==5 | kind==6) {
         if(width!=1) {tb_error=75;return 0;}
         if(kind==5) {
@@ -803,6 +806,8 @@ char tb_wide_array_store(char kind,char source,char width,unsigned literal)
             if(tb_immediate("lda",literal>>8)==0) return 0;
         } else if(kind==2) {
             if(tb_immediate("lda",0)==0) return 0;
+        } else if(kind==7) {
+            if(tb_operand("lda","__tacc+1")==0) return 0;
         } else {
             if(tb_location("lda",1,source,"+1")==0) return 0;
         }
