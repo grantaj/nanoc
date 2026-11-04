@@ -257,6 +257,20 @@ char nd_index_address(char area, char symbol, char kind,
             if(idx<0) return 0;
             return nd_add(107,ptr,idx,mode,offset_node);
         }
+        if(nc2_kind[index_node]==6 & nc2_a[index_node]=='+' &
+           nc2_kind[nc2_left[index_node]]==2 &
+           nc2_number[nc2_left[index_node]]==1 &
+           nc2_kind[nc2_right[index_node]]==2 &
+           nc2_number[nc2_right[index_node]]==1) {
+            /* Two char indices are promoted before pointer addition.
+             * Retain the carry into the high address byte rather than
+             * wrapping an 8-bit (zp),Y offset at a page boundary. */
+            idx=nd_scalar(nc2_left[index_node]);
+            if(idx<0) return 0;
+            arr=nd_scalar(nc2_right[index_node]);
+            if(arr<0) return 0;
+            return nd_add(109,ptr,idx,arr,mode);
+        }
         idx=nd_scalar(index_node);
         if (idx<0) return 0;
         if (mode==0) opcode=6;
