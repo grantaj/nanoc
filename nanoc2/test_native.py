@@ -733,7 +733,11 @@ def expression_condition_test():
 
 def run_native(name, source, test_lines, driver):
     output = subprocess.run([str(driver), "native"], input=source.encode(),
-                            capture_output=True, check=True)
+                            capture_output=True)
+    if output.returncode:
+        raise AssertionError("%s native compiler rejected source (exit %d): %s" %
+                             (name,output.returncode,
+                              output.stderr.decode(errors="replace")))
     asm = output.stdout.decode()
     assert "__nc_start:" in asm and "NC_BSS = $4800" in asm
     assert "sta __tptr" in asm if name == "same_bytes" else "__tptr" in asm
