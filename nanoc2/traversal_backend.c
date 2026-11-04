@@ -21,7 +21,10 @@
  * 22 stage byte argument, 23 call char function, 25 load call result,
  * 26 return A, 27 store word literal, 28 copy word scalar,
  * 29 return word literal, 30 return word scalar,
- * 31/32 word +/- literal store, 33/34 word +/- literal return.
+ * 31/32 word +/- literal store, 33/34 word +/- literal return,
+ * 35/36 word +/- word store, 37/38 word +/- word return,
+ * 39/40 signed or unsigned word compare (variable/literal),
+ * 41 test word scalar for zero.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -320,6 +323,19 @@ char tb_branch(char condition, unsigned dest)
     unsigned skip;
     char *inverse;
     if (condition == 0) return tb_jump("jmp",dest);
+    /* Composite relations preserve both C and Z from the final CMP.
+     * > is false when (C=0 or Z=1); <= is false when (C=1 and Z=0). */
+    if (condition == 5) {
+        if(tb_branch(3,dest)==0) return 0;
+        return tb_branch(1,dest);
+    }
+    if (condition == 6) {
+        skip=tb_next_label;
+        tb_next_label=tb_next_label+1;
+        if(tb_jump("bcc",skip)==0) return 0;
+        if(tb_branch(2,dest)==0) return 0;
+        return tb_label(skip);
+    }
     /* Always-safe long conditional branch; relax only after correctness. */
     if (condition == 1) inverse = "bne";
     else if (condition == 2) inverse = "beq";
@@ -331,6 +347,47 @@ char tb_branch(char condition, unsigned dest)
     if (tb_jump(inverse,skip) == 0) return 0;
     if (tb_jump("jmp",dest) == 0) return 0;
     return tb_label(skip);
+}
+
+/* Leave carry and zero set by a lexicographic 16-bit CMP: compare high
+ * first, and compare low only when the high bytes are equal. If signed,
+ * XOR $80 on high bytes to order signed words using the 6502 carry flag.
+ * No flags-changing instruction may intervene before the branch. */
+char tb_compare_word(char left, char right, char is_unsigned,
+                     char literal, unsigned number)
+{
+    unsigned done;
+    done=tb_next_label;
+    tb_next_label=tb_next_label+1;
+    if(is_unsigned==0) {
+        if(literal==0) {
+            if(tb_location("lda",1,right,"+1")==0) return 0;
+            if(tb_immediate("eor",128)==0) return 0;
+            if(tb_operand("sta","__twlo")==0) return 0;
+        }
+        if(tb_location("lda",1,left,"+1")==0) return 0;
+        if(tb_immediate("eor",128)==0) return 0;
+        if(literal!=0) {
+            if(tb_immediate("cmp",(number >> 8)^128)==0) return 0;
+        } else {
+            if(tb_operand("cmp","__twlo")==0) return 0;
+        }
+    } else {
+        if(tb_location("lda",1,left,"+1")==0) return 0;
+        if(literal!=0) {
+            if(tb_immediate("cmp",number >> 8)==0) return 0;
+        } else {
+            if(tb_location("cmp",1,right,"+1")==0) return 0;
+        }
+    }
+    if(tb_jump("bne",done)==0) return 0;
+    if(tb_location("lda",1,left,"")==0) return 0;
+    if(literal!=0) {
+        if(tb_immediate("cmp",number & 255)==0) return 0;
+    } else {
+        if(tb_location("cmp",1,right,"")==0) return 0;
+    }
+    return tb_label(done);
 }
 
 char tb_compile()
@@ -460,6 +517,37 @@ char tb_compile()
             if (tb_simple("tax")==0) return 0;
             if (tb_operand("lda","__twlo")==0) return 0;
             if (tb_simple("rts")==0) return 0;
+        } else if (op == 35 | op == 36 | op == 37 | op == 38) {
+            if (op==35 | op==37) {
+                if(tb_simple("clc")==0) return 0;
+                word_op="adc";
+            } else {
+                if(tb_simple("sec")==0) return 0;
+                word_op="sbc";
+            }
+            if(tb_location("lda",1,a,"")==0) return 0;
+            if(tb_location(word_op,1,b,"")==0) return 0;
+            if(op==35 | op==36) {
+                if(tb_location("sta",1,d,"")==0) return 0;
+            } else {
+                if(tb_operand("sta","__twlo")==0) return 0;
+            }
+            if(tb_location("lda",1,a,"+1")==0) return 0;
+            if(tb_location(word_op,1,b,"+1")==0) return 0;
+            if(op==35 | op==36) {
+                if(tb_location("sta",1,d,"+1")==0) return 0;
+            } else {
+                if(tb_simple("tax")==0) return 0;
+                if(tb_operand("lda","__twlo")==0) return 0;
+                if(tb_simple("rts")==0) return 0;
+            }
+        } else if (op == 39) {
+            if(tb_compare_word(d,a,b,0,0)==0) return 0;
+        } else if (op == 40) {
+            if(tb_compare_word(d,0,a,1,k)==0) return 0;
+        } else if (op == 41) {
+            if(tb_location("lda",1,d,"")==0) return 0;
+            if(tb_location("ora",1,d,"+1")==0) return 0;
         } else if (op == 25) {
             if (tb_operand("lda","__tret")==0) return 0;
         } else if (op == 26) {
