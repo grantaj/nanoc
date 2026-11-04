@@ -225,6 +225,33 @@ def multi_function_test():
     ]
     return lines
 
+def call_index_test():
+    # The original C caller drives a helper from inside an X-indexed loop.
+    # Callee must not destroy the caller's logical induction variable,
+    # even though its return convention clobbers physical X.
+    lines = [
+        "\t* = $0200", "main:",
+        "\tldx #$00",
+        ".prepare:",
+        "\ttxa", "\teor #$5a",
+        "\tsta n2_call_source,x",
+        "\tlda #$00", "\tsta n2_call_dest,x",
+        "\tinx", "\tcpx #$c8", "\tbne .prepare",
+    ]
+    lines += check_call(200, 0)
+    lines += [
+        "\tldx #$00",
+        ".verify:",
+        "\tlda n2_call_source,x",
+        "\tcmp n2_call_dest,x",
+        "\tbeq .matching",
+        "\tjmp native_fail",
+        ".matching:",
+        "\tinx", "\tcpx #$c8", "\tbne .verify",
+    ]
+    return lines
+
+
 def run_native(name, source, test_lines, driver):
     output = subprocess.run([str(driver), "native"], input=source.encode(),
                             capture_output=True, check=True)
@@ -316,6 +343,8 @@ def main():
     run_native("copy_array", "char source_bytes[256];\n" +
                "char dest_bytes[256];\n" + fixture_function("copy_array"),
                copy_array_test(), driver)
+    call_source = (ROOT / "tests" / "nanoc2" / "call-index.c").read_text()
+    run_native("call_index", call_source, call_index_test(), driver)
     # One source unit, two real Phase-1 definitions. The parser must emit
     # each bounded function tape before it is reset for the next function.
     multi_source = (
