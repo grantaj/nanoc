@@ -391,6 +391,21 @@ char nd_assignment(char area, char symbol, unsigned rhs)
             if(src<0) return 0;
             return nd_add(28,dst,src,0,0);
         }
+        /* Word +/- literal uses the 6502 carry chain directly.
+         * The source can be the destination: low-byte write leaves the
+         * source high byte and the processor carry/borrow intact. */
+        if(nc2_kind[rhs]==6 &
+           (nc2_a[rhs]=='+' | nc2_a[rhs]=='-')) {
+            lhs=nc2_left[rhs];
+            extra=nc2_right[rhs];
+            if(nc2_kind[extra]==1) {
+                src=nd_word(lhs);
+                if(src<0) return 0;
+                if(nc2_a[rhs]=='+') op=31;
+                else op=32;
+                return nd_add(op,dst,src,0,nc2_number[extra]);
+            }
+        }
         nd_error=25;return 0;
     }
     if (target_type!=1) { nd_error=25; return 0; }
@@ -429,6 +444,21 @@ char nd_return(unsigned expr)
             src=nd_word(expr);
             if(src<0) return 0;
             return nd_add(30,src,0,0,0);
+        }
+        if(nc2_kind[expr]==6 &
+           (nc2_a[expr]=='+' | nc2_a[expr]=='-')) {
+            unsigned lhs;
+            unsigned extra;
+            char op;
+            lhs=nc2_left[expr];
+            extra=nc2_right[expr];
+            if(nc2_kind[extra]==1) {
+                src=nd_word(lhs);
+                if(src<0) return 0;
+                if(nc2_a[expr]=='+') op=33;
+                else op=34;
+                return nd_add(op,src,0,0,nc2_number[extra]);
+            }
         }
         nd_error=21;return 0;
     }
