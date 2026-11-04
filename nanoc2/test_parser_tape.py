@@ -217,3 +217,17 @@ rejected = subprocess.run([str(DRIVER),"native"],input=bad.encode(),
                           capture_output=True)
 assert rejected.returncode != 0, "right-nested comparison silently accepted"
 print("original parser: arithmetic conditions and composed-value CMP passed")
+
+# Computed comparison RHS must retain 16-bit promotions and signedness.
+rhs=(ROOT.parent/"tests"/"nanoc2"/"comparison-rhs.c").read_text()
+compiled=subprocess.run([str(DRIVER),"native"],input=rhs.encode(),
+                        capture_output=True)
+assert compiled.returncode==0,compiled.stderr.decode()
+asm=compiled.stdout.decode()
+assert "INVALID_HOME" not in asm
+assert "cmp __tacc+1" in asm and "cmp __tacc" in asm
+bad=rhs.replace("limit - offset + 1","limit - (offset + 1)")
+rejected=subprocess.run([str(DRIVER),"native"],input=bad.encode(),
+                       capture_output=True)
+assert rejected.returncode!=0, "right-nested RHS unexpectedly accepted"
+print("original parser: computed RHS comparison accepted; nested RHS rejected")
