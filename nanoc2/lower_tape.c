@@ -359,8 +359,22 @@ char nd_index_address(char area, char symbol, char kind,
     base_node=nc2_left[index_node];
     offset_node=nc2_right[index_node];
     if (nc2_kind[base_node]!=2) { nd_error=13; return 0; }
-    owner=nd_base(nc2_a[base_node],nc2_b[base_node]);
-    if (owner<0) return 0;
+    owner=nd_find(nc2_a[base_node],nc2_b[base_node]);
+    if(owner<0 | nd_map_kind[owner]!=4) {
+        /* General byte-array subscript: a full word offset plus a
+         * byte cursor. This is not the separate fixed-record scaling
+         * representation used by the original traversal experiments. */
+        int word_index;
+        if(nc2_number[base_node]!=2 & nc2_number[base_node]!=3)
+            {nd_error=13;return 0;}
+        word_index=nd_word(base_node);
+        idx=nd_scalar(offset_node);
+        if(word_index<0 | idx<0) return 0;
+        if(mode!=0) {nd_error=13;return 0;}
+        nd_wide_index_used=1;
+        if(nd_add(89,arr,word_index,idx,0)==0) return 0;
+        return nd_add(76,0,0,0,0);
+    }
     if (nd_map_event[owner]>=tb_count) { nd_error=14; return 0; }
     if (tb_a[nd_map_event[owner]]!=0 & tb_a[nd_map_event[owner]]!=arr) {
         nd_error=15; return 0;
@@ -1221,18 +1235,21 @@ char nd_prepare()
         }
         i=i+1;
     }
-    /* This first call tranche leaves ZP pointer save/restore for the
-     * general calling-convention pass. Do not generate calls from
-     * functions with live indirect array cursors until then. */
-    if(nd_wide_index_used!=0 & nd_next_pointer!=0) {
-        nd_error=33; return 0; /* ZP lane reserved for wide index */
+    /* A wide indexed array uses the second ZP cursor when a named
+     * pointer occupies the first; two named cursors plus a wide array
+     * still cannot fit in the two available 6502 pointer registers.
+     * Copy these semantic homes once for call-boundary restoration. */
+    if(nd_wide_index_used!=0 & nd_next_pointer>1) {
+        nd_error=33;return 0;
     }
-    if(nd_next_pointer!=0) {
-        i=0;
-        while(i<tb_count) {
-            if(tb_op[i]==23) {nd_error=29;return 0;}
-            i=i+1;
-        }
+    tb_wide_cursor=0;
+    if(nd_wide_index_used!=0 & nd_next_pointer!=0) tb_wide_cursor=1;
+    tb_pointer_count=nd_next_pointer;
+    i=0;
+    while(i<nd_next_pointer) {
+        tb_pointer_area[i]=nd_ptr_area[i];
+        tb_pointer_symbol[i]=nd_ptr_symbol[i];
+        i=i+1;
     }
     /* Every provisional scaled-pointer operation must have an array owner. */
     i=0;
