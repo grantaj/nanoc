@@ -498,8 +498,14 @@ char nd_index_store(char area,char symbol,unsigned index_node,unsigned rhs)
     int source;
     if (rhs==0 | index_node==0) { nd_error=27; return 0; }
     if(area==1 & global_kind[symbol]==2 &
-       nc2_kind[index_node]==2 &
-       (nc2_number[index_node]==2 | nc2_number[index_node]==3))
+       ((nc2_kind[index_node]==2 &
+         (global_type[symbol]!=1 |
+          nc2_number[index_node]==2 |
+          nc2_number[index_node]==3)) |
+        (nc2_kind[index_node]==6 &
+         (nc2_a[index_node]=='+' | nc2_a[index_node]=='-') &
+         nc2_kind[nc2_left[index_node]]==2 &
+         nc2_kind[nc2_right[index_node]]==1)))
         return nd_wide_index_store(area,symbol,index_node,rhs,
                                    global_type[symbol]);
     if (area==1) kind=global_kind[symbol];
