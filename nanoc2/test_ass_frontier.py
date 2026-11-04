@@ -108,10 +108,10 @@ def main():
     # Full source compilation is necessary but not sufficient for native
     # correctness or size. A regression in isolated real C is always fatal.
     # Other failures are deliberately visible as our development frontier.
-    # Thirty-two consecutive original ass.c functions now compile with
-    # all original global declarations, through assemble_string. Native
-    # VICE independently exercises this exact 32-function source prefix.
-    assert successful >= 32, "ass.c prefix coverage regressed below thirty-two functions"
+    # Thirty-three consecutive original ass.c functions compile with
+    # all original global declarations, through open_include. Native
+    # VICE separately verifies real open_include and all five builtins.
+    assert successful >= 33, "ass.c prefix coverage regressed below thirty-three functions"
     if whole.returncode == 0:
         assert first_blocker is None, "full source accepted, prefix rejected"
 
