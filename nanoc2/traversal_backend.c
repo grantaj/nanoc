@@ -567,7 +567,7 @@ char tb_wide_array_address(char array, char index, char spec,
             if(tb_immediate("adc",displacement&255)==0) return 0;
             if(tb_operand("sta","__twlo")==0) return 0;
             if(tb_operand("lda","__twhi")==0) return 0;
-            if(tb_immediate("adc",displacement>>8)==0) return 0;
+            if(tb_immediate("adc",(displacement>>8)&255)==0) return 0;
             if(tb_operand("sta","__twhi")==0) return 0;
         }
         if(width==2) {
