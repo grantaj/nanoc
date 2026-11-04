@@ -1606,13 +1606,12 @@ char nd_prepare()
         }
         i=i+1;
     }
-    /* A wide indexed array uses the second ZP cursor when a named
-     * pointer occupies the first; two named cursors plus a wide array
-     * still cannot fit in the two available 6502 pointer registers.
-     * Copy these semantic homes once for call-boundary restoration. */
-    if(nd_wide_index_used!=0 & nd_next_pointer>1) {
-        nd_error=33;return 0;
-    }
+    /* A wide array shares the second ZP lane with the second named
+     * pointer when both occur in one function. The pointer's actual
+     * value remains in its static two-byte home; before each second-
+     * pointer dereference the emitter reloads that lane, preserving
+     * A and flags. This works across loops, not just one straight-line
+     * source order, without introducing a third unsafe ZP cursor. */
     tb_wide_cursor=0;
     if(nd_wide_index_used!=0 & nd_next_pointer!=0) tb_wide_cursor=1;
     tb_pointer_count=nd_next_pointer;
