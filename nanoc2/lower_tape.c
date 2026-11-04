@@ -367,6 +367,7 @@ char nd_wide_index_store(char area, char symbol, unsigned index_node,
     char kind;
     unsigned operand;
     unsigned mask;
+    unsigned literal;
     if(area!=1 | global_kind[symbol]!=2 |
        (element_type!=1 & element_type!=2 & element_type!=3)) {
         nd_error=32; return 0;
@@ -391,9 +392,11 @@ char nd_wide_index_store(char area, char symbol, unsigned index_node,
             operand=nc2_left[operand];
         }
     }
+    literal=0;
     if(nc2_kind[operand]==1) {
         kind=1;
         source=0;
+        literal=nc2_number[operand];
     } else if(nc2_kind[operand]==2) {
         /* Tape kind 1 is a literal, 2 is a char scalar, and 3 is
          * a word scalar. Source type tags are 1=char, 2=int,
@@ -408,8 +411,7 @@ char nd_wide_index_store(char area, char symbol, unsigned index_node,
     } else {
         nd_error=32;return 0;
     }
-    return nd_add(75,kind,source,type_size(element_type),
-                  nc2_kind[operand]==1 ? nc2_number[operand] : 0);
+    return nd_add(75,kind,source,type_size(element_type),literal);
 }
 
 /* Store to an indexed byte location. The parser has already saved both
