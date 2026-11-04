@@ -349,9 +349,6 @@ def run_native(name, source, test_lines, driver):
     asm_path = OUT / (name + "-caller.asm")
     asm_path.write_text("\n".join(harness) + "\n" +
                         "\n".join(symbols) + "\n")
-    if name == "two_functions":
-        print("=== two_functions generated ===\n" + asm, flush=True)
-        print("=== two_functions caller ===\n" + asm_path.read_text(), flush=True)
     prg = OUT / (name + "-caller.prg")
     subprocess.run([VASM, "-Fbin", "-cbm-prg", "-o", str(prg),
                     str(asm_path)], cwd=ROOT, check=True)
