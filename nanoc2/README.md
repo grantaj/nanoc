@@ -1,7 +1,7 @@
 # nanoc2 — traversal-first 6502 compiler
 
 **Status: real Phase-1 parser, working C-written emitter for a bounded byte
-subset. Native multi-function/call execution passes on the 6510. Not yet a
+subset plus basic 16-bit scalar operations. Native multi-function/call execution passes on the 6510. Not yet a
 complete Phase-1 or self-hosting compiler. Draft PR #131.**
 
 ## Architecture
@@ -26,6 +26,13 @@ through X/Y or pointers through `(zp),Y`. Fixed-record strides use an explicit
 16-bit address computation. Calls are ordered effects, with the caller's
 X/Y-carried induction variables synchronized to their existing scalar homes
 before `JSR` and reloaded after return.
+
+Two-byte `int`/`unsigned` scalar loads, copies, literal assignments and
+returns now use the original static homes, with low-byte results in A and
+high-byte results in X. A scalar word plus/minus a literal is lowered directly
+to a two-byte `CLC/ADC` or `SEC/SBC` carry chain, both for assignment and
+return. Other word expressions are still rejected, rather than quietly
+truncated to byte operations. Native tests cover carry, borrow and wraparound.
 
 The current supported calls have **zero, one or two char parameters** and a
 char result, with the callee already defined and only simple side-effect-free
@@ -96,10 +103,11 @@ the three-byte entry trampoline, not linked complete applications.
 | `copy_array` | 27 B | Fixed-array indexed writes |
 | `call_index` | 64 B | Non-identity char call inside X-indexed loop |
 | `call_arity` | 89 B | Zero/two-arg calls; return and argument values |
+| `word_scalar` | 116 B | Word loads, copies, literal add/sub, A/X returns; carry, borrow and wraparound |
 | `two_functions` | 78 B | Two separately streamed functions, static homes, IRQ enabled |
 
-All seven passed in
-[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41757739270).
+All eight passed in
+[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41766489168).
 Native smoke remains opt-in through the `native-smoke` PR label or
 manual dispatch, not the fast default PR gate.
 
@@ -133,13 +141,13 @@ scratch out of KERNAL ZP. The earlier 72% result used an unsafe scratch map
 and is **superseded**, not another comparable image.
 
 The size and VICE tests passed together in
-[workflow run 41757739270](https://github.com/grantaj/nanoc/actions/runs/41757739270).
+[workflow run 41766489168](https://github.com/grantaj/nanoc/actions/runs/41766489168).
 These are function-body results, **not** a compiled `ass.c` image and not
 proof the new compiler binary itself will fit C64 memory.
 
 ## Unfinished work
 
-1. Complete Phase-1 16-bit operations, remaining pointer expressions, general
+1. Complete Phase-1 16-bit operations beyond word +/- constant, remaining pointer expressions, general
    byte arithmetic, initialized globals, calls with pointer args and runtime
    service calls. Formalize pointer-cursor invalidation across calls.
 2. Preserve the one-pass-per-function, bounded-memory design while removing
