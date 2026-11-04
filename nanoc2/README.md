@@ -1,8 +1,9 @@
 # nanoc2 — traversal-first 6502 compiler
 
-**Status: real Phase-1 parser, working C-written emitter for a bounded byte
-subset plus basic 16-bit scalar operations. Native multi-function/call execution passes on the 6510. Not yet a
-complete Phase-1 or self-hosting compiler. Draft PR #131.**
+**Status: original Phase-1 parser and one C-written 6502 emitter, now accepting
+31 of 44 consecutive original `ass.c` functions. Representative real routines
+execute under native VICE. This is not yet a complete Phase-1, self-hosting
+compiler or whole-image benchmark. Draft PR #131.**
 
 ## Source-driven acceptance: `bootstrap/ass.c`
 
@@ -11,10 +12,16 @@ complete Phase-1 or self-hosting compiler. Draft PR #131.**
 reports the first failed function, retaining all original global
 declarations, and rejects regressions below the verified prefix.
 
-**4 November 2026: 15/44 consecutive real functions compile and
-execute correctly under native VICE**, from `upper_char` through
-`define_label`. The complete program is still rejected at function
-16, `parse_atom` (line 645, `lowerer 25`).
+**4 November 2026: 31/44 consecutive real functions compile**, from
+`upper_char` through `find_opcode`. The complete source is rejected at
+function 32, `assemble_string` (source line 1323, `lowerer 18`),
+which requires arithmetic on the right-hand side of a comparison:
+`while (i < length - 1)`. The original 15-function prefix has
+dedicated native regression tests, and additional native VICE tests
+exercise the later original `parse_atom`, `parse_value`, staging and
+mnemonic-handling functions. Source acceptance is distinct from native
+correctness; the entire 31-function prefix is not yet established as
+a complete executable assembler.
 
 The work was driven by real C constructs: typed 16-bit array
 loads/stores; `base_word + byte_index` addressing through separate
@@ -269,13 +276,12 @@ proof the new compiler binary itself will fit C64 memory.
 
 ## Unfinished work
 
-1. Advance original `ass.c` from **15/44**. Function 16,
-   `parse_atom`, introduces nested numeric expressions including
-   hexadecimal `value << 4`, bitwise OR, decimal `value * 10`,
-   digit extraction and signed error branches. Identify its actual
-   failing assignment and implement general Phase-1 6502 idioms
-   without turning the emitter into a framework. Extend both native
-   correctness tests and exact-source size measurements.
+1. Advance original `ass.c` from **31/44**. Function 32,
+   `assemble_string`, requires a computed comparison RHS such as
+   `while (i < length - 1)`. Preserve full integer promotions and
+   source ordering rather than special-casing the function. Continue
+   extending target-native real-source tests and exact-source
+   vasm measurements alongside each new capability.
 2. Preserve the one-pass-per-function, bounded-memory design while removing
    remaining old output scaffolding from the inherited parser.
 3. Run the full native Phase-1 corpus, self-compile the new compiler and
