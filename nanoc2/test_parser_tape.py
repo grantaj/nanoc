@@ -110,3 +110,20 @@ result = subprocess.run([str(DRIVER),"native"],input=invalid.encode(),
                         capture_output=True)
 assert result.returncode != 0, "unsupported 16-bit multiplication silently accepted"
 print("original parser: typed 16-bit scalars, add/sub literals and multiplication rejection passed")
+
+# Word arithmetic and comparisons must be emitted by the *same* parser path.
+# Unsupported word multiply remains rejected, not rerouted to legacy output.
+word_ops = (ROOT.parent/"tests"/"nanoc2"/"word-ops.c").read_text()
+result = subprocess.run([str(DRIVER),"native"],input=word_ops.encode(),
+                        capture_output=True)
+assert result.returncode == 0, result.stderr.decode()
+assembly = result.stdout.decode()
+assert "adc " in assembly and "sbc " in assembly
+assert "eor #$80" in assembly
+for rel in ("bne", "bcc", "bcs"):
+    assert rel in assembly
+unsupported = word_ops.replace("return left + right;", "return left * right;")
+result = subprocess.run([str(DRIVER),"native"],input=unsupported.encode(),
+                        capture_output=True)
+assert result.returncode != 0, "unsupported two-word multiplication silently accepted"
+print("original parser: word arithmetic and signed/unsigned branch lowering passed")
