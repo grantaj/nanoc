@@ -825,6 +825,16 @@ char nd_condition(unsigned expr, unsigned exit_label)
     else {nd_error=17;return 0;}
     left=nc2_left[expr];
     right=nc2_right[expr];
+    /* A previous ordered call has its byte result in __tret.
+     * Compare it with a subsequently indexed char without losing
+     * the call value while calculating the table index. */
+    if(nc2_kind[left]==8 & global_type[nc2_a[left]]==1 &
+       (nc2_kind[right]==4 | nc2_kind[right]==5) &
+       nc2_number[right]==1) {
+        if(nd_index(right,0)==0) return 0;
+        if(nd_add(101,0,0,0,0)==0) return 0;
+        return nd_add(10,0,rel,0,exit_label);
+    }
     /* A word array element is already a full C integer. Read it
      * through its 16-bit indexed pointer into __tacc, then compare
      * against a scalar or literal with the same typed comparator as
