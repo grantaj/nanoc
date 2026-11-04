@@ -240,8 +240,17 @@ char nd_chain(unsigned expr, char result_type, int dest, char returning)
         if(value<0) return 0;
         id=value;
         literal=0;
+    } else if(nc2_kind[current]==4 & nc2_a[current]==1 &
+              nc2_number[current]==2 &
+              (global_type[nc2_b[current]]==2 |
+               global_type[nc2_b[current]]==3)) {
+        if(nd_wide_index_read(nc2_a[current],nc2_b[current],
+                              nc2_left[current],0,0)==0) return 0;
+        kind=4; /* already materialized full word in __tacc */
     } else {nd_error=31;return 0;}
-    if(nd_add(50,kind,id,0,literal)==0) return 0;
+    if(kind!=4) {
+        if(nd_add(50,kind,id,0,literal)==0) return 0;
+    }
     j=n;
     while(j!=0) {
         j=j-1;
@@ -258,6 +267,18 @@ char nd_chain(unsigned expr, char result_type, int dest, char returning)
             value=nd_record(nc2_a[right],nc2_b[right],1);
             if(value<0) return 0;
             id=value;
+            literal=0;
+        } else if(nc2_kind[right]==4 & nc2_a[right]==1 &
+                  nc2_number[right]==2 &
+                  (global_type[nc2_b[right]]==2 |
+                   global_type[nc2_b[right]]==3)) {
+            /* The left value remains in __tacc. Address and load this
+             * array term into independent __targ, then execute ADC/SBC.
+             * The index address scratch never aliases either value. */
+            if(nd_wide_index_read(nc2_a[right],nc2_b[right],
+                                  nc2_left[right],0,1)==0) return 0;
+            kind=4;
+            id=0;
             literal=0;
         } else {nd_error=31;return 0;}
         if(nd_add(51,nd_chain_sign[j],kind,id,literal)==0) return 0;
