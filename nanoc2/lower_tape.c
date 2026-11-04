@@ -436,6 +436,9 @@ char nd_assignment(char area, char symbol, unsigned rhs)
 char nd_return(unsigned expr)
 {
     int src;
+    unsigned lhs;
+    unsigned extra;
+    char op;
     if (expr==0) { nd_error=21; return 0; }
     if (nc2_return_type==2 | nc2_return_type==3) {
         if(nc2_kind[expr]==1)
@@ -447,9 +450,6 @@ char nd_return(unsigned expr)
         }
         if(nc2_kind[expr]==6 &
            (nc2_a[expr]=='+' | nc2_a[expr]=='-')) {
-            unsigned lhs;
-            unsigned extra;
-            char op;
             lhs=nc2_left[expr];
             extra=nc2_right[expr];
             if(nc2_kind[extra]==1) {
