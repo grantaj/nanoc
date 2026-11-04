@@ -41,7 +41,8 @@
  * 77 stage evaluated 16-bit arithmetic call argument,
  * 78 load word-array element, 79 store word from accumulator,
  * 82 load word-array RHS into independent two-byte term,
- * 83-85 pointer load/compare/store at literal Y displacement.
+ * 83-85 pointer load/compare/store at literal Y displacement,
+ * 86 static two-byte pointer argument staging.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -312,6 +313,27 @@ char tb_param(char *mnemonic, char callee, char argument, char *suffix)
     if(tb_hex2(callee)==0) return 0;
     if(tb_char('_')==0) return 0;
     if(tb_hex2(argument)==0) return 0;
+    if(tb_text(suffix)==0) return 0;
+    return tb_char('\n');
+}
+
+/* Read a pointer's original static two-byte home for ABI argument
+ * passing. Pointer cursors (__tptr00/01) are not pointer values: they
+ * may have been clobbered by indexed addressing or a prior callee.
+ */
+char tb_source_pointer(char *op, char area, char symbol, char *suffix)
+{
+    if(tb_text("\t")==0) return 0;
+    if(tb_text(op)==0) return 0;
+    if(tb_text(" ")==0) return 0;
+    if(area==1) {
+        if(tb_text("__g")==0) return 0;
+    } else if(area==2) {
+        if(tb_text("__v")==0) return 0;
+        if(tb_hex2(nc2_function_symbol)==0) return 0;
+        if(tb_char('_')==0) return 0;
+    } else {tb_error=86;return 0;}
+    if(tb_hex2(symbol)==0) return 0;
     if(tb_text(suffix)==0) return 0;
     return tb_char('\n');
 }
@@ -1146,6 +1168,11 @@ char tb_compile()
             if(tb_location("sta",1,d,"")==0) return 0;
             if(tb_operand("lda","__tacc+1")==0) return 0;
             if(tb_location("sta",1,d,"+1")==0) return 0;
+        } else if (op == 86) {
+            if(tb_source_pointer("lda",b,k,"")==0) return 0;
+            if(tb_param("sta",d,a,"")==0) return 0;
+            if(tb_source_pointer("lda",b,k,"+1")==0) return 0;
+            if(tb_param("sta",d,a,"+1")==0) return 0;
         } else if (op == 77) {
             /* Word expression evaluated before the call, one argument
              * at a time. Callee static parameter homes are ABI storage,
