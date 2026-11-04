@@ -27,6 +27,12 @@ char nd_ptr_area[2];
 char nd_ptr_symbol[2];
 char nd_array_symbol[32];
 
+/* Temporary path for a left-associated numeric expression chain. Reuse the
+ * same two accumulator bytes for every expression of a function: no AST
+ * recursion, evaluation stack, or heap allocation. */
+unsigned nd_chain_right[32];
+char nd_chain_sign[32];
+
 char *nd_source_name(char area, char symbol)
 {
     if (area == 1) return global_name + symbol * 32;
@@ -131,6 +137,74 @@ char nd_add(char op, char dst, char a, char b, unsigned number)
         nd_error=10; return 0;
     }
     return 1;
+}
+
+/* Lower a left-associated sequence of + and - operators as a 16-bit
+ * accumulator with its initial value read before the destination is written.
+ * In particular, "a = a + b + a" must read the old a on the last term.
+ * Only pure scalar/literal leaves are accepted; more general expression
+ * trees and calls are rejected rather than reordered.
+ */
+char nd_chain(unsigned expr, char result_type, int dest, char returning)
+{
+    unsigned current;
+    unsigned right;
+    unsigned n;
+    unsigned j;
+    int value;
+    char kind;
+    char id;
+    unsigned literal;
+
+    current=expr;
+    n=0;
+    while(nc2_kind[current]==6 &
+          (nc2_a[current]=='+' | nc2_a[current]=='-')) {
+        if(n>=32) { nd_error=31;return 0; }
+        nd_chain_right[n]=nc2_right[current];
+        nd_chain_sign[n]=nc2_a[current];
+        n=n+1;
+        current=nc2_left[current];
+        if(current==0) { nd_error=31;return 0; }
+    }
+    if(n==0) { nd_error=31;return 0; }
+    if(nc2_kind[current]==1) {
+        kind=1;
+        id=0;
+        literal=nc2_number[current];
+    } else if(nc2_kind[current]==2) {
+        if(nc2_number[current]==1) kind=2;
+        else if(nc2_number[current]==2 | nc2_number[current]==3)
+            kind=3;
+        else {nd_error=31;return 0;}
+        value=nd_record(nc2_a[current],nc2_b[current],1);
+        if(value<0) return 0;
+        id=value;
+        literal=0;
+    } else {nd_error=31;return 0;}
+    if(nd_add(50,kind,id,0,literal)==0) return 0;
+    j=n;
+    while(j!=0) {
+        j=j-1;
+        right=nd_chain_right[j];
+        if(nc2_kind[right]==1) {
+            kind=1;
+            id=0;
+            literal=nc2_number[right];
+        } else if(nc2_kind[right]==2) {
+            if(nc2_number[right]==1) kind=2;
+            else if(nc2_number[right]==2 | nc2_number[right]==3)
+                kind=3;
+            else {nd_error=31;return 0;}
+            value=nd_record(nc2_a[right],nc2_b[right],1);
+            if(value<0) return 0;
+            id=value;
+            literal=0;
+        } else {nd_error=31;return 0;}
+        if(nd_add(51,nd_chain_sign[j],kind,id,literal)==0) return 0;
+    }
+    if(returning!=0) return nd_add(53,result_type,0,0,0);
+    return nd_add(52,dest,result_type,0,0);
 }
 
 /* All indexed operations share one address decision: fixed byte array
@@ -451,6 +525,11 @@ char nd_assignment(char area, char symbol, unsigned rhs)
             nd_error=25;return 0;
         }
         if(nc2_kind[rhs]==2) {
+            if(nc2_number[rhs]==1) {
+                src=nd_scalar(rhs);
+                if(src<0) return 0;
+                return nd_add(54,dst,src,0,0); /* zero-extend byte */
+            }
             src=nd_word(rhs);
             if(src<0) return 0;
             return nd_add(28,dst,src,0,0);
@@ -470,14 +549,33 @@ char nd_assignment(char area, char symbol, unsigned rhs)
                 return nd_add(op,dst,src,0,nc2_number[extra]);
             }
             if(nc2_kind[extra]==2) {
-                src=nd_word(lhs);
-                if(src<0) return 0;
-                ptr=nd_word(extra);
-                if(ptr<0) return 0;
-                if(nc2_a[rhs]=='+') op=35;
-                else op=36;
-                return nd_add(op,dst,src,ptr,0);
+                /* A byte index is promoted to 16 bits by zero extension. */
+                if(nc2_kind[lhs]==2 &
+                   (nc2_number[lhs]==2 | nc2_number[lhs]==3) &
+                   nc2_number[extra]==1) {
+                    src=nd_word(lhs);
+                    if(src<0) return 0;
+                    ptr=nd_scalar(extra);
+                    if(ptr<0) return 0;
+                    if(nc2_a[rhs]=='+') op=58;
+                    else op=59;
+                    return nd_add(op,dst,src,ptr,0);
+                }
+                if(nc2_kind[lhs]==2 &
+                   (nc2_number[lhs]==2 | nc2_number[lhs]==3) &
+                   (nc2_number[extra]==2 | nc2_number[extra]==3)) {
+                    src=nd_word(lhs);
+                    if(src<0) return 0;
+                    ptr=nd_word(extra);
+                    if(ptr<0) return 0;
+                    if(nc2_a[rhs]=='+') op=35;
+                    else op=36;
+                    return nd_add(op,dst,src,ptr,0);
+                }
             }
+            /* More than one arithmetic operation, reversed mixed-width
+             * operands, or byte + byte: use the bounded numeric chain. */
+            return nd_chain(rhs,target_type,dst,0);
         }
         nd_error=25;return 0;
     }
@@ -489,11 +587,15 @@ char nd_assignment(char area, char symbol, unsigned rhs)
         return nd_add(2,dst,0,0,nc2_number[rhs]);
     }
     if (nc2_kind[rhs]==2) {
-        src=nd_scalar(rhs);
+        if(nc2_number[rhs]==1) src=nd_scalar(rhs);
+        else src=nd_word(rhs); /* narrowing keeps the low byte */
         if (src<0) return 0;
         if (nd_add(15,0,src,0,0)==0) return 0;
         return nd_add(16,dst,0,0,0);
     }
+    if(nc2_kind[rhs]==6 &
+       (nc2_a[rhs]=='+' | nc2_a[rhs]=='-'))
+        return nd_chain(rhs,target_type,dst,0);
     if (nc2_kind[rhs]==4 | nc2_kind[rhs]==5) {
         if (nd_index(rhs,0)==0) return 0;
         return nd_add(16,dst,0,0,0);
@@ -524,6 +626,11 @@ char nd_return(unsigned expr)
             nd_error=21;return 0;
         }
         if(nc2_kind[expr]==2) {
+            if(nc2_number[expr]==1) {
+                src=nd_scalar(expr);
+                if(src<0) return 0;
+                return nd_add(12,src,0,0,0); /* zero-extended A/X */
+            }
             src=nd_word(expr);
             if(src<0) return 0;
             return nd_add(30,src,0,0,0);
@@ -540,16 +647,30 @@ char nd_return(unsigned expr)
                 return nd_add(op,src,0,0,nc2_number[extra]);
             }
             if(nc2_kind[extra]==2) {
-                src=nd_word(lhs);
-                if(src<0) return 0;
-                /* Use the two static word homes directly; no generic
-                 * virtual-register or stacked expression machinery. */
-                extra=nd_word(extra);
-                if(extra>31) { nd_error=30;return 0; }
-                if(nc2_a[expr]=='+') op=37;
-                else op=38;
-                return nd_add(op,0,src,extra,0);
+                if(nc2_kind[lhs]==2 &
+                   (nc2_number[lhs]==2 | nc2_number[lhs]==3) &
+                   nc2_number[extra]==1) {
+                    src=nd_word(lhs);
+                    if(src<0) return 0;
+                    extra=nd_scalar(extra);
+                    if(extra>31) { nd_error=30;return 0; }
+                    if(nc2_a[expr]=='+') op=60;
+                    else op=61;
+                    return nd_add(op,0,src,extra,0);
+                }
+                if(nc2_kind[lhs]==2 &
+                   (nc2_number[lhs]==2 | nc2_number[lhs]==3) &
+                   (nc2_number[extra]==2 | nc2_number[extra]==3)) {
+                    src=nd_word(lhs);
+                    if(src<0) return 0;
+                    extra=nd_word(extra);
+                    if(extra>31) { nd_error=30;return 0; }
+                    if(nc2_a[expr]=='+') op=37;
+                    else op=38;
+                    return nd_add(op,0,src,extra,0);
+                }
             }
+            return nd_chain(expr,nc2_return_type,0,1);
         }
         nd_error=21;return 0;
     }
@@ -558,10 +679,14 @@ char nd_return(unsigned expr)
         return nd_add(13,0,0,0,nc2_number[expr]);
     }
     if (nc2_kind[expr]==2) {
-        src=nd_scalar(expr);
+        if(nc2_number[expr]==1) src=nd_scalar(expr);
+        else src=nd_word(expr); /* byte return truncates word */
         if (src<0) return 0;
         return nd_add(12,src,0,0,0);
     }
+    if(nc2_kind[expr]==6 &
+       (nc2_a[expr]=='+' | nc2_a[expr]=='-'))
+        return nd_chain(expr,nc2_return_type,0,1);
     if (nc2_kind[expr]==8) {
         if (nd_add(25,0,0,0,0)==0) return 0;
         return nd_add(26,0,0,0,0);
