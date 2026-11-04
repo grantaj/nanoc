@@ -843,6 +843,8 @@ def main():
     run_ass_wide_tests(driver)
     from test_computed_call_native import run_computed_call_tests
     run_computed_call_tests(driver)
+    from test_word_array_native import run_word_array_tests
+    run_word_array_tests(driver)
     # One source unit, two real Phase-1 definitions. The parser must emit
     # each bounded function tape before it is reset for the next function.
     multi_source = (
