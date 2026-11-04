@@ -54,8 +54,6 @@ char n2_alias(char area, char slot, char *names, char length)
  * numbers restart at zero for every function. Emit equates while this
  * function's symbol/type table is still live, immediately after its body.
  */
-unsigned n2_global_end;
-unsigned n2_last_local_end;
 
 char n2_function_alias()
 {
@@ -98,26 +96,6 @@ char n2_scoped_alias(char slot)
     return tb_char('\n');
 }
 
-char n2_local_homes()
-{
-    unsigned offset;
-    char i;
-    offset=nc2_local_base;
-    i=0;
-    while(i<nc2_local_slots) {
-        if (n2_home(2,i,offset)==0) return 0;
-        if (n2_scoped_alias(i)==0) return 0;
-        if (nc2_function_count==1) {
-            if (n2_alias(2,i,local_name+((unsigned)i*32),
-                         local_name_len[i])==0) return 0;
-        }
-        offset=offset+type_size(local_type[i]);
-        i=i+1;
-    }
-    n2_last_local_end=offset;
-    return 1;
-}
-
 /* The parser flushes the bounded tape at each function's closing brace.
  * Only the symbol homes survive, as ordinary assembly equates. */
 unsigned n2_global_limit;
@@ -132,6 +110,7 @@ char n2_local_bss()
     slot=0;
     while(slot<nc2_local_slots) {
         if(n2_home(2,slot,offset)==0) return 0;
+        if(n2_scoped_alias(slot)==0) return 0;
         /* Unqualified source-name aliases exist solely for the single-
          * function native test caller. A second function may reuse a local
          * name and must not create a duplicate assembler equate. */
@@ -194,33 +173,6 @@ char n2_pointer_prologue()
     return 1;
 }
 
-/* Called when the ORIGINAL parser finishes a function, before it erases
- * its bounded node/event tape and local symbol table. The backend retains
- * only one function in memory at a time, even for a large translation unit.
- */
-char n2_emit_function()
-{
-    if (nd_prepare()==0) return 0;
-    if (nc2_function_count==1) {
-        n2_global_end=nc2_local_base;
-        if (tb_text("NC_BSS = $4800\n")==0) return 0;
-        if (tb_text("__tptr00 = $f0\n__tptr01 = $f2\n")==0) return 0;
-        if (tb_text("__twlo = $f4\n__twhi = $f5\n")==0) return 0;
-        if (tb_text("\t* = $0800\n__nc_start:\n\tjmp ")==0) return 0;
-        if (n2_function_name()==0) return 0;
-        if (tb_char('\n')==0) return 0;
-    }
-    if (n2_function_name()==0) return 0;
-    if (tb_text(":\n")==0) return 0;
-    if (n2_pointer_prologue()==0) return 0;
-    if (tb_compile()==0) return 0;
-    if (n2_function_alias()==0) return 0;
-    return n2_local_homes();
-}
-
-/* Called only after the complete source unit has been parsed. Globals
- * may be forward-referenced and the callee's static argument homes are
- * defined by the same equate pass. */
 /* Single translation unit: one entry point, one function at a time.
  * The executable begins with a jump to the selected entry; names are
  * resolved after all function definitions have been processed. */
@@ -246,6 +198,7 @@ char n2_emit_function()
     if(tb_text(":\n")==0) return 0;
     if(n2_pointer_prologue()==0) return 0;
     if(tb_compile()==0) return 0;
+    if(n2_function_alias()==0) return 0;
     if(n2_local_bss()==0) return 0;
     n2_started=1;
     return 1;
@@ -259,7 +212,7 @@ char n2_end()
         if(global_param_count[main_symbol]!=0) { tb_error=37; return 0; }
         entry=main_symbol;
     } else entry=n2_first_function;
-    if(tb_text("__nc_entry:\n\tjmp __c")==0) return 0;
+    if(tb_text("__nc_entry = __c")==0) return 0;
     if(tb_hex2(entry)==0) return 0;
     if(tb_char('\n')==0) return 0;
     return n2_global_bss();
