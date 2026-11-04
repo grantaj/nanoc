@@ -734,6 +734,7 @@ char nd_assignment(char area, char symbol, unsigned rhs)
             }
             src=nd_word(rhs);
             if(src<0) return 0;
+            if(src==dst) return 1; /* an in-place identity is no work */
             return nd_add(28,dst,src,0,0);
         }
         /* The assembler uses masks for opcode fields and 16-bit wrap.
