@@ -95,6 +95,56 @@ def resolve_test():
         lines.extend(word_assert(expected&255,(expected>>8)&255,
                                  28000+number))
         number+=1
+
+    # Real owned-name lookup: the caller passes the char* to
+    # scope_for_name(), then reads both global word/byte tables and
+    # compares symbol_name_bytes[offset+j] with name[j] through two
+    # independently owned zero-page cursors.
+    put_word("n2_symbol_count",3)
+    for index,scope,name,offset in (
+        (0,0,(70,79,79),0), (1,7,(46,76),3),
+        (2,0,(66,65,82),5),
+    ):
+        put_byte("n2_symbol_scope+%d"%index,scope)
+        put_byte("n2_symbol_name_length+%d"%index,len(name))
+        put_word("n2_symbol_name_offset+%d"%(2*index),offset)
+        for j,c in enumerate(name):
+            put_byte("n2_symbol_name_bytes+%d"%(offset+j),c)
+
+    for name,scope,expected in (
+        ((70,79,79),0,0), ((70,79,66),0,65535),
+        ((46,76),7,1), ((46,76),0,65534),
+        ((66,65,82),7,2), ((70,79),0,65535),
+        ((66,65,82),0,2),
+    ):
+        for j,c in enumerate(name):
+            put_byte("$3500+%d"%j,c)
+        put_word("n2_find_symbol_name",0x3500)
+        put_byte("n2_find_symbol_length",len(name))
+        put_byte("n2_current_scope",scope)
+        put_byte("$03",number&255)
+        lines.append("\tjsr n2_find_symbol")
+        lines.extend(word_assert(expected&255,(expected>>8)&255,
+                                 29000+number))
+        number+=1
+
+    # Cross the 8-bit symbol index at 256 and the byte-array page
+    # boundary at offset 510. Earlier symbol scopes deliberately differ.
+    put_word("n2_symbol_count",257)
+    for index in range(256):
+        put_byte("n2_symbol_scope+%d"%index,7)
+    put_byte("n2_symbol_scope+256",0)
+    put_byte("n2_symbol_name_length+256",3)
+    put_word("n2_symbol_name_offset+512",510)
+    for j,c in enumerate((65,66,67)):
+        put_byte("n2_symbol_name_bytes+%d"%(510+j),c)
+        put_byte("$3500+%d"%j,c)
+    put_word("n2_find_symbol_name",0x3500)
+    put_byte("n2_find_symbol_length",3)
+    put_byte("n2_current_scope",0)
+    put_byte("$03",number&255)
+    lines.append("\tjsr n2_find_symbol")
+    lines.extend(word_assert(0,1,29000+number))
     return lines
 
 def run_resolve_tests(driver):
@@ -102,5 +152,5 @@ def run_resolve_tests(driver):
     source+="\n".join(ass_function(name) for name in (
         "upper_char","same_text","apply_byte_prefix","hex_nibble",
         "append_fixup","relative_byte","trim_fixups",
-        "resolve_fixups_for_symbol","scope_for_name"))
+        "resolve_fixups_for_symbol","scope_for_name","find_symbol"))
     run_native("ass_resolve",source,resolve_test(),driver)
