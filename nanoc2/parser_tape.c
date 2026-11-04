@@ -17,7 +17,13 @@ char nc2_function_symbol;
 char nc2_local_slots;
 unsigned nc2_local_base;
 char nc2_native_stream;
+/* Preserve the original distinction: initialized globals are emitted
+ * as data labels, while only uninitialized globals consume NC_BSS. */
+char nc2_initialized_global[176];
 char n2_emit_function();
+char tb_text(char *s);
+char tb_hex2(unsigned value);
+char tb_char(char c);
 char nc2_capture;
 char nc2_fault;
 unsigned nc2_nodes;
@@ -682,6 +688,11 @@ char emit_include(char *path)
 
 char emit_byte_data(char value)
 {
+    if(nc2_native_stream!=0) {
+        if(tb_text("\tdc.b $")==0) return 0;
+        if(tb_hex2(value)==0) return 0;
+        return tb_char('\n');
+    }
     if (write_char(9) == 0) {
         return 0;
     }
@@ -2641,6 +2652,12 @@ char constant_fits_type(char type)
 
 char emit_global_label(char symbol)
 {
+    if(nc2_native_stream!=0) {
+        nc2_initialized_global[symbol]=1;
+        if(tb_text("__g")==0) return 0;
+        if(tb_hex2(symbol)==0) return 0;
+        return tb_text(":\n");
+    }
     if (emit_global_name(symbol) == 0) {
         return 0;
     }
@@ -3047,6 +3064,7 @@ char parse_unit()
                 if (symbol < 0) {
                     return 0;
                 }
+                nc2_initialized_global[symbol]=0;
                 if (parse_global_array(symbol, type) == 0) {
                     return 0;
                 }
@@ -3055,6 +3073,7 @@ char parse_unit()
                 if (symbol < 0) {
                     return 0;
                 }
+                nc2_initialized_global[symbol]=0;
                 if (parse_global_scalar(symbol, type) == 0) {
                     return 0;
                 }
