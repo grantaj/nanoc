@@ -399,51 +399,6 @@ char nd_call(unsigned node, char callee)
     return nd_add(23,callee,global_type[callee],0,0);
 }
 
-/* Compare a numeric scalar and another scalar/literal at full C width.
- * Descriptors are packed into the existing bounded tape:
- *   d/a = physical scalar homes (if not literal)
- *   b = left-kind*8 + right-kind + 64 if usual-conversion unsigned
- *   num = the single literal, if present.
- * kind: 1 literal, 2 char scalar, 3 int/unsigned scalar.
- *
- * This is an addressing choice, not a generic expression representation.
- * Literal/literal and side-effectful operands stay rejected. */
-char nd_numeric_compare(unsigned left, unsigned right, char is_unsigned)
-{
-    char lk;
-    char rk;
-    int l;
-    int r;
-    unsigned number;
-    lk=0;
-    rk=0;
-    l=0;
-    r=0;
-    number=0;
-    if(nc2_kind[left]==1) {
-        lk=1;
-        number=nc2_number[left];
-    } else if(nc2_kind[left]==2) {
-        if(nc2_number[left]==1) lk=2;
-        else if(nc2_number[left]==2 | nc2_number[left]==3) lk=3;
-        else {nd_error=18;return 0;}
-        l=nd_record(nc2_a[left],nc2_b[left],1);
-        if(l<0) return 0;
-    } else {nd_error=18;return 0;}
-    if(nc2_kind[right]==1) {
-        if(lk==1) {nd_error=18;return 0;}
-        rk=1;
-        number=nc2_number[right];
-    } else if(nc2_kind[right]==2) {
-        if(nc2_number[right]==1) rk=2;
-        else if(nc2_number[right]==2 | nc2_number[right]==3) rk=3;
-        else {nd_error=18;return 0;}
-        r=nd_record(nc2_a[right],nc2_b[right],1);
-        if(r<0) return 0;
-    } else {nd_error=18;return 0;}
-    return nd_add(68,l,r,(lk<<3)+rk+(is_unsigned<<6),number);
-}
-
 /* Mixed comparisons use one numeric descriptor consumed by the 6502
  * emitter: left/right kinds 1 literal, 2 byte, 3 word; bit 6 unsigned.
  * The original parser determines unsigned promotion. A home of zero is
