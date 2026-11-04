@@ -26,6 +26,7 @@ char nd_var_symbol[32];
 char nd_ptr_area[2];
 char nd_ptr_symbol[2];
 char nd_array_symbol[32];
+char nd_wide_index_used;  /* wide array cursor currently owns __tptr00 */
 
 /* Temporary path for a left-associated numeric expression chain. Reuse the
  * same two accumulator bytes for every expression of a function: no AST
@@ -294,6 +295,62 @@ char nd_index(unsigned node, char mode)
     return 0;
 }
 
+/* A true 16-bit index cannot fit in 6502 X/Y. Compute the full address
+ * once from the original global-array base, scaling by the element width,
+ * then use (zp),Y at Y=0/1. The parser already guarantees the types.
+ * The native emitter currently reserves ZP slot 0 for this cursor only
+ * in functions without another indirect pointer cursor.
+ */
+char nd_wide_index_store(char area, char symbol, unsigned index_node,
+                         unsigned rhs, char element_type)
+{
+    int array;
+    int index;
+    int source;
+    char kind;
+    unsigned operand;
+    unsigned mask;
+    if(area!=1 | global_kind[symbol]!=2 |
+       (element_type!=1 & element_type!=2 & element_type!=3)) {
+        nd_error=32; return 0;
+    }
+    if(nc2_kind[index_node]!=2 |
+       (nc2_number[index_node]!=2 & nc2_number[index_node]!=3)) {
+        nd_error=32; return 0;
+    }
+    index=nd_word(index_node);
+    if(index<0) return 0;
+    array=nd_record(1,symbol,2);
+    if(array<0) return 0;
+    nd_wide_index_used=1;
+    if(nd_add(74,array,index,type_size(element_type),0)==0) return 0;
+
+    operand=rhs;
+    /* An AND $FFFF is the identity on a 16-bit Phase-1 value,
+     * including the very common fixup_addend[n] = addend & 65535. */
+    if(nc2_kind[operand]==6 & nc2_a[operand]=='&') {
+        mask=nc2_right[operand];
+        if(nc2_kind[mask]==1 & nc2_number[mask]==65535) {
+            operand=nc2_left[operand];
+        }
+    }
+    if(nc2_kind[operand]==1) {
+        kind=1;
+        source=0;
+    } else if(nc2_kind[operand]==2) {
+        kind=nc2_number[operand];
+        if(kind!=1 & kind!=2 & kind!=3) {
+            nd_error=32;return 0;
+        }
+        source=nd_record(nc2_a[operand],nc2_b[operand],1);
+        if(source<0) return 0;
+    } else {
+        nd_error=32;return 0;
+    }
+    return nd_add(75,kind,source,type_size(element_type),
+                  nc2_kind[operand]==1 ? nc2_number[operand] : 0);
+}
+
 /* Store to an indexed byte location. The parser has already saved both
  * sides before emission: only these pure, byte-valued RHS forms are accepted.
  */
@@ -302,6 +359,11 @@ char nd_index_store(char area,char symbol,unsigned index_node,unsigned rhs)
     char kind;
     int source;
     if (rhs==0 | index_node==0) { nd_error=27; return 0; }
+    if(area==1 & global_kind[symbol]==2 &
+       nc2_kind[index_node]==2 &
+       (nc2_number[index_node]==2 | nc2_number[index_node]==3))
+        return nd_wide_index_store(area,symbol,index_node,rhs,
+                                   global_type[symbol]);
     if (area==1) kind=global_kind[symbol];
     else kind=1;
     if (kind!=2) {
@@ -907,6 +969,7 @@ char nd_prepare()
     nd_next_scalar=1;
     nd_next_array=1;
     nd_next_pointer=0;
+    nd_wide_index_used=0;
     tb_reset();
     if (nc2_fault!=0) return 0;
     if (nc2_return_type!=1 & nc2_return_type!=2 &
@@ -940,6 +1003,9 @@ char nd_prepare()
     /* This first call tranche leaves ZP pointer save/restore for the
      * general calling-convention pass. Do not generate calls from
      * functions with live indirect array cursors until then. */
+    if(nd_wide_index_used!=0 & nd_next_pointer!=0) {
+        nd_error=33; return 0; /* ZP lane reserved for wide index */
+    }
     if(nd_next_pointer!=0) {
         i=0;
         while(i<tb_count) {
