@@ -17,6 +17,7 @@ char nc2_function_symbol;
 char nc2_local_slots;
 unsigned nc2_local_base;
 char nc2_native_stream;
+char nc2_builtin_used; /* emit linked target I/O only when referenced */
 /* Preserve the original distinction: initialized globals are emitted
  * as data labels, while only uninitialized globals consume NC_BSS. */
 char nc2_initialized_global[176];
@@ -1696,9 +1697,13 @@ char emit_call_finish(char marker_index)
     if(argc!=global_param_count[function_id]) {
         compiler_error=5;return 0;
     }
-    if(global_kind[function_id]!=3 |
+    if((global_kind[function_id]!=3 & global_kind[function_id]!=4) |
        (global_type[function_id]!=1 & global_type[function_id]!=2) |
        argc>8) {nc2_fault=11;return 0;}
+    /* Builtins share exactly the same semantic call node and argument
+     * evaluation order as user functions. Runtime linkage is separate
+     * from accepting their typed, original-parser representation. */
+    if(global_kind[function_id]==4) nc2_builtin_used=1;
     arg_base=nc2_call_used;
     if(arg_base+argc>192) {nc2_fault=11;return 0;}
     i=0;
