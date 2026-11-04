@@ -1067,6 +1067,49 @@ char tb_compile()
                 if(tb_location(word_op,1,b,"+1")==0) return 0;
             }
             if(tb_operand("sta","__tacc+1")==0) return 0;
+        } else if (op == 96) {
+            /* A small constant word multiplier uses ordinary 6502
+             * binary shift and add, not a runtime multiply or a
+             * search over instruction sequences. The decimal parser's
+             * *10 is 8x+2x and costs one 16-bit carry chain. */
+            if(k==10) {
+                if(tb_operand("lda","__tacc")==0) return 0;
+                if(tb_operand("sta","__targ")==0) return 0;
+                if(tb_operand("lda","__tacc+1")==0) return 0;
+                if(tb_operand("sta","__targ+1")==0) return 0;
+                if(tb_operand("asl","__tacc")==0) return 0;
+                if(tb_operand("rol","__tacc+1")==0) return 0;
+                k=3;
+                while(k!=0) {
+                    if(tb_operand("asl","__targ")==0) return 0;
+                    if(tb_operand("rol","__targ+1")==0) return 0;
+                    k=k-1;
+                }
+                if(tb_simple("clc")==0) return 0;
+                if(tb_operand("lda","__tacc")==0) return 0;
+                if(tb_operand("adc","__targ")==0) return 0;
+                if(tb_operand("sta","__tacc")==0) return 0;
+                if(tb_operand("lda","__tacc+1")==0) return 0;
+                if(tb_operand("adc","__targ+1")==0) return 0;
+                if(tb_operand("sta","__tacc+1")==0) return 0;
+            } else if(k==0) {
+                if(tb_immediate("lda",0)==0) return 0;
+                if(tb_operand("sta","__tacc")==0) return 0;
+                if(tb_operand("sta","__tacc+1")==0) return 0;
+            } else if(k==1) {
+                /* Identity multiplication needs no instructions. */
+            } else if(k==2 | k==4 | k==8) {
+                while(k!=1) {
+                    if(tb_operand("asl","__tacc")==0) return 0;
+                    if(tb_operand("rol","__tacc+1")==0) return 0;
+                    k=k>>1;
+                }
+            } else {tb_error=96;return 0;}
+        } else if (op == 97) {
+            /* Promote the just-loaded char in A into RHS word scratch. */
+            if(tb_operand("sta","__targ")==0) return 0;
+            if(tb_immediate("lda",0)==0) return 0;
+            if(tb_operand("sta","__targ+1")==0) return 0;
         } else if (op == 93) {
             /* 16-bit logical shift left by constant: carry propagates
              * from low to high byte. The entire result stays in scratch,
