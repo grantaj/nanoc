@@ -68,11 +68,39 @@ def ass_wide_test():
     lines.extend(word_assert(11,0,11000+case))
     check_byte("n2_fixup_count",128)
     check_byte("n2_fixup_count+1",2)
+
+    # Actual relative_byte() from ass.c: return a signed -1 for distances
+    # outside [-128,127], otherwise the 8-bit wrapped displacement.
+    for target,base in (
+        (0,0),(1,0),(127,0),(128,0),(129,0),
+        (65535,0),(65408,0),(65407,0),(65534,0),
+        (0,1),(0,128),(0,129),(0,65535),
+        (0x1234,0x1200),(0x1200,0x1234),
+        (0x0000,0xff80),(0x0000,0xff7f),
+        (0x7fff,0x8000),(0x8000,0x7fff)
+    ):
+        put_word("n2_relative_byte_target",target)
+        put_word("n2_relative_byte_base",base)
+        d=(target-base)&65535
+        if d<=127:
+            expected=d
+        elif d>=65408:
+            expected=d&255
+        else:
+            expected=65535
+        lines.extend((
+            "\tlda #$%02x"%(case&255),
+            "\tsta $03",
+            "\tjsr n2_relative_byte",
+        ))
+        lines.extend(word_assert(expected&255,(expected>>8)&255,
+                                 12000+case))
+        case+=1
     return lines
 
 def run_ass_wide_tests(driver):
     source=ASS_SOURCE[:ASS_SOURCE.index("char upper_char(")]
     source+="\n".join(ass_function(name) for name in (
         "upper_char","same_text","apply_byte_prefix","hex_nibble",
-        "append_fixup"))
+        "append_fixup","relative_byte"))
     run_native("ass_wide_index",source,ass_wide_test(),driver)
