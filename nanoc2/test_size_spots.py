@@ -137,6 +137,17 @@ def main():
     word_ops_count = len(targets)-baseline_count-word_scalar_count
     targets.append(("word_call_unit",
                     (ROOT/"tests"/"nanoc2"/"word-call.c").read_text()))
+    mixed = ROOT/"tests"/"nanoc2"/"mixed-arithmetic.c"
+    mixed_names = (
+        "widen_copy", "narrow_copy", "widen_return", "narrow_return",
+        "mix_add", "mix_sub", "mix_return", "mix_return_sub",
+        "compound", "compound_return", "reverse_mixed",
+        "literal_base", "reverse_sub", "alias_late",
+        "byte_chain", "byte_return", "byte_sum_word",
+    )
+    for name in mixed_names:
+        targets.append((name,exact_c_function(mixed,name)))
+    mixed_count = len(mixed_names)
     results = []
     for name, source in targets:
         old_asm = compile_host(old_driver,source)
@@ -159,12 +170,14 @@ def main():
           "saved %d B (%.1f%%)" %
           (old_total,new_total,old_total-new_total,
            100.0*(old_total-new_total)/old_total))
-    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1
+    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1+mixed_count
+    calls_index=baseline_count+word_scalar_count+word_ops_count
     for title,subset in [
         ("legacy-seven",results[:baseline_count]),
         ("word-scalar",results[baseline_count:baseline_count+word_scalar_count]),
-        ("word-ops",results[baseline_count+word_scalar_count:-1]),
-        ("word-call-unit",results[-1:]),
+        ("word-ops",results[baseline_count+word_scalar_count:calls_index]),
+        ("word-call-unit",results[calls_index:calls_index+1]),
+        ("mixed-composed",results[calls_index+1:]),
     ]:
         old_size=sum(x[1] for x in subset)
         new_size=sum(x[2] for x in subset)
