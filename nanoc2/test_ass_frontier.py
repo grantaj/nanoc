@@ -108,9 +108,10 @@ def main():
     # Full source compilation is necessary but not sufficient for native
     # correctness or size. A regression in isolated real C is always fatal.
     # Other failures are deliberately visible as our development frontier.
-    # The first four original ass.c functions now compile *with all
-    # original globals*. This is a durable acceptance regression gate.
-    assert successful >= 4, "ass.c prefix coverage regressed below four functions"
+    # First seven original ass.c functions, including wide indexed
+    # byte/word fixup stores and computed-index reads, compile with the
+    # complete unmodified global declarations. Keep this milestone gated.
+    assert successful >= 7, "ass.c prefix coverage regressed below seven functions"
     if whole.returncode == 0:
         assert first_blocker is None, "full source accepted, prefix rejected"
 
