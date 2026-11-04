@@ -742,7 +742,7 @@ def run_native(name, source, test_lines, driver):
     harness = list(test_lines)
     harness += [
         "\tjmp success",
-        "native_fail:", "\tlda $03" if name == "two_functions" else "\tlda #$40",
+        "native_fail:", "\tlda $03" if name in ("two_functions","ass_wide_index") else "\tlda #$40",
         "\tsta $02",
         ".halt:", "\tjmp .halt",
         "success:", "\tlda #$ff", "\tsta $02",
