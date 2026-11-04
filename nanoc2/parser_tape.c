@@ -31,7 +31,9 @@ unsigned nc2_left[256];
 unsigned nc2_right[256];
 unsigned nc2_number[256];
 /* Event 1 label, 2 jump, 3 branch-if-false, 4 scalar write,
- * 5 return, 6 indexed write. All refer to semantic node numbers.
+ * 5 return, 6 indexed write, 7 byte function call.
+ * Semantic node kind 8 is a call result; the call event occurs before
+ * the consuming assignment/return/indexed store.
  */
 char nc2_event_kind[192];
 char nc2_event_area[192];
@@ -1652,11 +1654,46 @@ char reduce_to_marker(char marker)
     return 0;
 }
 
+/* Preserve the original parser's count and type checks. Stage call
+ * arguments as semantic operands and record an ordered call event.
+ * The first tranche accepts one byte argument, one byte result, and
+ * an already defined user function; unsupported cases fail closed.
+ */
 char emit_call_finish(char marker_index)
 {
-    /* Phase-1 call semantics need a corresponding full event before support. */
-    nc2_fault=11;
-    return 0;
+    char function_id;
+    char argc;
+    char base;
+    char expected;
+    unsigned argument;
+    unsigned result;
+    function_id=op_aux[marker_index];
+    argc=op_argc[marker_index];
+    base=op_base[marker_index];
+    if(argc!=global_param_count[function_id]) {
+        compiler_error=5;return 0;
+    }
+    if(global_kind[function_id]!=3 | global_type[function_id]!=1 |
+       argc!=1) { nc2_fault=11;return 0; }
+    expected=param_type[global_param_start[function_id]];
+    if(expected!=1 | compatible_type(value_type[base],expected)==0) {
+        compiler_error=5;return 0;
+    }
+    argument=nc2_value[base];
+    if(argument==0) {nc2_fault=11;return 0;}
+    /* A call is an effect in program order, not a postponed leaf read.
+     * Do not allow a nested call/complex argument until sequencing is
+     * fully represented by the event tape. */
+    if(nc2_kind[argument]!=1 & nc2_kind[argument]!=2 &
+       nc2_kind[argument]!=4 & nc2_kind[argument]!=5) {
+        nc2_fault=11;return 0;
+    }
+    result=nc2_node(8,function_id,argc,argument,0,0);
+    if(result==0) return 0;
+    if(nc2_event(7,0,function_id,result,0)==0) return 0;
+    value_top=base;
+    nc2_value[base]=result;
+    return push_value_type(global_type[function_id]);
 }
 
 /*
