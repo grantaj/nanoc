@@ -1659,7 +1659,7 @@ char reduce_to_marker(char marker)
 }
 
 /* The original parser owns argument counts, types and source ordering.
- * Record at most two byte-valued, side-effect-free operands; the lowerer
+ * Record at most two byte- or word-valued side-effect-free operands; the lowerer
  * stages them left-to-right immediately before the call. A zero-argument
  * call is the same operation with no staging instructions.
  */
@@ -1680,14 +1680,16 @@ char emit_call_finish(char marker_index)
     if(argc!=global_param_count[function_id]) {
         compiler_error=5;return 0;
     }
-    if(global_kind[function_id]!=3 | global_type[function_id]!=1 |
+    if(global_kind[function_id]!=3 |
+       (global_type[function_id]!=1 & global_type[function_id]!=2) |
        argc>2) {nc2_fault=11;return 0;}
     first=0;
     second=0;
     i=0;
     while(i<argc) {
         expected=param_type[global_param_start[function_id]+i];
-        if(expected!=1 | compatible_type(value_type[base+i],expected)==0) {
+        if((expected!=1 & expected!=2 & expected!=3) |
+           compatible_type(value_type[base+i],expected)==0) {
             compiler_error=5;return 0;
         }
         operand=nc2_value[base+i];
