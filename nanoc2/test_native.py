@@ -325,6 +325,24 @@ def word_scalar_test():
         "\tjsr n2_echo_word",
     ]
     lines += word_assert(0xcd,0xab,2)
+    lines += [
+        "\tlda #$fe", "\tsta n2_add_word_value",
+        "\tlda #$00", "\tsta n2_add_word_value+1",
+        "\tjsr n2_add_word",
+    ]
+    lines += word_assert(0xfe,0x01,3)  # $00fe + $00ff + 1
+    lines += [
+        "\tlda #$ff", "\tsta n2_add_word_value",
+        "\tsta n2_add_word_value+1",
+        "\tjsr n2_add_word",
+    ]
+    lines += word_assert(0xff,0x00,4)  # $ffff wraps to $00ff
+    lines += [
+        "\tlda #$00", "\tsta n2_subtract_word_value",
+        "\tlda #$01", "\tsta n2_subtract_word_value+1",
+        "\tjsr n2_subtract_word",
+    ]
+    lines += word_assert(0xfe,0xff,5)  # $0100 - $0101 - 1
     return lines
 
 
