@@ -875,6 +875,8 @@ def main():
     run_stage_tests(driver)
     from test_comparison_rhs_native import run_rhs_tests
     run_rhs_tests(driver)
+    from test_ass_string_native import run_string_tests
+    run_string_tests(driver)
     from test_computed_call_native import run_computed_call_tests
     run_computed_call_tests(driver)
     from test_word_array_native import run_word_array_tests
