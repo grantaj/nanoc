@@ -96,6 +96,8 @@ int main(int argc,char **argv)
     nc2_enable = 1;
     nc2_function_count = 0;
     nc2_local_slots = 0;
+    native_mode = (argc==2 && strcmp(argv[1],"native")==0);
+    nc2_native_stream = native_mode;
     if (init_symbols() == 0) return 3;
     if (next_source_char() == 0 || scan_token() == 0) return 4;
     if (parse_unit() == 0 || nc2_fault != 0) {
@@ -103,8 +105,7 @@ int main(int argc,char **argv)
                 compiler_error,nc2_fault,token_kind,nc2_nodes,nc2_events);
         return 5;
     }
-    if (argc==2 && strcmp(argv[1],"native")==0) {
-        native_mode=1;
+    if (native_mode) {
         if(n2_native()==0) {
             fprintf(stderr,"native ABI error %u, lowerer %u, backend %u\n",
                     (unsigned)nc2_fault,(unsigned)nd_error,(unsigned)tb_error);
