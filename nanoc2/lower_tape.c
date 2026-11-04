@@ -91,6 +91,19 @@ int nd_scalar(unsigned node)
     return nd_record(nc2_a[node],nc2_b[node],1);
 }
 
+/* Word scalars keep the same static Nano C two-byte homes, but are
+ * never assigned X/Y traversal identities. The target emitter handles
+ * their low and high bytes explicitly, without generic register planning.
+ */
+int nd_word(unsigned node)
+{
+    if(node==0 | nc2_kind[node]!=2) {nd_error=30;return -1;}
+    if(nc2_number[node]!=2 & nc2_number[node]!=3) {
+        nd_error=30;return -1;
+    }
+    return nd_record(nc2_a[node],nc2_b[node],1);
+}
+
 int nd_array(char area, char symbol)
 {
     if (area!=1 | global_kind[symbol]!=2 | global_type[symbol]!=1) {
@@ -367,6 +380,19 @@ char nd_assignment(char area, char symbol, unsigned rhs)
             return nd_add(14,ptr,0,src,nc2_number[extra]);
         }
     }
+    if(target_type==2 | target_type==3) {
+        dst=nd_record(area,symbol,1);
+        if(dst<0) return 0;
+        if(nc2_kind[rhs]==1) {
+            return nd_add(27,dst,0,0,nc2_number[rhs]);
+        }
+        if(nc2_kind[rhs]==2) {
+            src=nd_word(rhs);
+            if(src<0) return 0;
+            return nd_add(28,dst,src,0,0);
+        }
+        nd_error=25;return 0;
+    }
     if (target_type!=1) { nd_error=25; return 0; }
     dst=nd_record(area,symbol,1);
     if (dst<0) return 0;
@@ -396,6 +422,16 @@ char nd_return(unsigned expr)
 {
     int src;
     if (expr==0) { nd_error=21; return 0; }
+    if (nc2_return_type==2 | nc2_return_type==3) {
+        if(nc2_kind[expr]==1)
+            return nd_add(29,0,0,0,nc2_number[expr]);
+        if(nc2_kind[expr]==2) {
+            src=nd_word(expr);
+            if(src<0) return 0;
+            return nd_add(30,src,0,0,0);
+        }
+        nd_error=21;return 0;
+    }
     if (nc2_kind[expr]==1) {
         if (nc2_number[expr]>255) { nd_error=21; return 0; }
         return nd_add(13,0,0,0,nc2_number[expr]);
@@ -428,7 +464,8 @@ char nd_prepare()
     nd_next_pointer=0;
     tb_reset();
     if (nc2_fault!=0) return 0;
-    if (nc2_return_type!=1) { nd_error=26; return 0; }
+    if (nc2_return_type!=1 & nc2_return_type!=2 &
+        nc2_return_type!=3) { nd_error=26; return 0; }
     i=0;
     while (i<nc2_events) {
         op=nc2_event_kind[i];
