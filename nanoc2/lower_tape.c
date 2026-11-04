@@ -243,30 +243,39 @@ char nd_index_store(char area,char symbol,unsigned index_node,unsigned rhs)
     return nd_index_address(area,symbol,kind,index_node,2);
 }
 
-/* Calls are effects in the existing statement-event order. The first
- * supported ABI case is one byte argument/byte result. The callee's static
- * argument home is identified by its original parser symbol number.
+/* Calls are effects in the original parser's event order. Stage zero,
+ * one or two independently type-checked byte operands left-to-right using
+ * the callee's ordinary static Nano C argument homes. Complex/nested call
+ * expressions remain rejected by the semantic parser.
  */
 char nd_call(unsigned node, char callee)
 {
+    char argc;
+    char i;
     unsigned argument;
     int value;
     if(node==0 | nc2_kind[node]!=8 | nc2_a[node]!=callee |
-       nc2_b[node]!=1) {nd_error=28;return 0;}
-    argument=nc2_left[node];
-    if(argument==0) {nd_error=28;return 0;}
-    if(nc2_kind[argument]==1) {
-        if(nc2_number[argument]>255) {nd_error=28;return 0;}
-        if(nd_add(21,0,0,0,nc2_number[argument])==0) return 0;
-    } else if(nc2_kind[argument]==2) {
-        value=nd_scalar(argument);
-        if(value<0) return 0;
-        if(nd_add(15,0,value,0,0)==0) return 0;
-    } else if(nc2_kind[argument]==4 | nc2_kind[argument]==5) {
-        if(nd_index(argument,0)==0) return 0;
-    } else {nd_error=28;return 0;}
-    if(nd_add(22,callee,0,0,0)==0) return 0; /* STA callee arg */
-    return nd_add(23,callee,0,0,0);          /* JSR + return state */
+       nc2_b[node]>2) {nd_error=28;return 0;}
+    argc=nc2_b[node];
+    i=0;
+    while(i<argc) {
+        if(i==0) argument=nc2_left[node];
+        else argument=nc2_right[node];
+        if(argument==0) {nd_error=28;return 0;}
+        if(nc2_kind[argument]==1) {
+            if(nc2_number[argument]>255) {nd_error=28;return 0;}
+            if(nd_add(21,0,0,0,nc2_number[argument])==0) return 0;
+        } else if(nc2_kind[argument]==2) {
+            value=nd_scalar(argument);
+            if(value<0) return 0;
+            if(nd_add(15,0,value,0,0)==0) return 0;
+        } else if(nc2_kind[argument]==4 | nc2_kind[argument]==5) {
+            if(nd_index(argument,0)==0) return 0;
+        } else {nd_error=28;return 0;}
+        if(nd_add(22,callee,i,0,0)==0) return 0;
+        i=i+1;
+    }
+    return nd_add(23,callee,0,0,0);
 }
 
 char nd_condition(unsigned expr, unsigned exit_label)
