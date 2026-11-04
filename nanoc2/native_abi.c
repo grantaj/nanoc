@@ -181,8 +181,14 @@ char n2_begin()
     n2_started=0;
     n2_first_function=255;
     if(tb_text("NC_BSS = $4800\n")==0) return 0;
-    if(tb_text("__tptr00 = $f0\n__tptr01 = $f2\n")==0) return 0;
-    if(tb_text("__twlo = $f4\n__twhi = $f5\n__tret = $f6\n")==0) return 0;
+    /* C64 KERNAL interrupts use $f0-$fa. Only $fb-$fe are available
+     * for user-owned indirect-index cursors, and the existing Nano C
+     * runtime uses these four bytes as NC_TMP/NC_PTR. Calls with live
+     * pointer cursors are rejected until we add save/restore semantics.
+     * Other scratch needs ordinary private RAM; never borrow IRQ ZP.
+     */
+    if(tb_text("__tptr00 = $fb\n__tptr01 = $fd\n")==0) return 0;
+    if(tb_text("__twlo = $cf20\n__twhi = $cf21\n__tret = $cf22\n")==0) return 0;
     if(tb_text("\t* = $0800\n__nc_start:\n\tjmp __nc_entry\n")==0) return 0;
     return 1;
 }
