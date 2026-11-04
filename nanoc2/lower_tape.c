@@ -637,6 +637,9 @@ char nd_call(unsigned node, char callee)
     char expected;
     char actual;
     char staged;
+    int other;
+    unsigned left_arg;
+    unsigned right_arg;
     if(node==0 | nc2_kind[node]!=8 | nc2_a[node]!=callee |
        nc2_b[node]>8) {nd_error=28;return 0;}
     argc=nc2_b[node];
@@ -664,6 +667,19 @@ char nd_call(unsigned node, char callee)
                 } else {nd_error=28;return 0;}
             } else if(nc2_kind[argument]==4 | nc2_kind[argument]==5) {
                 if(nd_index(argument,0)==0) return 0;
+            } else if(nc2_kind[argument]==6 &
+                      nc2_a[argument]=='-') {
+                left_arg=nc2_left[argument];
+                right_arg=nc2_right[argument];
+                if(nc2_kind[left_arg]!=2 | nc2_number[left_arg]!=1 |
+                   nc2_kind[right_arg]!=2 | nc2_number[right_arg]!=1) {
+                    nd_error=28;return 0;
+                }
+                value=nd_scalar(left_arg);
+                other=nd_scalar(right_arg);
+                if(value<0 | other<0) return 0;
+                if(nd_add(98,callee,i,value,other)==0) return 0;
+                staged=1;
             } else {nd_error=28;return 0;}
             if(staged==0) {
                 if(nd_add(22,callee,i,0,0)==0) return 0;
@@ -697,14 +713,30 @@ char nd_call(unsigned node, char callee)
                 if(nd_add(77,callee,i,0,0)==0) return 0;
             } else {nd_error=28;return 0;}
         } else if(expected==4) {
-            if(nc2_kind[argument]!=2 | nc2_number[argument]!=4) {
+            left_arg=argument;
+            right_arg=0;
+            if(nc2_kind[argument]==6 & nc2_a[argument]=='+') {
+                left_arg=nc2_left[argument];
+                right_arg=nc2_right[argument];
+            }
+            if(nc2_kind[left_arg]!=2 | nc2_number[left_arg]!=4) {
                 nd_error=28;return 0;
             }
-            /* A pointer is an ordinary two-byte static Phase-1 value
-             * when passed. Its dereference cursor is separate state
-             * that must be reconciled across the eventual JSR. */
-            if(nd_add(86,callee,i,nc2_a[argument],nc2_b[argument])==0)
-                return 0;
+            /* The pointer value lives in its two-byte static home,
+             * never in the shared zero-page dereference cursor.
+             * Copy the base into the callee's parameter home first. */
+            if(nd_add(86,callee,i,nc2_a[left_arg],
+                      nc2_b[left_arg])==0) return 0;
+            if(right_arg!=0) {
+                if(nc2_kind[right_arg]!=2) {nd_error=28;return 0;}
+                actual=nc2_number[right_arg];
+                if(actual==1) value=nd_scalar(right_arg);
+                else if(actual==2 | actual==3)
+                    value=nd_word(right_arg);
+                else {nd_error=28;return 0;}
+                if(value<0) return 0;
+                if(nd_add(99,callee,i,value,actual)==0) return 0;
+            }
         } else {nd_error=28;return 0;}
         i=i+1;
     }
