@@ -199,15 +199,16 @@ def main():
     targets.append(("ass_relative_byte",ass_function("relative_byte")))
     targets.append(("ass_trim_fixups",ass_prefix+"\n"+ass_function("trim_fixups")))
     ass_count=6
-    targets.append(("computed_call_unit",
-                    (ROOT/"tests"/"nanoc2"/"computed-call.c").read_text()))
+    # The original nanoc1 host compiler rejects this composed-call fixture.
+    # It stays in independent native VICE correctness testing; the physical
+    # comparison stays strictly apples-to-apples with accepted source.
     word_array=ROOT/"tests"/"nanoc2"/"word-array-read.c"
     word_array_names=("read_sample","copy_sample",
                       "sample_equals","read_previous_sample")
     for name in word_array_names:
         targets.append((name,"unsigned word_samples[640];\n"+
                         exact_c_function(word_array,name)))
-    new_count=1+len(word_array_names)
+    new_count=len(word_array_names)
     results = []
     for name, source in targets:
         old_asm = compile_host(old_driver,source)
