@@ -341,6 +341,7 @@ char tb_compile()
     char a;
     char b;
     unsigned k;
+    char *word_op;
     if (tb_error != 0) return 0;
     if (tb_plan() == 0) return 0;
     i = 0;
@@ -428,22 +429,34 @@ char tb_compile()
             /* Ordinary 6502 16-bit add/sub with carry or borrow.
              * Keep the high source byte untouched until it is read so
              * in-place updates are safe, even across a page boundary. */
-            if (tb_simple(op==31 ? "clc" : "sec")==0) return 0;
+            if (op==31) {
+                if (tb_simple("clc")==0) return 0;
+                word_op="adc";
+            } else {
+                if (tb_simple("sec")==0) return 0;
+                word_op="sbc";
+            }
             if (tb_location("lda",1,a,"")==0) return 0;
-            if (tb_immediate(op==31 ? "adc" : "sbc",k & 255)==0) return 0;
+            if (tb_immediate(word_op,k & 255)==0) return 0;
             if (tb_location("sta",1,d,"")==0) return 0;
             if (tb_location("lda",1,a,"+1")==0) return 0;
-            if (tb_immediate(op==31 ? "adc" : "sbc",k >> 8)==0) return 0;
+            if (tb_immediate(word_op,k >> 8)==0) return 0;
             if (tb_location("sta",1,d,"+1")==0) return 0;
         } else if (op == 33 | op == 34) {
             /* Word ABI: A=low, X=high. Save the low result in private
              * scratch while the second byte consumes the same carry. */
-            if (tb_simple(op==33 ? "clc" : "sec")==0) return 0;
+            if (op==33) {
+                if (tb_simple("clc")==0) return 0;
+                word_op="adc";
+            } else {
+                if (tb_simple("sec")==0) return 0;
+                word_op="sbc";
+            }
             if (tb_location("lda",1,d,"")==0) return 0;
-            if (tb_immediate(op==33 ? "adc" : "sbc",k & 255)==0) return 0;
+            if (tb_immediate(word_op,k & 255)==0) return 0;
             if (tb_operand("sta","__twlo")==0) return 0;
             if (tb_location("lda",1,d,"+1")==0) return 0;
-            if (tb_immediate(op==33 ? "adc" : "sbc",k >> 8)==0) return 0;
+            if (tb_immediate(word_op,k >> 8)==0) return 0;
             if (tb_simple("tax")==0) return 0;
             if (tb_operand("lda","__twlo")==0) return 0;
             if (tb_simple("rts")==0) return 0;
