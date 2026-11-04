@@ -241,6 +241,21 @@ char nd_chain(unsigned expr, char result_type, int dest, char returning)
         if(value<0) return 0;
         id=value;
         literal=0;
+    } else if(nc2_kind[current]==6 & nc2_a[current]=='*' &
+              nc2_kind[nc2_left[current]]==2 &
+              nc2_kind[nc2_right[current]]==1 &
+              (nc2_number[nc2_left[current]]==2 |
+               nc2_number[nc2_left[current]]==3)) {
+        /* The decimal grammar uses a word times literal ten as the
+         * beginning of a left-associated +/- chain. The 6502 emitter
+         * implements the constant 10 with an 8x+2x shift/add, leaving
+         * the product in the same two-byte arithmetic accumulator. */
+        value=nd_word(nc2_left[current]);
+        if(value<0) return 0;
+        if(nd_add(50,3,value,0,0)==0) return 0;
+        if(nd_add(96,0,0,0,nc2_number[nc2_right[current]])==0)
+            return 0;
+        kind=4; /* scratch accumulator already initialized */
     } else if(nc2_kind[current]==4 & nc2_a[current]==1 &
               nc2_number[current]==2 &
               (global_type[nc2_b[current]]==2 |
@@ -268,6 +283,17 @@ char nd_chain(unsigned expr, char result_type, int dest, char returning)
             value=nd_record(nc2_a[right],nc2_b[right],1);
             if(value<0) return 0;
             id=value;
+            literal=0;
+        } else if((nc2_kind[right]==4 |
+                    nc2_kind[right]==5) &
+                  nc2_number[right]==1) {
+            /* A byte pointer/array load is a zero-extended arithmetic
+             * operand. Stage A in the independent RHS word scratch
+             * before ADC/SBC consumes the full expression in __tacc. */
+            if(nd_index(right,0)==0) return 0;
+            if(nd_add(97,0,0,0,0)==0) return 0;
+            kind=4;
+            id=0;
             literal=0;
         } else if(nc2_kind[right]==4 & nc2_a[right]==1 &
                   nc2_number[right]==2 &
