@@ -760,6 +760,17 @@ def run_native(name, source, test_lines, driver):
                     str(generated_source)], cwd=ROOT, check=True)
     code = code_prg.read_bytes()
     assert code[:2] == b"\x00\x08", (name, code[:2])
+    # The independent 6502 caller must not overlap an increasingly large
+    # generated ass.c prefix. The VICE test runner starts from the caller
+    # PRG's load address, so use the first safe 4 KiB boundary and keep
+    # all test code below the original Nano C global BSS at $4800.
+    code_end = 0x0800 + len(code) - 2
+    caller_origin = 0x1000
+    while caller_origin <= code_end:
+        caller_origin += 0x1000
+    assert caller_origin < 0x4000, (name, code_end)
+    assert harness[0] == "\t* = $1000", name
+    harness[0] = "\t* = $%04x" % caller_origin
 
     # Symbol-only equates from the exact generated compiler output can be
     # shared by the independently assembled native caller. No duplicated
@@ -793,7 +804,8 @@ def run_native(name, source, test_lines, driver):
     subprocess.run([VASM, "-Fbin", "-cbm-prg", "-o", str(prg),
                     str(asm_path)], cwd=ROOT, check=True)
     raw = prg.read_bytes()
-    assert raw[:2] == b"\x00\x10", (name, raw[:2])
+    assert raw[:2] == caller_origin.to_bytes(2,"little"), (name,raw[:2])
+    assert caller_origin + len(raw)-2 < 0x4800, (name,"caller meets BSS")
     env = os.environ.copy()
     env["BUILD_DIR"] = str(OUT)
     env["VICE_TIMEOUT"] = "35"
