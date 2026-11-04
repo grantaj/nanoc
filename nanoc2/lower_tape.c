@@ -615,6 +615,15 @@ char nd_assignment(char area, char symbol, unsigned rhs)
     if (rhs==0) { nd_error=19; return 0; }
     if (area==1) target_type=global_type[symbol];
     else target_type=local_type[symbol];
+    /* A Phase-1 value is at most 16 bits. AND $FFFF is an identity
+     * for any numeric subexpression, including nested subtraction.
+     * This avoids a gratuitous temporary when ass.c writes
+     * difference = (target - base) & 65535. */
+    if((target_type==1 | target_type==2 | target_type==3) &
+       nc2_kind[rhs]==6 & nc2_a[rhs]=='&' &
+       nc2_kind[nc2_right[rhs]]==1 &
+       nc2_number[nc2_right[rhs]]==65535)
+        rhs=nc2_left[rhs];
     if (nc2_kind[rhs]==6) {
         op=nc2_a[rhs];
         lhs=nc2_left[rhs];
