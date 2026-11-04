@@ -790,6 +790,13 @@ char nd_call(unsigned node, char callee)
                 if(nd_add(77,callee,i,0,0)==0) return 0;
             } else {nd_error=28;return 0;}
         } else if(expected==4) {
+            /* A char array expression supplies its linker-resolved 16-bit
+             * base. Ordinary pointer variables still use their own
+             * two-byte static homes below. Neither is the ZP cursor. */
+            if(nc2_kind[argument]==3 & nc2_a[argument]==2) {
+                if(nd_add(108,callee,i,0,nc2_number[argument])==0)
+                    return 0;
+            } else {
             left_arg=argument;
             right_arg=0;
             if(nc2_kind[argument]==6 & nc2_a[argument]=='+') {
@@ -819,6 +826,7 @@ char nd_call(unsigned node, char callee)
                     if(nd_add(99,callee,i,value,actual)==0) return 0;
                 }
             }
+            } /* mutable pointer argument */
         } else {nd_error=28;return 0;}
         i=i+1;
     }
