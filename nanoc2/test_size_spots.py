@@ -145,10 +145,13 @@ def main():
         "literal_base", "reverse_sub", "alias_late",
         "byte_chain", "byte_return", "byte_sum_word",
         "reverse_add_store", "reverse_sub_store", "byte_sum_store",
-        "byte_pair_return", "byte_pair_store",
+        "byte_pair_return", "byte_pair_store", "fill_even",
     )
     for name in mixed_names:
-        targets.append((name,exact_c_function(mixed,name)))
+        source=exact_c_function(mixed,name)
+        if name=="fill_even":
+            source="char out_even[256];\n" + source
+        targets.append((name,source))
     mixed_count = len(mixed_names)
     results = []
     for name, source in targets:
