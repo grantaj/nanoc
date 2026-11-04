@@ -15,6 +15,9 @@ char nc2_return_type;
 char nc2_function_count;
 char nc2_function_symbol;
 char nc2_local_slots;
+unsigned nc2_local_base;
+char nc2_native_stream;
+char n2_emit_function();
 char nc2_capture;
 char nc2_fault;
 unsigned nc2_nodes;
@@ -2840,6 +2843,7 @@ char parse_function(char function_id)
     char param_start;
 
     nc2_return_type = global_type[function_id];
+    nc2_local_base = bss_offset;
     if (nc2_enable != 0) {
         nc2_function_count=nc2_function_count+1;
         nc2_function_symbol=function_id;
@@ -2923,6 +2927,9 @@ char parse_function(char function_id)
         return 0;
     }
     nc2_local_slots=local_count;
+    if (nc2_native_stream != 0) {
+        if (n2_emit_function() == 0) return 0;
+    }
     nc2_capture = 0;
     local_count = 0;
     return 1;
