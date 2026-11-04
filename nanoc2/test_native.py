@@ -243,7 +243,10 @@ def call_index_test():
     lines += [
         "\tldx #$00",
         ".verify:",
-        "\tlda n2_call_source,x",
+        "\tlda #$22",
+        "\tcpx #$5a", "\tbne .expected",
+        "\tlda #$11",
+        ".expected:",
         "\tcmp n2_call_dest,x",
         "\tbeq .matching",
         "\tjmp native_fail",
