@@ -562,6 +562,23 @@ char nd_assignment(char area, char symbol, unsigned rhs)
                     else op=59;
                     return nd_add(op,dst,src,ptr,0);
                 }
+                if(nc2_kind[lhs]==2 & nc2_number[lhs]==1 &
+                   (nc2_number[extra]==2 | nc2_number[extra]==3)) {
+                    src=nd_scalar(lhs);
+                    if(src<0) return 0;
+                    ptr=nd_word(extra);
+                    if(ptr<0) return 0;
+                    if(nc2_a[rhs]=='+') return nd_add(58,dst,ptr,src,0);
+                    return nd_add(63,dst,src,ptr,0);
+                }
+                if(nc2_kind[lhs]==2 & nc2_number[lhs]==1 &
+                   nc2_number[extra]==1 & nc2_a[rhs]=='+') {
+                    src=nd_scalar(lhs);
+                    if(src<0) return 0;
+                    ptr=nd_scalar(extra);
+                    if(ptr<0) return 0;
+                    return nd_add(65,dst,src,ptr,0);
+                }
                 if(nc2_kind[lhs]==2 &
                    (nc2_number[lhs]==2 | nc2_number[lhs]==3) &
                    (nc2_number[extra]==2 | nc2_number[extra]==3)) {
@@ -595,8 +612,20 @@ char nd_assignment(char area, char symbol, unsigned rhs)
         return nd_add(16,dst,0,0,0);
     }
     if(nc2_kind[rhs]==6 &
-       (nc2_a[rhs]=='+' | nc2_a[rhs]=='-'))
+       (nc2_a[rhs]=='+' | nc2_a[rhs]=='-')) {
+        lhs=nc2_left[rhs];
+        extra=nc2_right[rhs];
+        if(nc2_a[rhs]=='+' & nc2_kind[lhs]==2 &
+           nc2_kind[extra]==2 & nc2_number[lhs]==1 &
+           nc2_number[extra]==1) {
+            src=nd_scalar(lhs);
+            if(src<0) return 0;
+            ptr=nd_scalar(extra);
+            if(ptr<0) return 0;
+            return nd_add(66,dst,src,ptr,0);
+        }
         return nd_chain(rhs,target_type,dst,0);
+    }
     if (nc2_kind[rhs]==4 | nc2_kind[rhs]==5) {
         if (nd_index(rhs,0)==0) return 0;
         return nd_add(16,dst,0,0,0);
@@ -660,6 +689,24 @@ char nd_return(unsigned expr)
                     else op=61;
                     return nd_add(op,0,src,extra,0);
                 }
+                if(nc2_kind[lhs]==2 & nc2_number[lhs]==1 &
+                   (nc2_number[extra]==2 | nc2_number[extra]==3)) {
+                    src=nd_scalar(lhs);
+                    if(src<0) return 0;
+                    extra=nd_word(extra);
+                    if(extra>31) {nd_error=30;return 0;}
+                    if(nc2_a[expr]=='+')
+                        return nd_add(60,0,extra,src,0);
+                    return nd_add(62,0,src,extra,0);
+                }
+                if(nc2_kind[lhs]==2 & nc2_number[lhs]==1 &
+                   nc2_number[extra]==1 & nc2_a[expr]=='+') {
+                    src=nd_scalar(lhs);
+                    if(src<0) return 0;
+                    extra=nd_scalar(extra);
+                    if(extra>31) {nd_error=30;return 0;}
+                    return nd_add(64,0,src,extra,0);
+                }
                 if(nc2_kind[lhs]==2 &
                    (nc2_number[lhs]==2 | nc2_number[lhs]==3) &
                    (nc2_number[extra]==2 | nc2_number[extra]==3)) {
@@ -687,8 +734,20 @@ char nd_return(unsigned expr)
         return nd_add(12,src,0,0,0);
     }
     if(nc2_kind[expr]==6 &
-       (nc2_a[expr]=='+' | nc2_a[expr]=='-'))
+       (nc2_a[expr]=='+' | nc2_a[expr]=='-')) {
+        lhs=nc2_left[expr];
+        extra=nc2_right[expr];
+        if(nc2_a[expr]=='+' & nc2_kind[lhs]==2 &
+           nc2_kind[extra]==2 & nc2_number[lhs]==1 &
+           nc2_number[extra]==1) {
+            src=nd_scalar(lhs);
+            if(src<0) return 0;
+            extra=nd_scalar(extra);
+            if(extra>31) {nd_error=30;return 0;}
+            return nd_add(67,0,src,extra,0);
+        }
         return nd_chain(expr,nc2_return_type,0,1);
+    }
     if (nc2_kind[expr]==8) {
         if (nd_add(25,0,0,0,0)==0) return 0;
         return nd_add(26,0,0,0,0);
