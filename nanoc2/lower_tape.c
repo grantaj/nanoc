@@ -617,6 +617,17 @@ char nd_condition(unsigned expr, unsigned exit_label)
     else {nd_error=17;return 0;}
     left=nc2_left[expr];
     right=nc2_right[expr];
+    /* A word array element is already a full C integer. Read it
+     * through its 16-bit indexed pointer into __tacc, then compare
+     * against a scalar or literal with the same typed comparator as
+     * ordinary word expressions; do not narrow it to the byte in A. */
+    if(nc2_kind[left]==4 & nc2_a[left]==1 &
+       nc2_number[left]==2 &
+       (global_type[nc2_b[left]]==2 | global_type[nc2_b[left]]==3)) {
+        if(nd_index(left,0)==0) return 0;
+        if(nd_condition_word(0,right,nc2_b[expr])==0) return 0;
+        return nd_add(10,0,rel,0,exit_label);
+    }
     if(nc2_kind[left]==6 &
        (nc2_a[left]=='+' | nc2_a[left]=='-')) {
         if(nd_chain(left,2,0,2)==0) return 0;
@@ -746,6 +757,13 @@ char nd_assignment(char area, char symbol, unsigned rhs)
             if(global_type[nc2_a[rhs]]==1)
                 return nd_add(48,dst,0,0,0);
             nd_error=25;return 0;
+        }
+        if(nc2_kind[rhs]==4 & nc2_a[rhs]==1 &
+           nc2_number[rhs]==2 &
+           (global_type[nc2_b[rhs]]==2 |
+            global_type[nc2_b[rhs]]==3)) {
+            if(nd_index(rhs,0)==0) return 0;
+            return nd_add(79,dst,0,0,0);
         }
         if(nc2_kind[rhs]==2) {
             if(nc2_number[rhs]==1) {
@@ -896,6 +914,13 @@ char nd_return(unsigned expr)
             if(global_type[nc2_a[expr]]==1)
                 return nd_add(49,0,0,0,0);
             nd_error=21;return 0;
+        }
+        if(nc2_kind[expr]==4 & nc2_a[expr]==1 &
+           nc2_number[expr]==2 &
+           (global_type[nc2_b[expr]]==2 |
+            global_type[nc2_b[expr]]==3)) {
+            if(nd_index(expr,0)==0) return 0;
+            return nd_add(53,nc2_return_type,0,0,0);
         }
         if(nc2_kind[expr]==2) {
             if(nc2_number[expr]==1) {
