@@ -534,11 +534,7 @@ char tb_compare_word(char left, char right, char is_unsigned,
     if(literal!=0) {
         if(tb_immediate("cmp",number & 255)==0) return 0;
     } else {
-        if(right==0) {
-            if(tb_operand("cmp","__tacc")==0) return 0;
-        } else {
-            if(tb_location("cmp",1,right,"")==0) return 0;
-        }
+        if(tb_location("cmp",1,right,"")==0) return 0;
     }
     return tb_label(done);
 }
@@ -658,7 +654,11 @@ char tb_numeric_compare(char left, char right, char descriptor,
             if(tb_location("cmp",1,right,"")==0) return 0;
         }
     } else {
-        if(tb_location("cmp",1,right,"")==0) return 0;
+        if(right==0) {
+            if(tb_operand("cmp","__tacc")==0) return 0;
+        } else {
+            if(tb_location("cmp",1,right,"")==0) return 0;
+        }
     }
     return tb_label(done);
 }
