@@ -68,6 +68,7 @@ int mixed_relay(int left, char tag)
 int indexed_word_call(char i)
 {
     int tmp;
+    i = 0;
     tmp = 0;
     while (i < 3) {
         out_bytes[i] = i;
