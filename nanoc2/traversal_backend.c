@@ -946,6 +946,17 @@ char tb_compile()
             if (tb_immediate("lda",k) == 0) return 0;
         } else if (op == 22) {
             if (tb_stage_byte(d,a)==0) return 0;
+        } else if (op == 108) {
+            /* Linker-resolved address of an original char array.
+             * This is a typed pointer argument, not an indexed load. */
+            if(tb_text("\tlda #<__g")==0) return 0;
+            if(tb_hex2(k)==0) return 0;
+            if(tb_char('\n')==0) return 0;
+            if(tb_param("sta",d,a,"")==0) return 0;
+            if(tb_text("\tlda #>__g")==0) return 0;
+            if(tb_hex2(k)==0) return 0;
+            if(tb_char('\n')==0) return 0;
+            if(tb_param("sta",d,a,"+1")==0) return 0;
         } else if (op == 23) {
             if (tb_call_byte(d,a)==0) return 0;
         } else if (op == 27) {
