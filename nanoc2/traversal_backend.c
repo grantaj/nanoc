@@ -43,7 +43,8 @@
  * 82 load word-array RHS into independent two-byte term,
  * 83-85 pointer load/compare/store at literal Y displacement,
  * 86 static two-byte pointer argument staging,
- * 88 save an indexed byte before a full-width numeric comparison.
+ * 88 save an indexed byte before a full-width numeric comparison,
+ * 89 compute full global byte array base + word index + byte index.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -59,6 +60,10 @@ unsigned tb_count;
 char tb_x;
 char tb_y;
 char tb_error;
+char tb_wide_cursor;
+char tb_pointer_count;
+char tb_pointer_area[2];
+char tb_pointer_symbol[2];
 unsigned tb_next_label;
 char tb_digits[17] = "0123456789ABCDEF";
 
@@ -162,6 +167,8 @@ char tb_reset()
     tb_x = 0;
     tb_y = 0;
     tb_next_label = 300;
+    tb_wide_cursor=0;
+    tb_pointer_count=0;
     return 1;
 }
 
@@ -592,6 +599,47 @@ char tb_numeric_compare(char left, char right, char descriptor,
  * indirect traversals, but never in a function with live pointer cursors.
  * A full 16-bit carry chain handles page crossings without branches.
  */
+/* A function with a named pointer uses ZP $FB/$FC for that cursor,
+ * leaving $FD/$FE for a simultaneously indexed global array.
+ * With no named pointer, keep the original cheaper first lane.
+ */
+char tb_wide_operand(char *mnemonic,char form)
+{
+    if(tb_wide_cursor==0) {
+        if(form==0) return tb_operand(mnemonic,"__tptr00");
+        if(form==1) return tb_operand(mnemonic,"__tptr00+1");
+        return tb_operand(mnemonic,"(__tptr00),y");
+    }
+    if(form==0) return tb_operand(mnemonic,"__tptr01");
+    if(form==1) return tb_operand(mnemonic,"__tptr01+1");
+    return tb_operand(mnemonic,"(__tptr01),y");
+}
+
+/* Add a two-byte source offset and zero-extended byte cursor to the
+ * global-array address. Both are original C lvalues; no pre-scaled
+ * pointer owner or source-name template is required. */
+char tb_wide_array_sum(char array,char word_index,char byte_index)
+{
+    if(tb_load_var(byte_index)==0) return 0;
+    if(tb_simple("clc")==0) return 0;
+    if(tb_location("adc",1,word_index,"")==0) return 0;
+    if(tb_operand("sta","__twlo")==0) return 0;
+    if(tb_location("lda",1,word_index,"+1")==0) return 0;
+    if(tb_immediate("adc",0)==0) return 0;
+    if(tb_operand("sta","__twhi")==0) return 0;
+    if(tb_simple("clc")==0) return 0;
+    if(tb_operand("lda","__twlo")==0) return 0;
+    if(tb_text("\tadc #<")==0) return 0;
+    if(tb_text(tb_name(2,array))==0) return 0;
+    if(tb_char('\n')==0) return 0;
+    if(tb_wide_operand("sta",0)==0) return 0;
+    if(tb_operand("lda","__twhi")==0) return 0;
+    if(tb_text("\tadc #>")==0) return 0;
+    if(tb_text(tb_name(2,array))==0) return 0;
+    if(tb_char('\n')==0) return 0;
+    return tb_wide_operand("sta",1);
+}
+
 char tb_wide_array_address(char array, char index, char spec,
                            unsigned displacement)
 {
@@ -640,7 +688,7 @@ char tb_wide_array_address(char array, char index, char spec,
     if(tb_text("\tadc #<")==0) return 0;
     if(tb_text(tb_name(2,array))==0) return 0;
     if(tb_char('\n')==0) return 0;
-    if(tb_operand("sta","__tptr00")==0) return 0;
+    if(tb_wide_operand("sta",0)==0) return 0;
     if(width==1 & byte_index==0 & displacement==0) {
         if(tb_location("lda",1,index,"+1")==0) return 0;
     } else {
@@ -649,7 +697,7 @@ char tb_wide_array_address(char array, char index, char spec,
     if(tb_text("\tadc #>")==0) return 0;
     if(tb_text(tb_name(2,array))==0) return 0;
     if(tb_char('\n')==0) return 0;
-    return tb_operand("sta","__tptr00+1");
+    return tb_wide_operand("sta",1);
 }
 
 /* A word-indexed byte read returns the byte in A and the correct
@@ -662,7 +710,7 @@ char tb_wide_array_load()
         if(tb_operand("sty","__tidxsave")==0) return 0;
     }
     if(tb_immediate("ldy",0)==0) return 0;
-    if(tb_operand("lda","(__tptr00),y")==0) return 0;
+    if(tb_wide_operand("lda",2)==0) return 0;
     if(tb_y!=0) {
         if(tb_simple("php")==0) return 0;
         if(tb_operand("ldy","__tidxsave")==0) return 0;
@@ -680,14 +728,14 @@ char tb_wide_array_load_word(char to_right)
         if(tb_operand("sty","__tidxsave")==0) return 0;
     }
     if(tb_immediate("ldy",0)==0) return 0;
-    if(tb_operand("lda","(__tptr00),y")==0) return 0;
+    if(tb_wide_operand("lda",2)==0) return 0;
     if(to_right!=0) {
         if(tb_operand("sta","__targ")==0) return 0;
     } else {
         if(tb_operand("sta","__tacc")==0) return 0;
     }
     if(tb_simple("iny")==0) return 0;
-    if(tb_operand("lda","(__tptr00),y")==0) return 0;
+    if(tb_wide_operand("lda",2)==0) return 0;
     if(to_right!=0) {
         if(tb_operand("sta","__targ+1")==0) return 0;
     } else {
@@ -728,7 +776,7 @@ char tb_wide_array_store(char kind,char source,char width,unsigned literal)
         if(tb_operand("sty","__tidxsave")==0) return 0;
     }
     if(tb_immediate("ldy",0)==0) return 0;
-    if(tb_operand("sta","(__tptr00),y")==0) return 0;
+    if(tb_wide_operand("sta",2)==0) return 0;
     if(width==2) {
         if(tb_simple("iny")==0) return 0;
         if(kind==1) {
@@ -738,7 +786,7 @@ char tb_wide_array_store(char kind,char source,char width,unsigned literal)
         } else {
             if(tb_location("lda",1,source,"+1")==0) return 0;
         }
-        if(tb_operand("sta","(__tptr00),y")==0) return 0;
+        if(tb_wide_operand("sta",2)==0) return 0;
     }
     if(tb_y!=0) return tb_operand("ldy","__tidxsave");
     return 1;
@@ -1158,6 +1206,8 @@ char tb_compile()
             }
             if(tb_operand("lda","__twlo")==0) return 0;
             if(tb_simple("rts")==0) return 0;
+        } else if (op == 89) {
+            if(tb_wide_array_sum(d,a,b)==0) return 0;
         } else if (op == 74) {
             if(tb_wide_array_address(d,a,b,k)==0) return 0;
         } else if (op == 75) {
