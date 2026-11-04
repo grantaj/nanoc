@@ -185,6 +185,42 @@ def copy_array_test():
     return lines
 
 
+def multi_function_test():
+    # Two functions share the same Phase-1 static ABI but have distinct
+    # parameter slots and independent X/Y/zero-page traversal decisions.
+    lines = [
+        "\t* = $0200", "main:",
+        "\tlda #<$31f9", "\tsta n2_fill_bytes_dst",
+        "\tlda #>$31f9", "\tsta n2_fill_bytes_dst+1",
+        "\tlda #$c8", "\tsta n2_fill_bytes_n",
+        "\tlda #$5a", "\tsta n2_fill_bytes_value",
+    ]
+    lines += check_call(200,0)  # first function uses $0800 jump wrapper
+    lines += [
+        "\tldx #$00", ".fill_verify:",
+        "\tlda $31f9,x", "\tcmp #$5a",
+        "\tbeq .fill_good", "\tjmp native_fail",
+        ".fill_good:", "\tinx", "\tcpx #$c8", "\tbne .fill_verify",
+        "\tlda #<$31f9", "\tsta n2_copy_bytes_dst",
+        "\tlda #>$31f9", "\tsta n2_copy_bytes_dst+1",
+        "\tlda #<$300f", "\tsta n2_copy_bytes_src",
+        "\tlda #>$300f", "\tsta n2_copy_bytes_src+1",
+        "\tlda #$c8", "\tsta n2_copy_bytes_n",
+        "\tldx #$00", ".source_prepare:",
+        "\ttxa", "\tsta $300f,x",
+        "\tinx", "\tcpx #$c8", "\tbne .source_prepare",
+        "\tjsr n2_copy_bytes",
+        "\tcmp #$c8", "\tbeq .return_a",
+        "\tjmp native_fail",
+        ".return_a:", "\tcpx #$00", "\tbeq .return_x",
+        "\tjmp native_fail",
+        ".return_x:", "\tldx #$00", ".copy_verify:",
+        "\tlda $300f,x", "\tcmp $31f9,x",
+        "\tbeq .copy_good", "\tjmp native_fail",
+        ".copy_good:", "\tinx", "\tcpx #$c8", "\tbne .copy_verify",
+    ]
+    return lines
+
 def run_native(name, source, test_lines, driver):
     output = subprocess.run([str(driver), "native"], input=source.encode(),
                             capture_output=True, check=True)
@@ -255,6 +291,15 @@ def main():
     run_native("copy_array", "char source_bytes[256];\n" +
                "char dest_bytes[256];\n" + fixture_function("copy_array"),
                copy_array_test(), driver)
+    # One source unit, two real Phase-1 definitions. The parser must emit
+    # each bounded function tape before it is reset for the next function.
+    multi_source = (
+        fixture_function("fill_pointer").replace("fill_pointer", "fill_bytes")
+        + "\n"
+        + fixture_function("copy_pointer").replace("copy_pointer", "copy_bytes")
+        + "\n"
+    )
+    run_native("two_functions", multi_source, multi_function_test(), driver)
 
 
 if __name__ == "__main__":
