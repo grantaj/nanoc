@@ -123,10 +123,12 @@ with tempfile.TemporaryDirectory() as tmp:
 
         # Unsupported but valid C must not be silently lowered to byte code.
     extra = [
-        original_function('same_bytes').replace('i = i + 1;', 'i = i * 2;'),
+        # 2/3/4/8/10 now have direct 6502 byte multiply idioms.
+        # Other factors must still fail closed until implemented.
+        original_function('same_bytes').replace('i = i + 1;', 'i = i * 7;'),
         original_function('same_bytes').replace('a[i]', 'a[i + 1]'),
     ]
     for source in extra:
         p=subprocess.run([str(driver)],input=source.encode(),capture_output=True)
         assert p.returncode!=0, ('unsupported code accepted',p.stdout.decode())
-    print('Original semantic parser -> C traversal lowerer -> 6502: 6500/6500 oracle comparisons; complex-index and multiplication guards passed')
+    print('Original semantic parser -> C traversal lowerer -> 6502: 6500/6500 oracle comparisons; complex-index and unsupported-factor guards passed')
