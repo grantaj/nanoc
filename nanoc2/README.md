@@ -1,7 +1,7 @@
 # nanoc2 — traversal-first 6502 compiler
 
 **Status: original Phase-1 parser and one C-written 6502 emitter, now accepting
-31 of 44 consecutive original `ass.c` functions. Representative real routines
+32 of 44 consecutive original `ass.c` functions. Representative real routines
 execute under native VICE. This is not yet a complete Phase-1, self-hosting
 compiler or whole-image benchmark. Draft PR #131.**
 
@@ -12,16 +12,21 @@ compiler or whole-image benchmark. Draft PR #131.**
 reports the first failed function, retaining all original global
 declarations, and rejects regressions below the verified prefix.
 
-**4 November 2026: 31/44 consecutive real functions compile**, from
-`upper_char` through `assemble_data_list`. The complete source is rejected at
-function 32, `assemble_string` (source line 1323, `lowerer 18`),
-which requires arithmetic on the right-hand side of a comparison:
-`while (i < length - 1)`. The original 15-function prefix has
-dedicated native regression tests, and additional native VICE tests
-exercise the later original `parse_atom`, `parse_value`, staging and
-mnemonic-handling functions. Source acceptance is distinct from native
-correctness; the entire 31-function prefix is not yet established as
-a complete executable assembler.
+**4 November 2026: 32/44 consecutive original functions compile**,
+from `upper_char` through `assemble_string`. The new general
+comparison lowering evaluates pure +/− arithmetic on the RHS to a full
+16-bit value; this unlocks the original `while (i < length - 1)`.
+The next rejected function is #33, `open_include`, at line 1385:
+`handle = io_open(source_path, output)`, where the original semantic
+parser's builtin-I/O capture is not yet supported (tape fault 11).
+
+Target-native VICE exercises the **verbatim 32-function prefix**,
+including string copying, page-crossing input, unterminated strings,
+long 255-byte inputs and output-capacity boundaries. The new
+`comparison-rhs.c` oracle also verifies all six relations, signed/
+unsigned 16-bit values and arithmetic chains. Native tests verify
+these specific behaviours; **full assembler runtime and I/O are not yet
+implemented**.
 
 The work was driven by real C constructs: typed 16-bit array
 loads/stores; `base_word + byte_index` addressing through separate
@@ -246,15 +251,22 @@ caller and callee costs under the same statically allocated ABI).
 | Arithmetic in conditions | 9 | 840 B | 590 B | 29.8% |
 | Overlapping real-`ass.c` measurements (11 cases; 31 function bodies) | 31 | 12,279 B | 6,580 B | 46.4% |
 | Indexed word-array tests | 4 | 249 B | 263 B | -5.6% |
-| **Combined** | **138 function-body measurements** | **18,599 B** | **10,441 B** | **43.9%** |
+| Computed comparison RHS | 10 | 793 B | 663 B | 16.4% |\n| **Combined** | **148 function-body measurements** | **19,392 B** | **11,104 B** | **42.7%** |
 
 The complete **first 15 original `ass.c` function bodies** are also
 measured together as one exact-source assembled unit: **6,302 B**
 with `nanoc1` versus **3,464 B** with `nanoc2` (**45.0% smaller**).
-Some other grouped tests remeasure these same functions; do not
-interpret aggregate body counts as 138 distinct C routines.
+The full **first 32 original `ass.c` function bodies** also assemble
+to **9,981 B** with `nanoc2` (10,725 B for the corresponding
+native program, including entry and global initialization). Production
+`nanoc1` rejects that exact prefix (exit 2), so no fabricated old
+byte count or reduction percentage is reported for it. This
+new-only physical measurement is **excluded** from the comparable total.
 
-The suite now has 106 source measurement cases, including the multi-function
+Some other grouped tests remeasure the same original functions; do not
+interpret the 148 function-body occurrences as 148 distinct routines.
+
+The suite now has 116 comparable source measurement cases, including the multi-function
 unit. For word calls, a single span includes all 13 functions; no runtime,
 test caller or entry trampoline is counted. The smaller call, word-branch and chained-expression reductions reveal
 remaining code-generation quality gaps, not a reason to substitute the
@@ -276,12 +288,13 @@ proof the new compiler binary itself will fit C64 memory.
 
 ## Unfinished work
 
-1. Advance original `ass.c` from **31/44**. Function 32,
-   `assemble_string`, requires a computed comparison RHS such as
-   `while (i < length - 1)`. Preserve full integer promotions and
-   source ordering rather than special-casing the function. Continue
-   extending target-native real-source tests and exact-source
-   vasm measurements alongside each new capability.
+1. Advance original `ass.c` from **32/44**. Function 33,
+   `open_include`, reaches builtin `io_open(source_path, output)`.
+   Capture the original parser's builtin I/O call as a genuine typed
+   ordered effect, supply a compatible native runtime boundary and
+   test error/handle semantics. Do not substitute a name-specific
+   parser recognizer or claim execution before I/O is linked.
+   Extend exact-source physical benchmarks whenever a valid baseline exists.
 2. Preserve the one-pass-per-function, bounded-memory design while removing
    remaining old output scaffolding from the inherited parser.
 3. Run the full native Phase-1 corpus, self-compile the new compiler and
