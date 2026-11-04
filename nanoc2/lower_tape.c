@@ -774,9 +774,19 @@ char nd_condition(unsigned expr, unsigned exit_label)
         if(nc2_kind[right]==4 | nc2_kind[right]==5) {
             if(nd_index(right,1)==0) return 0;
         } else if(nc2_kind[right]==2) {
-            r=nd_scalar(right);
-            if(r<0) return 0;
-            if(nd_add(18,0,r,0,0)==0) return 0;
+            if(nc2_number[right]==2 | nc2_number[right]==3) {
+                /* The array's byte in A is promoted to a full int,
+                 * not truncated to the low byte of the RHS word. */
+                r=nd_word(right);
+                if(r<0) return 0;
+                if(nd_add(88,0,0,0,0)==0) return 0;
+                if(nd_numeric_compare(2,0,3,r,nc2_b[expr],0)==0)
+                    return 0;
+            } else {
+                r=nd_scalar(right);
+                if(r<0) return 0;
+                if(nd_add(18,0,r,0,0)==0) return 0;
+            }
         } else if(nc2_kind[right]==1) {
             if(nc2_number[right]>255) {nd_error=18;return 0;}
             if(nd_add(17,0,0,0,nc2_number[right])==0) return 0;
