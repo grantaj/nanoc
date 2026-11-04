@@ -598,6 +598,20 @@ char nd_assignment(char area, char symbol, unsigned rhs)
             if(src<0) return 0;
             return nd_add(28,dst,src,0,0);
         }
+        /* The assembler uses masks for opcode fields and 16-bit wrap.
+         * Preserve ordinary C bitwise semantics, including destination
+         * aliasing. & $FFFF on the same home emits no instructions. */
+        if(nc2_kind[rhs]==6 & nc2_a[rhs]=='&') {
+            lhs=nc2_left[rhs];
+            extra=nc2_right[rhs];
+            if(nc2_kind[lhs]==2 & nc2_kind[extra]==1 &
+               (nc2_number[lhs]==2 | nc2_number[lhs]==3)) {
+                src=nd_word(lhs);
+                if(src<0) return 0;
+                if(src==dst & nc2_number[extra]==65535) return 1;
+                return nd_add(70,dst,src,0,nc2_number[extra]);
+            }
+        }
         /* Word +/- literal uses the 6502 carry chain directly.
          * The source can be the destination: low-byte write leaves the
          * source high byte and the processor carry/borrow intact. */
@@ -729,6 +743,26 @@ char nd_return(unsigned expr)
             if(src<0) return 0;
             return nd_add(30,src,0,0,0);
         }
+        if(nc2_kind[expr]==6 & nc2_a[expr]=='&') {
+            lhs=nc2_left[expr];
+            extra=nc2_right[expr];
+            if(nc2_kind[lhs]==2 & nc2_kind[extra]==1 &
+               (nc2_number[lhs]==2 | nc2_number[lhs]==3)) {
+                src=nd_word(lhs);
+                if(src<0) return 0;
+                return nd_add(73,src,0,0,nc2_number[extra]);
+            }
+        }
+        if(nc2_kind[expr]==6 & nc2_a[expr]==147) {
+            lhs=nc2_left[expr];
+            extra=nc2_right[expr];
+            if(nc2_kind[lhs]==2 & nc2_number[lhs]==3 &
+               nc2_kind[extra]==1 & nc2_number[extra]==8) {
+                src=nd_word(lhs);
+                if(src<0) return 0;
+                return nd_add(72,src,0,0,255);
+            }
+        }
         if(nc2_kind[expr]==6 &
            (nc2_a[expr]=='+' | nc2_a[expr]=='-')) {
             lhs=nc2_left[expr];
@@ -796,6 +830,36 @@ char nd_return(unsigned expr)
         else src=nd_word(expr); /* byte return truncates word */
         if (src<0) return 0;
         return nd_add(12,src,0,0,0);
+    }
+    if(nc2_kind[expr]==6) {
+        lhs=nc2_left[expr];
+        extra=nc2_right[expr];
+        if(nc2_a[expr]=='&' & nc2_kind[extra]==1) {
+            if(nc2_kind[lhs]==2 &
+               (nc2_number[lhs]==1 | nc2_number[lhs]==2 |
+                nc2_number[lhs]==3)) {
+                src=nd_record(nc2_a[lhs],nc2_b[lhs],1);
+                if(src<0) return 0;
+                return nd_add(71,src,nc2_number[lhs],0,
+                              nc2_number[extra]);
+            }
+            if(nc2_kind[lhs]==6 & nc2_a[lhs]==147 &
+               nc2_kind[nc2_right[lhs]]==1 &
+               nc2_number[nc2_right[lhs]]==8 &
+               nc2_kind[nc2_left[lhs]]==2 &
+               nc2_number[nc2_left[lhs]]==3) {
+                src=nd_word(nc2_left[lhs]);
+                if(src<0) return 0;
+                return nd_add(72,src,0,0,nc2_number[extra]);
+            }
+        }
+        if(nc2_a[expr]==147 & nc2_kind[extra]==1 &
+           nc2_number[extra]==8 & nc2_kind[lhs]==2 &
+           nc2_number[lhs]==3) {
+            src=nd_word(lhs);
+            if(src<0) return 0;
+            return nd_add(72,src,0,0,255);
+        }
     }
     if(nc2_kind[expr]==6 &
        (nc2_a[expr]=='+' | nc2_a[expr]=='-')) {
