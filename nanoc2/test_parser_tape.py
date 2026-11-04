@@ -75,3 +75,23 @@ generated = r.stdout.decode()
 assert generated.count('\n\trts\n') == 2, generated
 assert generated.count('\n__c') >= 2
 print("original parser streamed two independent functions correctly")
+
+# Calls with zero and two byte parameters use the same original parser and
+# the same static argument ABI. Reject wrong counts before machine emission.
+arity = (ROOT.parent/"tests"/"nanoc2"/"call-arity.c").read_text()
+ok = subprocess.run([str(DRIVER),"native"],input=arity.encode(),
+                    capture_output=True)
+assert ok.returncode == 0, ok.stderr.decode()
+assert ok.stdout.decode().count("\n\\trts\n") >= 3
+for bad in (
+    arity.replace("guarded(call_source[i], 90)",
+                  "guarded(call_source[i])"),
+    arity.replace("guarded(call_source[i], 90)",
+                  "guarded(call_source[i], 90, 91)"),
+    arity.replace("return constant();",
+                  "return constant(90);"),
+):
+    result = subprocess.run([str(DRIVER),"native"],input=bad.encode(),
+                            capture_output=True)
+    assert result.returncode != 0, "invalid function call count accepted"
+print("original parser: zero/two-byte calls, argument count rejection passed")
