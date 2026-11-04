@@ -128,3 +128,22 @@ result = subprocess.run([str(DRIVER),"native"],input=unsupported.encode(),
                         capture_output=True)
 assert result.returncode != 0, "unsupported two-word multiplication silently accepted"
 print("original parser: word arithmetic and signed/unsigned branch lowering passed")
+
+# Word-call tests exercise source-streaming multiple real functions, two-byte
+# parameter homes and caller X/Y reconciliation, with wrong arity rejected.
+word_call = (ROOT.parent/"tests"/"nanoc2"/"word-call.c").read_text()
+result = subprocess.run([str(DRIVER),"native"],input=word_call.encode(),
+                        capture_output=True)
+assert result.returncode == 0, result.stderr.decode()
+assembly = result.stdout.decode()
+assert "INVALID_HOME" not in assembly
+assert "stx __trethi" in assembly and "ldx __trethi" in assembly
+assert "sta __tret" in assembly
+for incorrect in (
+    word_call.replace("return pass_one(value);", "return pass_one(value, value);"),
+    word_call.replace("return add_pair(4660, 1);", "return add_pair(4660);"),
+):
+    reject = subprocess.run([str(DRIVER),"native"],input=incorrect.encode(),
+                            capture_output=True)
+    assert reject.returncode != 0, "invalid wide-call arity accepted"
+print("original parser: typed word arguments/returns and arity rejection passed")
