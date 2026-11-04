@@ -267,6 +267,8 @@ char nd_call(unsigned node, char callee)
     char i;
     unsigned argument;
     int value;
+    char expected;
+    char actual;
     if(node==0 | nc2_kind[node]!=8 | nc2_a[node]!=callee |
        nc2_b[node]>2) {nd_error=28;return 0;}
     argc=nc2_b[node];
@@ -275,20 +277,48 @@ char nd_call(unsigned node, char callee)
         if(i==0) argument=nc2_left[node];
         else argument=nc2_right[node];
         if(argument==0) {nd_error=28;return 0;}
-        if(nc2_kind[argument]==1) {
-            if(nc2_number[argument]>255) {nd_error=28;return 0;}
-            if(nd_add(21,0,0,0,nc2_number[argument])==0) return 0;
-        } else if(nc2_kind[argument]==2) {
-            value=nd_scalar(argument);
-            if(value<0) return 0;
-            if(nd_add(15,0,value,0,0)==0) return 0;
-        } else if(nc2_kind[argument]==4 | nc2_kind[argument]==5) {
-            if(nd_index(argument,0)==0) return 0;
+        expected=param_type[global_param_start[callee]+i];
+        if(expected==1) {
+            if(nc2_kind[argument]==1) {
+                if(nd_add(21,0,0,0,nc2_number[argument]&255)==0)
+                    return 0;
+            } else if(nc2_kind[argument]==2) {
+                actual=nc2_number[argument];
+                if(actual==1) {
+                    value=nd_scalar(argument);
+                    if(value<0) return 0;
+                    if(nd_add(15,0,value,0,0)==0) return 0;
+                } else if(actual==2 | actual==3) {
+                    value=nd_word(argument);
+                    if(value<0) return 0;
+                    if(nd_add(47,callee,i,value,0)==0) return 0;
+                    i=i+1;
+                    continue;
+                } else {nd_error=28;return 0;}
+            } else if(nc2_kind[argument]==4 | nc2_kind[argument]==5) {
+                if(nd_index(argument,0)==0) return 0;
+            } else {nd_error=28;return 0;}
+            if(nd_add(22,callee,i,0,0)==0) return 0;
+        } else if(expected==2 | expected==3) {
+            if(nc2_kind[argument]==1) {
+                if(nd_add(44,callee,i,0,nc2_number[argument])==0)
+                    return 0;
+            } else if(nc2_kind[argument]==2) {
+                actual=nc2_number[argument];
+                if(actual==2 | actual==3) {
+                    value=nd_word(argument);
+                    if(value<0) return 0;
+                    if(nd_add(45,callee,i,value,0)==0) return 0;
+                } else if(actual==1) {
+                    value=nd_scalar(argument);
+                    if(value<0) return 0;
+                    if(nd_add(46,callee,i,value,0)==0) return 0;
+                } else {nd_error=28;return 0;}
+            } else {nd_error=28;return 0;}
         } else {nd_error=28;return 0;}
-        if(nd_add(22,callee,i,0,0)==0) return 0;
         i=i+1;
     }
-    return nd_add(23,callee,0,0,0);
+    return nd_add(23,callee,global_type[callee],0,0);
 }
 
 char nd_condition(unsigned expr, unsigned exit_label)
@@ -410,6 +440,13 @@ char nd_assignment(char area, char symbol, unsigned rhs)
         if(nc2_kind[rhs]==1) {
             return nd_add(27,dst,0,0,nc2_number[rhs]);
         }
+        if(nc2_kind[rhs]==8) {
+            if(global_type[nc2_a[rhs]]==2)
+                return nd_add(42,dst,0,0,0);
+            if(global_type[nc2_a[rhs]]==1)
+                return nd_add(48,dst,0,0,0);
+            nd_error=25;return 0;
+        }
         if(nc2_kind[rhs]==2) {
             src=nd_word(rhs);
             if(src<0) return 0;
@@ -476,6 +513,13 @@ char nd_return(unsigned expr)
     if (nc2_return_type==2 | nc2_return_type==3) {
         if(nc2_kind[expr]==1)
             return nd_add(29,0,0,0,nc2_number[expr]);
+        if(nc2_kind[expr]==8) {
+            if(global_type[nc2_a[expr]]==2)
+                return nd_add(43,0,0,0,0);
+            if(global_type[nc2_a[expr]]==1)
+                return nd_add(49,0,0,0,0);
+            nd_error=21;return 0;
+        }
         if(nc2_kind[expr]==2) {
             src=nd_word(expr);
             if(src<0) return 0;
