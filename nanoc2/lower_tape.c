@@ -954,6 +954,73 @@ char nd_assignment(char area, char symbol, unsigned rhs)
             if(nd_index(nc2_left[nc2_right[rhs]],0)==0) return 0;
             return nd_add(92,dst,0,0,0);
         }
+        /* A left-shifted 16-bit scalar OR another scalar/literal is
+         * just a word in two byte lanes: load into the existing scratch
+         * accumulator, ASL/ROL the desired number of bits, then OR in
+         * the second value before committing the result. Keeping the
+         * final store last also handles result/source aliasing.
+         * E.g. value = (value << 4) | digit in the assembler parser. */
+        if(nc2_kind[rhs]==6 & nc2_a[rhs]=='|') {
+            unsigned left_term;
+            unsigned right_term;
+            unsigned shift;
+            unsigned literal;
+            int left_home;
+            int right_home;
+            char right_kind;
+            left_term=nc2_left[rhs];
+            right_term=nc2_right[rhs];
+            shift=0;
+            if(nc2_kind[left_term]==6 & nc2_a[left_term]==146) {
+                if(nc2_kind[nc2_right[left_term]]!=1) {
+                    nd_error=25;return 0;
+                }
+                shift=nc2_number[nc2_right[left_term]];
+                left_term=nc2_left[left_term];
+            }
+            if(shift>15 | nc2_kind[left_term]!=2 |
+               (nc2_number[left_term]!=2 & nc2_number[left_term]!=3)) {
+                nd_error=25;return 0;
+            }
+            left_home=nd_word(left_term);
+            if(left_home<0) return 0;
+            if(nd_add(50,3,left_home,0,0)==0) return 0;
+            if(shift!=0 & nd_add(93,0,0,0,shift)==0) return 0;
+            right_home=0;
+            literal=0;
+            if(nc2_kind[right_term]==1) {
+                right_kind=1;
+                literal=nc2_number[right_term];
+            } else if(nc2_kind[right_term]==2) {
+                if(nc2_number[right_term]==1) {
+                    right_kind=2;
+                    right_home=nd_scalar(right_term);
+                } else if(nc2_number[right_term]==2 |
+                          nc2_number[right_term]==3) {
+                    right_kind=3;
+                    right_home=nd_word(right_term);
+                } else {nd_error=25;return 0;}
+                if(right_home<0) return 0;
+            } else {nd_error=25;return 0;}
+            if(nd_add(94,right_kind,right_home,0,literal)==0) return 0;
+            return nd_add(52,dst,target_type,0,0);
+        }
+        /* A word scalar shifted by a known constant uses the same
+         * two-byte ASL/ROL path without a second OR operand. */
+        if(nc2_kind[rhs]==6 & nc2_a[rhs]==146 &
+           nc2_kind[nc2_left[rhs]]==2 &
+           (nc2_number[nc2_left[rhs]]==2 |
+            nc2_number[nc2_left[rhs]]==3) &
+           nc2_kind[nc2_right[rhs]]==1) {
+            unsigned shift;
+            shift=nc2_number[nc2_right[rhs]];
+            if(shift>15) {nd_error=25;return 0;}
+            src=nd_word(nc2_left[rhs]);
+            if(src<0) return 0;
+            if(nd_add(50,3,src,0,0)==0) return 0;
+            if(shift!=0 & nd_add(93,0,0,0,shift)==0) return 0;
+            return nd_add(52,dst,target_type,0,0);
+        }
         /* The assembler uses masks for opcode fields and 16-bit wrap.
          * Preserve ordinary C bitwise semantics, including destination
          * aliasing. & $FFFF on the same home emits no instructions. */
