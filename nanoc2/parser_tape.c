@@ -1701,8 +1701,11 @@ char emit_call_finish(char marker_index)
     result=nc2_node(8,function_id,argc,first,second,0);
     if(result==0) return 0;
     if(nc2_event(7,0,function_id,result,0)==0) return 0;
+    /* push_value_type stores nc2_last in the new value slot. Do not let
+     * the last argument overwrite the call-result node: an identity
+     * callee can hide this error in otherwise passing machine tests. */
     value_top=base;
-    nc2_value[base]=result;
+    nc2_last=result;
     return push_value_type(global_type[function_id]);
 }
 
