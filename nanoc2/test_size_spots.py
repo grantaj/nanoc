@@ -169,6 +169,19 @@ def main():
             source="char compare_marks[256];\n"+source
         targets.append((name,source))
     compare_count=len(compare_names)
+    expression_source=ROOT/"tests"/"nanoc2"/"expression-condition.c"
+    expression_names=(
+        "expr_less","expr_ge_byte","expr_chain_equal",
+        "expr_chain_truth","expr_difference_truth",
+        "expr_reversed_byte","expr_compare_byte",
+        "expr_count_down","expr_index_until",
+    )
+    for name in expression_names:
+        source=exact_c_function(expression_source,name)
+        if name=="expr_index_until":
+            source="char expr_marks[256];\n"+source
+        targets.append((name,source))
+    expression_count=len(expression_names)
     results = []
     for name, source in targets:
         old_asm = compile_host(old_driver,source)
@@ -196,16 +209,18 @@ def main():
           "saved %d B (%.1f%%)" %
           (old_total,new_total,old_total-new_total,
            100.0*(old_total-new_total)/old_total))
-    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1+mixed_count+compare_count
+    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1+mixed_count+compare_count+expression_count
     calls_index=baseline_count+word_scalar_count+word_ops_count
     compare_index=calls_index+1+mixed_count
+    expression_index=compare_index+compare_count
     for title,subset in [
         ("legacy-seven",results[:baseline_count]),
         ("word-scalar",results[baseline_count:baseline_count+word_scalar_count]),
         ("word-ops",results[baseline_count+word_scalar_count:calls_index]),
         ("word-call-unit",results[calls_index:calls_index+1]),
         ("mixed-composed",results[calls_index+1:compare_index]),
-        ("mixed-comparisons",results[compare_index:]),
+        ("mixed-comparisons",results[compare_index:expression_index]),
+        ("arithmetic-conditions",results[expression_index:]),
     ]:
         old_size=sum(x[1] for x in subset)
         new_size=sum(x[2] for x in subset)
