@@ -185,7 +185,7 @@ assert "compare_marks" in assembly
 # The pure-scalar numeric comparator deliberately does not invent semantics
 # for a call or an expression tree inside its operands.
 bad = mixed_compare.replace("if (word < byte)",
-                            "if (word + 1 < byte)")
+                            "if (word * 2 < byte)")
 result = subprocess.run([str(DRIVER),"native"],input=bad.encode(),
                         capture_output=True)
 assert result.returncode != 0, "composed comparison operand accepted incorrectly"
