@@ -34,7 +34,7 @@ def pointer_test():
         lines.extend(word_assert(0xa0+q,0,60100+q))
         check("$%04x"%address,0xa0+q)
     for q,(where,left,right) in enumerate((
-        (0,1,2),(255,255,1),(256,254,2),(511,255,255),(639,0,0)
+        (0,1,2),(255,255,1),(256,254,2),(511,255,255),(639,0,1)
     )):
         # A and B have separate real static pointer homes. Wide array
         # access borrows B's cursor, then B[left] is read again.
