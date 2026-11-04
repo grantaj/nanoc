@@ -104,8 +104,9 @@ result = subprocess.run([str(DRIVER),"native"],input=word.encode(),
 assert result.returncode == 0, result.stderr.decode()
 out = result.stdout.decode()
 assert "ldx #$12" in out and "sta __g" in out and "+1" in out
-invalid = word.replace("local = 4660;", "local = local + 1;")
+assert "\tadc #$FF" in out and "\tsbc #$01" in out
+invalid = word.replace("local = 4660;", "local = local * 2;")
 result = subprocess.run([str(DRIVER),"native"],input=invalid.encode(),
                         capture_output=True)
-assert result.returncode != 0, "unsupported 16-bit arithmetic silently accepted"
-print("original parser: typed 16-bit scalars and arithmetic rejection passed")
+assert result.returncode != 0, "unsupported 16-bit multiplication silently accepted"
+print("original parser: typed 16-bit scalars, add/sub literals and multiplication rejection passed")
