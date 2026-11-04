@@ -444,36 +444,39 @@ char nd_numeric_compare(unsigned left, unsigned right, char is_unsigned)
     return nd_add(68,l,r,(lk<<3)+rk+(is_unsigned<<6),number);
 }
 
-/* Change the relation when comparing right against left. Equality
- * is symmetric; the four ordering operators exchange directions.
- * 'rel' identifies the false branch, not a C Boolean result. */
-char nd_reverse_rel(char rel)
+/* Mixed comparisons use one numeric descriptor consumed by the 6502
+ * emitter: left/right kinds 1 literal, 2 byte, 3 word; bit 6 unsigned.
+ * The original parser determines unsigned promotion. A home of zero is
+ * reserved for an arithmetic expression in the two-byte __tacc scratch. */
+char nd_numeric_compare(char left_kind, char left_home,
+                        char right_kind, char right_home,
+                        char unsigned_compare, unsigned literal)
 {
-    if(rel==4) return 5;
-    if(rel==5) return 4;
-    if(rel==3) return 6;
-    if(rel==6) return 3;
-    return rel;
+    char descriptor;
+    descriptor=(left_kind<<3) | right_kind;
+    if(unsigned_compare!=0) descriptor=descriptor | 64;
+    return nd_add(68,left_home,right_home,descriptor,literal);
 }
 
-/* Emit comparison of a complete word operand (or __tacc, ID 0)
- * against a variable word, a zero-extended byte, or a literal.
- * Signedness was decided by the original parser, not inferred here. */
-char nd_condition_word(char left_id, unsigned right, char sign)
+char nd_condition_word(char left_id, unsigned right, char unsigned_compare)
 {
     int r;
     if(nc2_kind[right]==1) {
-        return nd_add(40,left_id,sign,0,nc2_number[right]);
+        if(left_id!=0)
+            return nd_add(40,left_id,unsigned_compare,0,nc2_number[right]);
+        return nd_numeric_compare(3,0,1,0,unsigned_compare,
+                                  nc2_number[right]);
     }
     if(nc2_kind[right]!=2) {nd_error=18;return 0;}
     if(nc2_number[right]==1) {
         r=nd_scalar(right);
         if(r<0) return 0;
-        return nd_add(68,left_id,r,sign,0);
+        return nd_numeric_compare(3,left_id,2,r,unsigned_compare,0);
     }
     r=nd_word(right);
     if(r<0) return 0;
-    return nd_add(39,left_id,r,sign,0);
+    if(left_id!=0) return nd_add(39,left_id,r,unsigned_compare,0);
+    return nd_numeric_compare(3,0,3,r,unsigned_compare,0);
 }
 
 char nd_condition(unsigned expr, unsigned exit_label)
@@ -482,7 +485,6 @@ char nd_condition(unsigned expr, unsigned exit_label)
     unsigned right;
     char op;
     char rel;
-    char kind;
     int l;
     int r;
     if(expr==0) {nd_error=16;return 0;}
@@ -528,20 +530,18 @@ char nd_condition(unsigned expr, unsigned exit_label)
         return nd_add(10,0,rel,0,exit_label);
     }
     if(nc2_kind[left]==1 & nc2_kind[right]==2) {
-        /* Literal on left: reverse comparison, reuse the same word/byte
-         * comparison logic and avoid a temporary literal variable. */
         if(nc2_number[right]==1) {
             r=nd_scalar(right);
             if(r<0) return 0;
-            if(nd_add(71,r,nc2_b[expr],0,nc2_number[left])==0)
-                return 0;
+            if(nd_numeric_compare(1,0,2,r,nc2_b[expr],
+                                  nc2_number[left])==0) return 0;
         } else {
             r=nd_word(right);
             if(r<0) return 0;
-            if(nd_add(40,r,nc2_b[expr],0,nc2_number[left])==0)
-                return 0;
+            if(nd_numeric_compare(1,0,3,r,nc2_b[expr],
+                                  nc2_number[left])==0) return 0;
         }
-        return nd_add(10,0,nd_reverse_rel(rel),0,exit_label);
+        return nd_add(10,0,rel,0,exit_label);
     }
     if(nc2_kind[left]==2 & nc2_number[left]==1) {
         l=nd_scalar(left);
@@ -550,13 +550,13 @@ char nd_condition(unsigned expr, unsigned exit_label)
            (nc2_number[right]==2 | nc2_number[right]==3)) {
             r=nd_word(right);
             if(r<0) return 0;
-            if(nd_add(68,r,l,nc2_b[expr],0)==0) return 0;
-            return nd_add(10,0,nd_reverse_rel(rel),0,exit_label);
+            if(nd_numeric_compare(2,l,3,r,nc2_b[expr],0)==0) return 0;
+            return nd_add(10,0,rel,0,exit_label);
         }
         if(nc2_kind[right]==1) {
             if(nc2_number[right]>255) {
-                if(nd_add(71,l,nc2_b[expr],0,nc2_number[right])==0)
-                    return 0;
+                if(nd_numeric_compare(2,l,1,0,nc2_b[expr],
+                                      nc2_number[right])==0) return 0;
             } else {
                 if(nd_add(8,l,0,0,nc2_number[right])==0) return 0;
             }
