@@ -12,6 +12,7 @@
  */
 
 char nd_error;
+unsigned nd_failure_event;
 char nd_map_count;
 char nd_map_area[64];
 char nd_map_symbol[64];
@@ -1283,6 +1284,7 @@ char nd_prepare()
         sym=nc2_event_symbol[i];
         node=nc2_event_node[i];
         label=nc2_event_label[i];
+        nd_failure_event=i;
         if (op==1) {
             if (nd_add(1,0,0,0,label)==0) return 0;
         } else if (op==2) {
