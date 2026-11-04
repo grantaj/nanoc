@@ -51,7 +51,7 @@ def measure_assembled(asm, old, name):
     # together, so caller + callee overhead is measured consistently.
     if name in ("word_call_unit", "ass_scope_find_unit",
                 "ass_allocate_unit", "ass_symbol_api_unit",
-                "ass_prefix15"):
+                "ass_prefix15", "ass_prefix32"):
         assert nlabels > 1, (name,nlabels)
     else:
         assert nlabels == 1, (name,nlabels)
@@ -93,7 +93,7 @@ def measure_assembled(asm, old, name):
     first = int.from_bytes(raw[-4:-2], "little")
     last = int.from_bytes(raw[-2:], "little")
     count = last - first
-    assert 0 < count < 12000, (name,first,last)
+    assert 0 < count < 30000, (name,first,last)
     if not old:
         assert first >= 0x0803
     ins = dict((op, len(re.findall(r'^\s*' + op + r'\s*(?:\n|$)',
@@ -186,6 +186,12 @@ def main():
             source="char expr_marks[256];\n"+source
         targets.append((name,source))
     expression_count=len(expression_names)
+    rhs_source=ROOT/"tests"/"nanoc2"/"comparison-rhs.c"
+    rhs_names=("rhs_lt","rhs_le","rhs_gt","rhs_ge","rhs_eq",
+               "rhs_ne","rhs_signed","rhs_unsigned","rhs_literal","rhs_chain")
+    for name in rhs_names:
+        targets.append((name,exact_c_function(rhs_source,name)))
+    rhs_count=len(rhs_names)
     # The actual assembler drives the next slice. These are exact
     # unmodified Phase-1 functions, not synthetic arithmetic lookalikes.
     for name in ("upper_char","same_text","apply_byte_prefix"):
@@ -221,7 +227,11 @@ def main():
     targets.append(("ass_prefix15",
                     ASS_SOURCE[:ASS_SOURCE.index(
                         "/* ---------------- Tiny assembler value grammar")]))
-    ass_count=11
+    # Also measure the first 32 consecutive verbatim original functions.
+    # This overlaps the 15-function checkpoint; neither is a whole image.
+    targets.append(("ass_prefix32",
+                    ASS_SOURCE[:ASS_SOURCE.index("char open_include(")]))
+    ass_count=12
     # The original nanoc1 host compiler rejects this composed-call fixture.
     # It stays in independent native VICE correctness testing; the physical
     # comparison stays strictly apples-to-apples with accepted source.
@@ -266,11 +276,12 @@ def main():
           "saved %d B (%.1f%%)" %
           (old_total,new_total,old_total-new_total,
            100.0*(old_total-new_total)/old_total))
-    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1+mixed_count+compare_count+expression_count+ass_count+new_count
+    assert len(results)==baseline_count+word_scalar_count+word_ops_count+1+mixed_count+compare_count+expression_count+rhs_count+ass_count+new_count
     calls_index=baseline_count+word_scalar_count+word_ops_count
     compare_index=calls_index+1+mixed_count
     expression_index=compare_index+compare_count
-    ass_index=expression_index+expression_count
+    rhs_index=expression_index+expression_count
+    ass_index=rhs_index+rhs_count
     added_index=ass_index+ass_count
     for title,subset in [
         ("legacy-seven",results[:baseline_count]),
@@ -279,7 +290,8 @@ def main():
         ("word-call-unit",results[calls_index:calls_index+1]),
         ("mixed-composed",results[calls_index+1:compare_index]),
         ("mixed-comparisons",results[compare_index:expression_index]),
-        ("arithmetic-conditions",results[expression_index:ass_index]),
+        ("arithmetic-conditions",results[expression_index:rhs_index]),
+        ("computed-RHS",results[rhs_index:ass_index]),
         ("real-ass.c",results[ass_index:added_index]),
         ("computed-calls-and-word-array",results[added_index:]),
     ]:
