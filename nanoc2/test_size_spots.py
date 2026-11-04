@@ -12,7 +12,8 @@ import subprocess
 import tempfile
 
 from test_native import (ROOT, original_function, fixture_function,
-                         globals_for_find, ass_function, ass_global)
+                         globals_for_find, ass_function, ass_global,
+                         ASS_SOURCE)
 
 OUT = ROOT / "build" / "nanoc2-size-spots"
 OUT.mkdir(parents=True, exist_ok=True)
@@ -190,7 +191,12 @@ def main():
         if name=="apply_byte_prefix":
             source=ass_global("VALUE_PREFIX_LOW")+"\n"+source
         targets.append(("ass_"+name,source))
-    ass_count=3
+    # Complete original global declarations are required for this routine's
+    # five parallel fixup arrays (char and two-byte int/unsigned). The
+    # function body is copied byte-for-byte from bootstrap/ass.c.
+    ass_prefix=ASS_SOURCE[:ASS_SOURCE.index("char upper_char(")]
+    targets.append(("ass_append_fixup",ass_prefix+"\n"+ass_function("append_fixup")))
+    ass_count=4
     results = []
     for name, source in targets:
         old_asm = compile_host(old_driver,source)
@@ -204,7 +210,8 @@ def main():
         # cases. Keep the exact assembled-byte comparison as a regression
         # gate, not an instruction-count or arbitrary target estimate.
         if name in ("reverse_mixed","reverse_sub","byte_sum_word",
-                    "ass_upper_char","ass_same_text","ass_apply_byte_prefix"):
+                    "ass_upper_char","ass_same_text","ass_apply_byte_prefix",
+                    "ass_append_fixup"):
             assert new_bytes <= old_bytes, (name,old_bytes,new_bytes)
         print("%s: old %d B, new %d B, saved %d B (%.1f%%); "
               "PHA/PLA %d/%d vs %d/%d" %
