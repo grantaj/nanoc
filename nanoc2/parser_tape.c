@@ -1699,7 +1699,8 @@ char emit_call_finish(char marker_index)
     i=0;
     while(i<argc) {
         expected=param_type[global_param_start[function_id]+i];
-        if((expected!=1 & expected!=2 & expected!=3) |
+        if((expected!=1 & expected!=2 & expected!=3 &
+            expected!=4) |
            compatible_type(value_type[base+i],expected)==0) {
             compiler_error=5;return 0;
         }
