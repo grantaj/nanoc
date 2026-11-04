@@ -611,12 +611,11 @@ char nd_call(unsigned node, char callee)
     char actual;
     char staged;
     if(node==0 | nc2_kind[node]!=8 | nc2_a[node]!=callee |
-       nc2_b[node]>2) {nd_error=28;return 0;}
+       nc2_b[node]>8) {nd_error=28;return 0;}
     argc=nc2_b[node];
     i=0;
     while(i<argc) {
-        if(i==0) argument=nc2_left[node];
-        else argument=nc2_right[node];
+        argument=nc2_call_values[nc2_number[node]+i];
         if(argument==0) {nd_error=28;return 0;}
         expected=param_type[global_param_start[callee]+i];
         staged=0;
