@@ -37,7 +37,8 @@
  * 70 word AND constant, 71 masked byte return,
  * 72 unsigned word >> 8 byte extraction, 73 masked word return,
  * 74 compute a full 16-bit array address, 75 write byte/word element,
- * 76 read an indexed byte, preserving A and its flags.
+ * 76 read an indexed byte, preserving A and its flags,
+ * 77 stage evaluated 16-bit arithmetic call argument.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -1061,6 +1062,14 @@ char tb_compile()
             if(tb_wide_array_store(d,a,b,k)==0) return 0;
         } else if (op == 76) {
             if(tb_wide_array_load()==0) return 0;
+        } else if (op == 77) {
+            /* Word expression evaluated before the call, one argument
+             * at a time. Callee static parameter homes are ABI storage,
+             * not expression temporaries. */
+            if(tb_operand("lda","__tacc")==0) return 0;
+            if(tb_param("sta",d,a,"")==0) return 0;
+            if(tb_operand("lda","__tacc+1")==0) return 0;
+            if(tb_param("sta",d,a,"+1")==0) return 0;
         } else if (op == 25) {
             if (tb_operand("lda","__tret")==0) return 0;
         } else if (op == 26) {
