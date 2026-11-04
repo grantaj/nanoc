@@ -1300,6 +1300,13 @@ char tb_compile()
             if(tb_wide_array_load_word(0)==0) return 0;
         } else if (op == 82) {
             if(tb_wide_array_load_word(1)==0) return 0;
+        } else if (op == 95) {
+            /* C promotion: a char indexed load in A becomes a
+             * zero-extended word. The byte has already been loaded
+             * and Y restored if it was an active index. */
+            if(tb_location("sta",1,d,"")==0) return 0;
+            if(tb_immediate("lda",0)==0) return 0;
+            if(tb_location("sta",1,d,"+1")==0) return 0;
         } else if (op == 79) {
             if(tb_operand("lda","__tacc")==0) return 0;
             if(tb_location("sta",1,d,"")==0) return 0;
