@@ -190,6 +190,7 @@ def multi_function_test():
     # parameter slots and independent X/Y/zero-page traversal decisions.
     lines = [
         "\t* = $0200", "main:",
+        "\tsei",  # diagnostic: eliminate C64 IRQ interference with scratch ZP
         "\tlda #<$31f9", "\tsta n2_fill_bytes_dst",
         "\tlda #>$31f9", "\tsta n2_fill_bytes_dst+1",
         "\tlda #$c8", "\tsta n2_fill_bytes_n",
