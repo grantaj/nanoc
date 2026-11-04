@@ -198,7 +198,8 @@ def main():
     targets.append(("ass_append_fixup",ass_prefix+"\n"+ass_function("append_fixup")))
     targets.append(("ass_relative_byte",ass_function("relative_byte")))
     targets.append(("ass_trim_fixups",ass_prefix+"\n"+ass_function("trim_fixups")))
-    ass_count=6
+    targets.append(("ass_scope_for_name",ass_prefix+"\n"+ass_function("scope_for_name")))
+    ass_count=7
     # The original nanoc1 host compiler rejects this composed-call fixture.
     # It stays in independent native VICE correctness testing; the physical
     # comparison stays strictly apples-to-apples with accepted source.
@@ -223,7 +224,8 @@ def main():
         # gate, not an instruction-count or arbitrary target estimate.
         if name in ("reverse_mixed","reverse_sub","byte_sum_word",
                     "ass_upper_char","ass_same_text","ass_apply_byte_prefix",
-                    "ass_append_fixup","ass_relative_byte","ass_trim_fixups"):
+                    "ass_append_fixup","ass_relative_byte","ass_trim_fixups",
+                    "ass_scope_for_name"):
             assert new_bytes <= old_bytes, (name,old_bytes,new_bytes)
         # A previous full-word identity simplification accidentally
         # introduced a 12-byte in-place self-copy into the real assembler.
