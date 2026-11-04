@@ -144,6 +144,8 @@ def main():
         "compound", "compound_return", "reverse_mixed",
         "literal_base", "reverse_sub", "alias_late",
         "byte_chain", "byte_return", "byte_sum_word",
+        "reverse_add_store", "reverse_sub_store", "byte_sum_store",
+        "byte_pair_return", "byte_pair_store",
     )
     for name in mixed_names:
         targets.append((name,exact_c_function(mixed,name)))
@@ -157,6 +159,11 @@ def main():
         (OUT / (name + "-old-body.asm")).write_text(old_body)
         (OUT / (name + "-new-body.asm")).write_text(new_body)
         results.append((name,old_bytes,new_bytes,old_ins,new_ins))
+        # The initial generic chain regressed on three direct two-leaf
+        # cases. Keep the exact assembled-byte comparison as a regression
+        # gate, not an instruction-count or arbitrary target estimate.
+        if name in ("reverse_mixed","reverse_sub","byte_sum_word"):
+            assert new_bytes <= old_bytes, (name,old_bytes,new_bytes)
         print("%s: old %d B, new %d B, saved %d B (%.1f%%); "
               "PHA/PLA %d/%d vs %d/%d" %
               (name,old_bytes,new_bytes,old_bytes-new_bytes,
