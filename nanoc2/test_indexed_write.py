@@ -157,13 +157,15 @@ with tempfile.TemporaryDirectory() as folder:
                      None))
         print(f'{name}: {CASES_PER_ROUTINE} actual-C / 6502 comparisons passed')
 
-    # The original parser can parse these expressions, but the byte-only
-    # backend must reject them until it supports their real semantics.
+    # Indexed offsets and arithmetic RHS are now supported by the general
+    # typed lowerer (and exercised by original ass.c native fixtures).
+    # Keep rejection guards on forms that remain genuinely unsupported:
+    # nested index expressions and non-idiomatic arbitrary multiplication.
     bad = (
         function('copy_pointer').replace('dst[i] = src[i];',
-                                         'dst[i + 1] = src[i];'),
+                                         'dst[i + 1 + 1] = src[i];'),
         function('copy_pointer').replace('dst[i] = src[i];',
-                                         'dst[i] = src[i] + 1;')
+                                         'dst[i] = src[i] * 7;')
     )
     for source in bad:
         p = subprocess.run([str(exe)], input=source.encode(),
