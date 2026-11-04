@@ -106,6 +106,15 @@ int main(int argc,char **argv)
                 (unsigned)source_line,
                 compiler_error,nc2_fault,(unsigned)nd_error,(unsigned)tb_error,
                 (unsigned)nc2_function_symbol,token_kind,nc2_nodes,nc2_events);
+        if(nd_error!=0 && nd_failure_event<nc2_events) {
+            unsigned node=nc2_event_node[nd_failure_event];
+            fprintf(stderr,"failed event %u: kind %u, symbol %u, expression node %u: kind %u op %u, left %u (kind %u), right %u (kind %u)\n",
+                    nd_failure_event,nc2_event_kind[nd_failure_event],
+                    nc2_event_symbol[nd_failure_event],node,
+                    nc2_kind[node],nc2_a[node],nc2_left[node],
+                    nc2_kind[nc2_left[node]],nc2_right[node],
+                    nc2_kind[nc2_right[node]]);
+        }
         return 5;
     }
     if (native_mode) {
