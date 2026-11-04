@@ -1385,6 +1385,10 @@ char tb_compile()
             if(tb_location("sta",1,d,"+1")==0) return 0;
         } else if (op == 88) {
             if(tb_operand("sta","__tbyte")==0) return 0;
+        } else if (op == 101) {
+            /* A holds the byte loaded from the RHS array; the earlier
+             * char call's result is in the preserved return slot. */
+            if(tb_operand("cmp","__tret")==0) return 0;
         } else if (op == 98) {
             /* Byte difference as a call argument: C char arithmetic
              * wraps on assignment to the byte parameter. Save a live
