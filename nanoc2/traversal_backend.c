@@ -1390,6 +1390,9 @@ char tb_compile()
             if(tb_location("sta",1,d,"+1")==0) return 0;
         } else if (op == 88) {
             if(tb_operand("sta","__tbyte")==0) return 0;
+        } else if (op == 104) {
+            if(tb_operand("lda","__tret")==0) return 0;
+            if(tb_immediate("cmp",k)==0) return 0;
         } else if (op == 102) {
             /* A C byte argument from a full word needs only one
              * original scalar-byte read (low or high), optional AND,
