@@ -118,6 +118,7 @@ result = subprocess.run([str(DRIVER),"native"],input=word_ops.encode(),
                         capture_output=True)
 assert result.returncode == 0, result.stderr.decode()
 assembly = result.stdout.decode()
+assert "INVALID_HOME" not in assembly, "unmapped native operand emitted"
 assert "adc " in assembly and "sbc " in assembly
 assert "eor #$80" in assembly
 for rel in ("bne", "bcc", "bcs"):
