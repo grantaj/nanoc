@@ -196,7 +196,8 @@ def main():
     # function body is copied byte-for-byte from bootstrap/ass.c.
     ass_prefix=ASS_SOURCE[:ASS_SOURCE.index("char upper_char(")]
     targets.append(("ass_append_fixup",ass_prefix+"\n"+ass_function("append_fixup")))
-    ass_count=4
+    targets.append(("ass_relative_byte",ass_function("relative_byte")))
+    ass_count=5
     results = []
     for name, source in targets:
         old_asm = compile_host(old_driver,source)
@@ -211,7 +212,7 @@ def main():
         # gate, not an instruction-count or arbitrary target estimate.
         if name in ("reverse_mixed","reverse_sub","byte_sum_word",
                     "ass_upper_char","ass_same_text","ass_apply_byte_prefix",
-                    "ass_append_fixup"):
+                    "ass_append_fixup","ass_relative_byte"):
             assert new_bytes <= old_bytes, (name,old_bytes,new_bytes)
         print("%s: old %d B, new %d B, saved %d B (%.1f%%); "
               "PHA/PLA %d/%d vs %d/%d" %
