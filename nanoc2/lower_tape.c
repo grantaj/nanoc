@@ -239,7 +239,7 @@ char nd_wide_index_read(char area,char symbol,
             nd_error=34;return 0;
         }
         displacement=nc2_number[nc2_right[leaf]];
-        if(nc2_a[leaf]=='-') displacement=0-displacement;
+        if(nc2_a[leaf]=='-') displacement=(0-displacement)&65535;
         leaf=base;
     }
     if(nc2_kind[leaf]!=2) {nd_error=34;return 0;}
@@ -274,7 +274,9 @@ char nd_index_address(char area, char symbol, char kind,
     char opcode;
 
     if(kind==2 & nc2_kind[index_node]==6 &
-       (nc2_a[index_node]=='+' | nc2_a[index_node]=='-'))
+       (nc2_a[index_node]=='+' | nc2_a[index_node]=='-') &
+       nc2_kind[nc2_left[index_node]]==2 &
+       nc2_kind[nc2_right[index_node]]==1)
         return nd_wide_index_read(area,symbol,index_node,mode);
     if(kind==2 & nc2_kind[index_node]==2 &
        (nc2_number[index_node]==2 | nc2_number[index_node]==3))
