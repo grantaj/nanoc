@@ -1719,8 +1719,10 @@ char emit_call_finish(char marker_index)
              * Its value is staged immediately before the call; the
              * lowerer still rejects nested calls, unsupported trees
              * and side-effectful arguments, never silently reorders. */
-            if(nc2_kind[operand]!=6 |
-               (expected!=2 & expected!=3)) {
+            /* Numeric, byte and pointer-valued arithmetic are kept
+             * as ordered nodes; the native lowerer recognizes only
+             * supported pure forms and rejects everything else. */
+            if(nc2_kind[operand]!=6) {
                 nc2_fault=11;return 0;
             }
         }
