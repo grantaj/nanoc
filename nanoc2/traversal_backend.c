@@ -255,6 +255,45 @@ char tb_pointer_immediate(char ptr,char *mnemonic,unsigned offset)
     return 1;
 }
 
+/* A char pointer indexed by a byte expression with one literal
+ * displacement uses a transient Y. Restore any planned live Y after
+ * the load/compare/store, preserving the operation's processor flags.
+ */
+char tb_pointer_offset_index(char ptr,char index,char mode,unsigned offset)
+{
+    char *mnemonic;
+    if(ptr>1 | offset>255 | mode>2) {tb_error=107;return 0;}
+    if(mode==0) mnemonic="lda";
+    else if(mode==1) mnemonic="cmp";
+    else mnemonic="sta";
+    if(tb_y!=0) {
+        if(tb_operand("sty","__tidxsave")==0) return 0;
+    }
+    if(mode!=0) {
+        if(tb_operand("sta","__tbyte")==0) return 0;
+    }
+    if(tb_load_var(index)==0) return 0;
+    if(offset!=0) {
+        if(tb_simple("clc")==0) return 0;
+        if(tb_immediate("adc",offset)==0) return 0;
+    }
+    if(tb_simple("tay")==0) return 0;
+    if(mode!=0) {
+        if(tb_operand("lda","__tbyte")==0) return 0;
+    }
+    if(tb_text("\t")==0) return 0;
+    if(tb_text(mnemonic)==0) return 0;
+    if(tb_text(" (__tptr")==0) return 0;
+    if(tb_hex2(ptr)==0) return 0;
+    if(tb_text("),y\n")==0) return 0;
+    if(tb_y!=0) {
+        if(tb_simple("php")==0) return 0;
+        if(tb_operand("ldy","__tidxsave")==0) return 0;
+        if(tb_simple("plp")==0) return 0;
+    }
+    return 1;
+}
+
 char tb_load_var(char v)
 {
     if (v == tb_x) return tb_simple("txa");
@@ -851,6 +890,8 @@ char tb_compile()
             } else {
                 if (tb_location("inc",1,d,"") == 0) return 0;
             }
+        } else if (op == 107) {
+            if(tb_pointer_offset_index(d,a,b,k)==0) return 0;
         } else if (op == 83 | op == 84 | op == 85) {
             if(op==83) word_op="lda";
             else if(op==84) word_op="cmp";
