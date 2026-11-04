@@ -5,8 +5,10 @@
  * tape ordinary Nano C static parameter/local/global homes and initializes
  * the zero-page traversal pointers when a function is entered.
  *
- * The first native slice accepts one byte-returning Phase-1 function and
- * uninitialized globals. The complete translation-unit/call ABI follows.
+ * Each byte-returning function is emitted when its existing Phase-1 parser
+ * finishes it. Uninitialized globals share the translation-unit BSS map;
+ * byte calls use the original static argument slots. The general Phase-1
+ * ABI (wide values, pointer-live calls and runtime services) follows.
  */
 char n2_name(char area, char slot)
 {
