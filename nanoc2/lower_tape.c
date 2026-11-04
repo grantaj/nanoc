@@ -925,6 +925,14 @@ char nd_assignment(char area, char symbol, unsigned rhs)
                 return nd_add(48,dst,0,0,0);
             nd_error=25;return 0;
         }
+        if((nc2_kind[rhs]==4 | nc2_kind[rhs]==5) &
+           nc2_number[rhs]==1) {
+            /* A byte array/pointer element assigned to an int/unsigned
+             * is zero-extended. The address operation leaves the byte
+             * in A; no byte temporary or memory indexing shortcut. */
+            if(nd_index(rhs,0)==0) return 0;
+            return nd_add(95,dst,0,0,0);
+        }
         if(nc2_kind[rhs]==4 & nc2_a[rhs]==1 &
            nc2_number[rhs]==2 &
            (global_type[nc2_b[rhs]]==2 |
