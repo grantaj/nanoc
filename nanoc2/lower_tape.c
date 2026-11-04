@@ -883,6 +883,13 @@ char nd_condition(unsigned expr, unsigned exit_label)
     else {nd_error=17;return 0;}
     left=nc2_left[expr];
     right=nc2_right[expr];
+    /* All Phase-1 numeric scalars are at most 16 bits. A mask by
+     * $FFFF preserves their entire value even when the mask occurs
+     * inside a condition instead of an assignment. */
+    if(nc2_kind[left]==6 & nc2_a[left]=='&' &
+       nc2_kind[nc2_right[left]]==1 &
+       nc2_number[nc2_right[left]]==65535)
+        left=nc2_left[left];
     /* A previous ordered call has its byte result in __tret.
      * Compare it with a subsequently indexed char without losing
      * the call value while calculating the table index. */
