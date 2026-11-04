@@ -50,7 +50,8 @@ def measure_assembled(asm, old, name):
     # Grouped calling-convention benchmark: count all function bodies
     # together, so caller + callee overhead is measured consistently.
     if name in ("word_call_unit", "ass_scope_find_unit",
-                "ass_allocate_unit", "ass_symbol_api_unit"):
+                "ass_allocate_unit", "ass_symbol_api_unit",
+                "ass_prefix15"):
         assert nlabels > 1, (name,nlabels)
     else:
         assert nlabels == 1, (name,nlabels)
@@ -216,7 +217,11 @@ def main():
                         "intern_label","define_constant"))))
     targets.append(("ass_patch_word_chain",ass_prefix+"\n"+
                     ass_function("patch_word_chain")))
-    ass_count=10
+    # Exact first 15 functions and all globals of original ass.c.
+    targets.append(("ass_prefix15",
+                    ASS_SOURCE[:ASS_SOURCE.index(
+                        "/* ---------------- Tiny assembler value grammar")]))
+    ass_count=11
     # The original nanoc1 host compiler rejects this composed-call fixture.
     # It stays in independent native VICE correctness testing; the physical
     # comparison stays strictly apples-to-apples with accepted source.
