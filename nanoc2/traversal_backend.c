@@ -44,7 +44,8 @@
  * 83-85 pointer load/compare/store at literal Y displacement,
  * 86 static two-byte pointer argument staging,
  * 88 save an indexed byte before a full-width numeric comparison,
- * 89 compute full global byte array base + word index + byte index.
+ * 89 compute full global byte array base + word index + byte index,
+ * 90 store the staged RHS byte at that computed array address.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -1226,6 +1227,20 @@ char tb_compile()
             if(tb_simple("rts")==0) return 0;
         } else if (op == 89) {
             if(tb_wide_array_sum(d,a,b)==0) return 0;
+        } else if (op == 90) {
+            /* The RHS byte was staged in __tbyte before calculating
+             * the address. The named pointer and this array pointer
+             * occupy independent ZP lanes. Preserve the live Y loop
+             * index across the unavoidable (zp),Y store. */
+            if(tb_y!=0) {
+                if(tb_operand("sty","__tidxsave")==0) return 0;
+            }
+            if(tb_operand("lda","__tbyte")==0) return 0;
+            if(tb_immediate("ldy",0)==0) return 0;
+            if(tb_wide_operand("sta",2)==0) return 0;
+            if(tb_y!=0) {
+                if(tb_operand("ldy","__tidxsave")==0) return 0;
+            }
         } else if (op == 74) {
             if(tb_wide_array_address(d,a,b,k)==0) return 0;
         } else if (op == 75) {
