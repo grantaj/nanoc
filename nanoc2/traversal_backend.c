@@ -472,7 +472,7 @@ char tb_numeric_compare(char left, char right, char descriptor,
     bias=0;
     if((descriptor & 64)==0) bias=128;
     if(lk<1 | lk>3 | rk<1 | rk>3 | (lk==1 & rk==1)) {
-        tb_error=68; return 0;
+        tb_error=70+lk*8+rk; return 0;
     }
     /* A signed word RHS needs a high-byte bias. Compute it first,
      * leaving A free to load the LHS, then compare against scratch. */
