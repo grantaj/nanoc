@@ -322,8 +322,19 @@ char nd_index_address(char area, char symbol, char kind,
             if (local_type[symbol] != 4) { nd_error=12; return 0; }
         }
         ptr=nd_pointer(area,symbol);
+        if(ptr<0) return 0;
+        if(nc2_kind[index_node]==1) {
+            /* A literal pointer offset is a Y immediate, not a
+             * fabricated byte variable. Preserve the source's
+             * constant offset and any existing live loop index. */
+            if(nc2_number[index_node]>255) {nd_error=12;return 0;}
+            if(mode==0) opcode=83;
+            else if(mode==1) opcode=84;
+            else opcode=85;
+            return nd_add(opcode,ptr,0,0,nc2_number[index_node]);
+        }
         idx=nd_scalar(index_node);
-        if (ptr<0 | idx<0) return 0;
+        if (idx<0) return 0;
         if (mode==0) opcode=6;
         else if (mode==1) opcode=7;
         else opcode=20;
