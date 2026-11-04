@@ -521,6 +521,41 @@ char nd_index_store(char area,char symbol,unsigned index_node,unsigned rhs)
     char kind;
     int source;
     if (rhs==0 | index_node==0) { nd_error=27; return 0; }
+    /* A global byte array indexed by a full 16-bit base plus a byte
+     * displacement needs a real 6502 effective address. Evaluate the
+     * RHS first, keep its byte in private scratch, then compute the
+     * array pointer independently of any named char* cursor. This is
+     * the same addressing operation as a wide array load, not a
+     * special treatment for the assembler's symbol tables. */
+    if(area==1 & global_kind[symbol]==2 & global_type[symbol]==1 &
+       nc2_kind[index_node]==6 & nc2_a[index_node]=='+' &
+       nc2_kind[nc2_left[index_node]]==2 &
+       (nc2_number[nc2_left[index_node]]==2 |
+        nc2_number[nc2_left[index_node]]==3) &
+       nc2_kind[nc2_right[index_node]]==2 &
+       nc2_number[nc2_right[index_node]]==1) {
+        int array;
+        int word_base;
+        int byte_offset;
+        if(nc2_kind[rhs]==1) {
+            if(nc2_number[rhs]>255) {nd_error=27;return 0;}
+            if(nd_add(21,0,0,0,nc2_number[rhs])==0) return 0;
+        } else if(nc2_kind[rhs]==2 & nc2_number[rhs]==1) {
+            source=nd_scalar(rhs);
+            if(source<0) return 0;
+            if(nd_add(15,0,source,0,0)==0) return 0;
+        } else if(nc2_kind[rhs]==4 | nc2_kind[rhs]==5) {
+            if(nd_index(rhs,0)==0) return 0;
+        } else {nd_error=27;return 0;}
+        if(nd_add(88,0,0,0,0)==0) return 0;
+        word_base=nd_word(nc2_left[index_node]);
+        byte_offset=nd_scalar(nc2_right[index_node]);
+        array=nd_array(area,symbol);
+        if(word_base<0 | byte_offset<0 | array<0) return 0;
+        nd_wide_index_used=1;
+        if(nd_add(89,array,word_base,byte_offset,0)==0) return 0;
+        return nd_add(90,0,0,0,0);
+    }
     if(area==1 & global_kind[symbol]==2 &
        ((nc2_kind[index_node]==2 &
          (global_type[symbol]!=1 |
