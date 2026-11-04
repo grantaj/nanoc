@@ -99,6 +99,7 @@ int main(int argc,char **argv)
     native_mode = (argc==2 && strcmp(argv[1],"native")==0);
     nc2_native_stream = native_mode;
     if (init_symbols() == 0) return 3;
+    if (native_mode && n2_begin()==0) return 7;
     if (next_source_char() == 0 || scan_token() == 0) return 4;
     if (parse_unit() == 0 || nc2_fault != 0) {
         fprintf(stderr,"parser error %d, tape error %d, token %d, node %u, event %u\n",
@@ -106,7 +107,7 @@ int main(int argc,char **argv)
         return 5;
     }
     if (native_mode) {
-        if(n2_native()==0) {
+        if(n2_end()==0) {
             fprintf(stderr,"native ABI error %u, lowerer %u, backend %u\n",
                     (unsigned)nc2_fault,(unsigned)nd_error,(unsigned)tb_error);
             return 7;
