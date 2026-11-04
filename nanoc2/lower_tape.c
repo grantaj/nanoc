@@ -1,15 +1,4 @@
-/*
- * From ORIGINAL nanoc1 expression/statement nodes to the small 6502
- * traversal operation tape. No source parsing, function-name matching,
- * instruction search or peephole rewriting occurs here.
- *
- * This is intentionally a STRICT subset: unsupported semantics cause
- * rejection rather than guessing. It preserves the original parser's
- * type/syntax decisions, and chooses physical index/pointer homes once.
- *
- * Included by the host-only parser_tape_driver after parser_tape.c and
- * traversal_backend.c. Production compiler integration is still in progress.
- */
+/* Typed original-parser events to direct bounded 6502 operations. Fail closed on unsupported C. */
 
 char nd_error;
 unsigned nd_failure_event;
@@ -141,14 +130,7 @@ char nd_add(char op, char dst, char a, char b, unsigned number)
     return 1;
 }
 
-/* Wide source index for a byte array. A 16-bit scalar or a simple
- * scalar +/- literal is an address displacement, not an 8-bit X/Y index.
- * For a byte array the emitted load returns A exactly as direct indexing
- * does, so existing comparison/assignment code is unchanged.
- *
- * RHS comparison operands requiring a second indexed read must be staged
- * separately: don't clobber A while computing the second address.
- */
+/* Word-width indexes use full element addresses rather than 8-bit X/Y offsets. */
 char nd_wide_index_read(char area,char symbol,
                         unsigned index_node,char mode,char rhs_target)
 {
@@ -348,12 +330,7 @@ char nd_index(unsigned node, char mode)
     return 0;
 }
 
-/* Lower a left-associated sequence of + and - operators as a 16-bit
- * accumulator with its initial value read before the destination is written.
- * In particular, "a = a + b + a" must read the old a on the last term.
- * Only pure scalar/literal leaves are accepted; more general expression
- * trees and calls are rejected rather than reordered.
- */
+/* Compose 16-bit +/- chains before writing, preserving aliased source values. */
 char nd_chain(unsigned expr, char result_type, int dest, char returning)
 {
     unsigned current;
@@ -464,12 +441,7 @@ char nd_chain(unsigned expr, char result_type, int dest, char returning)
     return nd_add(52,dest,result_type,0,0);
 }
 
-/* A true 16-bit index cannot fit in 6502 X/Y. Compute the full address
- * once from the original global-array base, scaling by the element width,
- * then use (zp),Y at Y=0/1. The parser already guarantees the types.
- * The native emitter currently reserves ZP slot 0 for this cursor only
- * in functions without another indirect pointer cursor.
- */
+/* Scale 16-bit array indexes and form full indirect addresses before loading/storing. */
 char nd_wide_index_store(char area, char symbol, unsigned index_node,
                          unsigned rhs, char element_type)
 {
@@ -515,6 +487,13 @@ char nd_wide_index_store(char area, char symbol, unsigned index_node,
     array=nd_record(1,symbol,2);
     if(array<0) return 0;
     nd_wide_index_used=1;
+    /* Index RHS first: its pointer cursor may alias the destination. */
+    if(element_type==1 & (nc2_kind[rhs]==4 | nc2_kind[rhs]==5)) {
+        if(nd_index(rhs,0)==0) return 0;
+        if(nd_add(88,0,0,0,0)==0) return 0;
+        if(nd_add(74,array,index,stride,displacement)==0) return 0;
+        return nd_add(90,0,0,0,0);
+    }
     if(nd_add(74,array,index,stride,displacement)==0) return 0;
 
     operand=rhs;
@@ -598,12 +577,7 @@ char nd_index_store(char area,char symbol,unsigned index_node,unsigned rhs)
     int word_base;
     int byte_offset;
     if (rhs==0 | index_node==0) { nd_error=27; return 0; }
-    /* A global byte array indexed by a full 16-bit base plus a byte
-     * displacement needs a real 6502 effective address. Evaluate the
-     * RHS first, keep its byte in private scratch, then compute the
-     * array pointer independently of any named char* cursor. This is
-     * the same addressing operation as a wide array load, not a
-     * special treatment for the assembler's symbol tables. */
+    /* Stage RHS, then form base + word + byte for a full-width array store. */
     if(area==1 & global_kind[symbol]==2 & global_type[symbol]==1 &
        nc2_kind[index_node]==6 & nc2_a[index_node]=='+' &
        nc2_kind[nc2_left[index_node]]==2 &
@@ -936,13 +910,7 @@ char nd_condition(unsigned expr, unsigned exit_label)
     else {nd_error=17;return 0;}
     left=nc2_left[expr];
     right=nc2_right[expr];
-    /* A pure arithmetic RHS must be evaluated before comparing. Reuse
-     * the existing 16-bit chain accumulator, as for arithmetic LHS
-     * conditions, and let the typed numeric comparator read its low/high
-     * bytes from __tacc. The LHS is an independent source scalar or
-     * literal: never let evaluating it overwrite the completed RHS.
-     * In particular, i < length - 1 compares full promoted integers,
-     * not truncated unsigned bytes. */
+    /* Pure comparison RHS uses full promoted 16-bit __tacc, not truncated byte operands. */
     if(nc2_kind[right]==6 &
        (nc2_a[right]=='+' | nc2_a[right]=='-') &
        (nc2_kind[left]==2 | nc2_kind[left]==1)) {
@@ -1204,12 +1172,7 @@ char nd_assignment(char area, char symbol, unsigned rhs)
             if(nd_index(nc2_left[nc2_right[rhs]],0)==0) return 0;
             return nd_add(92,dst,0,0,0);
         }
-        /* A left-shifted 16-bit scalar OR another scalar/literal is
-         * just a word in two byte lanes: load into the existing scratch
-         * accumulator, ASL/ROL the desired number of bits, then OR in
-         * the second value before committing the result. Keeping the
-         * final store last also handles result/source aliasing.
-         * E.g. value = (value << 4) | digit in the assembler parser. */
+        /* Shift and OR full words in two lanes, staging sources before destination writes. */
         if(nc2_kind[rhs]==6 & nc2_a[rhs]=='|') {
             left_term=nc2_left[rhs];
             right_term=nc2_right[rhs];
@@ -1613,12 +1576,7 @@ char nd_prepare()
         }
         i=i+1;
     }
-    /* A wide array shares the second ZP lane with the second named
-     * pointer when both occur in one function. The pointer's actual
-     * value remains in its static two-byte home; before each second-
-     * pointer dereference the emitter reloads that lane, preserving
-     * A and flags. This works across loops, not just one straight-line
-     * source order, without introducing a third unsafe ZP cursor. */
+    /* Wide arrays may borrow the second ZP lane; reload named pointers before use. */
     tb_wide_cursor=0;
     if(nd_wide_index_used!=0 & nd_next_pointer!=0) tb_wide_cursor=1;
     tb_pointer_count=nd_next_pointer;
