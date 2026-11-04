@@ -138,10 +138,15 @@ char n2_global_bss()
         if(global_kind[slot]==1 | global_kind[slot]==2) {
             if(global_kind[slot]==1) size=type_size(global_type[slot]);
             else size=global_array_len[slot]*type_size(global_type[slot]);
-            if(n2_home(1,slot,offset)==0) return 0;
+            /* Initialized globals already have physically emitted
+             * __gXX labels in the code/data image. They must not also
+             * consume BSS offsets or be emitted as conflicting equates. */
+            if(nc2_initialized_global[slot]==0) {
+                if(n2_home(1,slot,offset)==0) return 0;
+                offset=offset+size;
+            }
             if(n2_alias(1,slot,global_name+((unsigned)slot*32),
                         global_name_len[slot])==0) return 0;
-            offset=offset+size;
         }
         slot=slot+1;
     }
