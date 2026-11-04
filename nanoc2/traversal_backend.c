@@ -31,7 +31,8 @@
  * 53 return chain, 54 zero-extend byte scalar to word home,
  * 58-61 word +/- byte scalar direct store/return,
  * 62/63 byte - word return/store, 64/65 byte+byte as word,
- * 66/67 byte+byte as byte store/return.
+ * 66/67 byte+byte as byte store/return,
+ * 68 compare mixed-width scalar/literal numeric operands.
  * Calls synchronize X/Y into their real scalar homes, then reload those
  * homes after JSR. The callee is free to clobber the physical registers.
  * Locations 1..31 are byte variables; arrays use ids 1..31;
@@ -433,6 +434,88 @@ char tb_add_bytes(char left, char right)
     return tb_location("adc",1,right,"");
 }
 
+/* Full-width comparison with at most one literal.
+ * Rather than materialising either promoted char as a 16-bit temporary,
+ * its upper byte is the immediate zero. Signed ordering biases each
+ * high byte by $80; unsigned ordering compares the original high byte.
+ * The original typed parser decides which comparison mode applies.
+ *
+ * An X/Y-carried byte is read from its register, never its stale home.
+ * The final high/low CMP leaves both C and Z ready for tb_branch(). */
+char tb_numeric_high(char kind, char home, unsigned literal, char bias)
+{
+    if(kind==1) return tb_immediate("lda",(literal >> 8)^bias);
+    if(kind==2) return tb_immediate("lda",bias);
+    if(kind==3) {
+        if(tb_location("lda",1,home,"+1")==0) return 0;
+        if(bias!=0) return tb_immediate("eor",bias);
+        return 1;
+    }
+    tb_error=68;
+    return 0;
+}
+
+char tb_numeric_compare(char left, char right, char descriptor,
+                        unsigned literal)
+{
+    unsigned done;
+    char lk;
+    char rk;
+    char bias;
+    lk=(descriptor >> 3)&7;
+    rk=descriptor&7;
+    bias=0;
+    if((descriptor & 64)==0) bias=128;
+    if(lk<1 | lk>3 | rk<1 | rk>3 | (lk==1 & rk==1)) {
+        tb_error=68; return 0;
+    }
+    /* A signed word RHS needs a high-byte bias. Compute it first,
+     * leaving A free to load the LHS, then compare against scratch. */
+    if(bias!=0 & rk==3) {
+        if(tb_location("lda",1,right,"+1")==0) return 0;
+        if(tb_immediate("eor",bias)==0) return 0;
+        if(tb_operand("sta","__twlo")==0) return 0;
+    }
+    if(tb_numeric_high(lk,left,literal,bias)==0) return 0;
+    if(rk==1) {
+        if(tb_immediate("cmp",(literal >> 8)^bias)==0) return 0;
+    } else if(rk==2) {
+        if(tb_immediate("cmp",bias)==0) return 0;
+    } else if(bias!=0) {
+        if(tb_operand("cmp","__twlo")==0) return 0;
+    } else {
+        if(tb_location("cmp",1,right,"+1")==0) return 0;
+    }
+    done=tb_next_label;
+    tb_next_label=tb_next_label+1;
+    if(tb_jump("bne",done)==0) return 0;
+    if(lk==1) {
+        if(tb_immediate("lda",literal&255)==0) return 0;
+    } else if(lk==2) {
+        if(tb_load_var(left)==0) return 0;
+    } else {
+        if(tb_location("lda",1,left,"")==0) return 0;
+    }
+    if(rk==1) {
+        if(tb_immediate("cmp",literal&255)==0) return 0;
+    } else if(rk==2) {
+        /* A register-held index may not have been spilled to its
+         * static home. STX/STY preserve A and the compare flags. */
+        if(right==tb_x) {
+            if(tb_operand("stx","__twlo")==0) return 0;
+            if(tb_operand("cmp","__twlo")==0) return 0;
+        } else if(right==tb_y) {
+            if(tb_operand("sty","__twlo")==0) return 0;
+            if(tb_operand("cmp","__twlo")==0) return 0;
+        } else {
+            if(tb_location("cmp",1,right,"")==0) return 0;
+        }
+    } else {
+        if(tb_location("cmp",1,right,"")==0) return 0;
+    }
+    return tb_label(done);
+}
+
 char tb_compile()
 {
     unsigned i;
@@ -779,6 +862,8 @@ char tb_compile()
                 if(tb_immediate("ldx",0)==0) return 0;
                 if(tb_simple("rts")==0) return 0;
             }
+        } else if (op == 68) {
+            if(tb_numeric_compare(d,a,b,k)==0) return 0;
         } else if (op == 25) {
             if (tb_operand("lda","__tret")==0) return 0;
         } else if (op == 26) {
