@@ -660,6 +660,16 @@ char tb_wide_array_store(char kind,char source,char width,unsigned literal)
         if(tb_load_var(source)==0) return 0;
     } else if(kind==3) {
         if(tb_location("lda",1,source,"")==0) return 0;
+    } else if(kind==5 | kind==6) {
+        if(width!=1) {tb_error=75;return 0;}
+        if(kind==5) {
+            if(tb_load_var(source)==0) return 0;
+        } else {
+            if(tb_location("lda",1,source,"+1")==0) return 0;
+        }
+        if((literal&255)!=255) {
+            if(tb_immediate("and",literal&255)==0) return 0;
+        }
     } else {tb_error=75;return 0;}
     if(tb_y!=0) {
         if(tb_operand("sty","__tidxsave")==0) return 0;
