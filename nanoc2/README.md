@@ -236,8 +236,8 @@ caller and callee costs under the same statically allocated ABI).
 | Mixed-width/composed arithmetic | 23 | 1,156 B | 732 B | 36.7% |
 | Mixed signed/unsigned comparisons | 35 | 1,831 B | 1,111 B | 39.3% |
 | Arithmetic in conditions | 9 | 840 B | 587 B | 30.1% |
-| First six measured `ass.c` bodies | 6 | 1,312 B | 599 B | 54.3% |
-| **Combined** | **109 function bodies** | **7,383 B** | **4,170 B** | **43.5%** |
+| First six measured `ass.c` bodies | 6 | 1,312 B | 587 B | 55.3% |
+| **Combined** | **109 function bodies** | **7,383 B** | **4,158 B** | **43.7%** |
 
 The suite now has 97 source measurement cases, including the multi-function
 unit. For word calls, a single span includes all 13 functions; no runtime,
@@ -252,6 +252,10 @@ and is **superseded**, not another comparable image.
 
 The size and VICE tests passed together in
 [workflow run 41781262420](https://github.com/grantaj/nanoc/actions/runs/41781262420).
+A subsequent general identity-mask change briefly regressed the actual
+`ass.c` `apply_byte_prefix` code by 12 bytes; the redundant word
+self-copy was removed and an exact **23-byte** size limit added to
+the benchmark. All totals above include that correction.
 These are function-body results, **not** a compiled `ass.c` image and not
 proof the new compiler binary itself will fit C64 memory.
 
