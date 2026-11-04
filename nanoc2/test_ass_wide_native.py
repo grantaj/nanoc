@@ -96,11 +96,36 @@ def ass_wide_test():
         lines.extend(word_assert(expected&255,(expected>>8)&255,
                                  12000+case))
         case+=1
+
+    # trim_fixups() uses a computed word index, fixup_count-1.
+    # Verify reading the actual byte array across $ff/$100 and $27f,
+    # and that both the loop and the byte compare remain correct.
+    for count,values,expected in (
+        (0,(),0),
+        (3,((2,0),(1,0),(0,5)),1),
+        (258,((257,0),(256,0),(255,5)),256),
+        (640,((639,4),),640),
+        (640,((639,0),(638,0),(637,5)),638),
+    ):
+        put_word("n2_fixup_count",count)
+        for index,value in values:
+            lines.extend((
+                "\tlda #$%02x"%value,
+                "\tsta n2_fixup_kind+%d"%index,
+            ))
+        lines.extend((
+            "\tlda #$%02x"%(case&255),
+            "\tsta $03",
+            "\tjsr n2_trim_fixups",
+        ))
+        lines.extend(word_assert(0,0,13000+case))
+        check_byte("n2_fixup_count",expected&255)
+        check_byte("n2_fixup_count+1",(expected>>8)&255)
     return lines
 
 def run_ass_wide_tests(driver):
     source=ASS_SOURCE[:ASS_SOURCE.index("char upper_char(")]
     source+="\n".join(ass_function(name) for name in (
         "upper_char","same_text","apply_byte_prefix","hex_nibble",
-        "append_fixup","relative_byte"))
+        "append_fixup","relative_byte","trim_fixups"))
     run_native("ass_wide_index",source,ass_wide_test(),driver)
