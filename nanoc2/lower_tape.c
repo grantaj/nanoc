@@ -584,7 +584,7 @@ char nd_assignment(char area, char symbol, unsigned rhs)
         /* Unary negation of a literal is a constant, not a runtime
          * expression tree. Phase-1 words wrap modulo 65536. */
         if(nc2_kind[rhs]==7 & nc2_kind[nc2_left[rhs]]==1)
-            return nd_add(27,dst,0,0,0-nc2_number[nc2_left[rhs]]);
+            return nd_add(27,dst,0,0,(0-nc2_number[nc2_left[rhs]])&65535);
         if(nc2_kind[rhs]==8) {
             if(global_type[nc2_a[rhs]]==2)
                 return nd_add(42,dst,0,0,0);
@@ -733,7 +733,7 @@ char nd_return(unsigned expr)
         if(nc2_kind[expr]==1)
             return nd_add(29,0,0,0,nc2_number[expr]);
         if(nc2_kind[expr]==7 & nc2_kind[nc2_left[expr]]==1)
-            return nd_add(29,0,0,0,0-nc2_number[nc2_left[expr]]);
+            return nd_add(29,0,0,0,(0-nc2_number[nc2_left[expr]])&65535);
         if(nc2_kind[expr]==8) {
             if(global_type[nc2_a[expr]]==2)
                 return nd_add(43,0,0,0,0);
