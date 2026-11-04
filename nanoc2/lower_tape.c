@@ -235,10 +235,38 @@ char nd_index_store(char area,char symbol,unsigned index_node,unsigned rhs)
         if (nd_add(15,0,source,0,0)==0) return 0;
     } else if (nc2_kind[rhs]==4 | nc2_kind[rhs]==5) {
         if (nd_index(rhs,0)==0) return 0;
+    } else if (nc2_kind[rhs]==8) {
+        if (nd_add(25,0,0,0,0)==0) return 0; /* call result in A */
     } else {
         nd_error=27; return 0;
     }
     return nd_index_address(area,symbol,kind,index_node,2);
+}
+
+/* Calls are effects in the existing statement-event order. The first
+ * supported ABI case is one byte argument/byte result. The callee's static
+ * argument home is identified by its original parser symbol number.
+ */
+char nd_call(unsigned node, char callee)
+{
+    unsigned argument;
+    int value;
+    if(node==0 | nc2_kind[node]!=8 | nc2_a[node]!=callee |
+       nc2_b[node]!=1) {nd_error=28;return 0;}
+    argument=nc2_left[node];
+    if(argument==0) {nd_error=28;return 0;}
+    if(nc2_kind[argument]==1) {
+        if(nc2_number[argument]>255) {nd_error=28;return 0;}
+        if(nd_add(21,0,0,0,nc2_number[argument])==0) return 0;
+    } else if(nc2_kind[argument]==2) {
+        value=nd_scalar(argument);
+        if(value<0) return 0;
+        if(nd_add(15,0,value,0,0)==0) return 0;
+    } else if(nc2_kind[argument]==4 | nc2_kind[argument]==5) {
+        if(nd_index(argument,0)==0) return 0;
+    } else {nd_error=28;return 0;}
+    if(nd_add(22,callee,0,0,0)==0) return 0; /* STA callee arg */
+    return nd_add(23,callee,0,0,0);          /* JSR + return state */
 }
 
 char nd_condition(unsigned expr, unsigned exit_label)
@@ -347,6 +375,10 @@ char nd_assignment(char area, char symbol, unsigned rhs)
         if (nd_index(rhs,0)==0) return 0;
         return nd_add(16,dst,0,0,0);
     }
+    if (nc2_kind[rhs]==8) {
+        if (nd_add(25,0,0,0,0)==0) return 0;
+        return nd_add(16,dst,0,0,0);
+    }
     nd_error=20;
     return 0;
 }
@@ -363,6 +395,10 @@ char nd_return(unsigned expr)
         src=nd_scalar(expr);
         if (src<0) return 0;
         return nd_add(12,src,0,0,0);
+    }
+    if (nc2_kind[expr]==8) {
+        if (nd_add(25,0,0,0,0)==0) return 0;
+        return nd_add(26,0,0,0,0);
     }
     nd_error=21;
     return 0;
@@ -403,10 +439,22 @@ char nd_prepare()
             if (nd_return(node)==0) return 0;
         } else if (op==6) {
             if (nd_index_store(area,sym,label,node)==0) return 0;
+        } else if (op==7) {
+            if (nd_call(node,sym)==0) return 0;
         } else {
             nd_error=22; return 0;
         }
         i=i+1;
+    }
+    /* This first call tranche leaves ZP pointer save/restore for the
+     * general calling-convention pass. Do not generate calls from
+     * functions with live indirect array cursors until then. */
+    if(nd_next_pointer!=0) {
+        i=0;
+        while(i<tb_count) {
+            if(tb_op[i]==23) {nd_error=29;return 0;}
+            i=i+1;
+        }
     }
     /* Every provisional scaled-pointer operation must have an array owner. */
     i=0;
