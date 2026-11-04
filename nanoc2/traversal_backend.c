@@ -937,6 +937,26 @@ char tb_pointer_sum(char ptr,char first,char second,char mode)
     return tb_simple("plp");
 }
 
+/* A wide array may borrow $FD/$FE from the second named pointer.
+ * Restore that pointer from its authoritative static C home at every
+ * dereference. Preserve A and P because this can precede a CMP or STA;
+ * a private byte avoids touching source RHS staging in __tbyte.
+ * No temporal liveness assumption is needed across backward branches. */
+char tb_restore_secondary_pointer()
+{
+    if(tb_pointer_count<2 | tb_wide_cursor==0) return 1;
+    if(tb_operand("sta","__tremap_a")==0) return 0;
+    if(tb_simple("php")==0) return 0;
+    if(tb_source_pointer("lda",tb_pointer_area[1],
+                         tb_pointer_symbol[1],"")==0) return 0;
+    if(tb_operand("sta","__tptr01")==0) return 0;
+    if(tb_source_pointer("lda",tb_pointer_area[1],
+                         tb_pointer_symbol[1],"+1")==0) return 0;
+    if(tb_operand("sta","__tptr01+1")==0) return 0;
+    if(tb_operand("lda","__tremap_a")==0) return 0;
+    return tb_simple("plp");
+}
+
 char tb_compile()
 {
     unsigned i;
@@ -952,6 +972,11 @@ char tb_compile()
     while (i < tb_count) {
         op = tb_op[i]; d = tb_dst[i]; a = tb_a[i]; b = tb_b[i];
         k = tb_num[i];
+        if(tb_pointer_count>1 & tb_wide_cursor!=0 &
+           (((op==6 | op==7 | op==20) & a==1) |
+            ((op==83 | op==84 | op==85 | op==107) & d==1))) {
+            if(tb_restore_secondary_pointer()==0) return 0;
+        }
         if (op == 1) {
             if (tb_label(k) == 0) return 0;
         } else if (op == 2) {
