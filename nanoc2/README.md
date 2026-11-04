@@ -111,9 +111,11 @@ multiplication and checks that no unresolved `INVALID_HOME` operand escapes
 the generated assembly. The committed `word-call.c` fixture covers 16-bit
 parameter homes, mixed-width arguments, call results assigned to word locals,
 direct word returns, incorrect arities and a live X-index across a word call.
-The `mixed-arithmetic.c` fixture exercises 166 native results, including
+The `mixed-arithmetic.c` fixture exercises 174 native results, including
 16-bit carry/borrow, signed-range boundaries, byte widening/narrowing,
 non-unit byte arithmetic, left-associated chains and destination aliasing.
+It also tests `i = i + 2` in a loop using a live X array index, so a
+stale static index home cannot conceal an incorrect implementation.
 Fast checks reject unsupported right-nested trees and multiplication.
 
 ## Target-native tests
@@ -140,11 +142,11 @@ the three-byte entry trampoline, not linked complete applications.
 | `word_scalar` | 116 B | Word loads, copies, literal add/sub, A/X returns; carry, borrow and wraparound |
 | `word_ops` | 804 B | 211 native checks: word+word, aliasing, six signed/unsigned relations, constants and word loop conditions |
 | `word_call` | 366 B | Static word parameters/returns, mixed-width conversion and X-register preservation |
-| `mixed_arithmetic` | 684 B | 166 checks: mixed widths, composed chains, aliasing, direct reverse/byte additions |
+| `mixed_arithmetic` | 735 B | 174 checks: mixed widths, composed chains, aliasing, live X non-unit stride |
 | `two_functions` | 78 B | Two separately streamed functions, static homes, IRQ enabled |
 
 All eleven passed in
-[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41771724378).
+[the native workflow run](https://github.com/grantaj/nanoc/actions/runs/41772147307).
 Native smoke remains opt-in through the `native-smoke` PR label or
 manual dispatch, not the fast default PR gate.
 
@@ -185,10 +187,10 @@ caller and callee costs under the same statically allocated ABI).
 | Word scalar | 4 | 162 B | 84 B | 48.1% |
 | Word arithmetic/branch | 12 | 610 B | 378 B | 38.0% |
 | Complete word-call unit | 13 functions | 459 B | 363 B | 20.9% |
-| Mixed-width/composed arithmetic | 22 | 1,018 B | 681 B | 33.1% |
-| **Combined** | **58 function bodies** | **3,262 B** | **1,822 B** | **44.1%** |
+| Mixed-width/composed arithmetic | 23 | 1,156 B | 732 B | 36.7% |
+| **Combined** | **59 function bodies** | **3,400 B** | **1,873 B** | **44.9%** |
 
-The suite now has 46 source measurement cases, including the multi-function
+The suite now has 47 source measurement cases, including the multi-function
 unit. For word calls, a single span includes all 13 functions; no runtime,
 test caller or entry trampoline is counted. The smaller call, word-branch and chained-expression reductions reveal
 remaining code-generation quality gaps, not a reason to substitute the
@@ -200,7 +202,7 @@ scratch out of KERNAL ZP. The earlier 72% result used an unsafe scratch map
 and is **superseded**, not another comparable image.
 
 The size and VICE tests passed together in
-[workflow run 41771724378](https://github.com/grantaj/nanoc/actions/runs/41771724378).
+[workflow run 41772147307](https://github.com/grantaj/nanoc/actions/runs/41772147307).
 These are function-body results, **not** a compiled `ass.c` image and not
 proof the new compiler binary itself will fit C64 memory.
 
