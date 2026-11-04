@@ -501,7 +501,7 @@ char nd_return(unsigned expr)
                 if(extra>31) { nd_error=30;return 0; }
                 if(nc2_a[expr]=='+') op=37;
                 else op=38;
-                return nd_add(op,src,extra,0,0);
+                return nd_add(op,0,src,extra,0);
             }
         }
         nd_error=21;return 0;
