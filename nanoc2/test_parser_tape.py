@@ -244,3 +244,16 @@ assert "lda #<__g" in io_asm and "lda #>__g" in io_asm
 assert "jsr __c00" in io_asm and "jsr __c04" in io_asm
 assert "__v00_00 = __c_io_open__v00" in io_asm
 print("original parser: native I/O call capture and array pointer ABI passed")
+
+# A global char array plus a typed scalar is a pointer-valued argument,
+# not an indexed byte read. It uses exactly the same static parameter home
+# and full-width carry chain as an ordinary named pointer plus an offset.
+offset_calls=(ROOT.parent/"tests"/"nanoc2"/"array-offset-call.c").read_text()
+compiled=subprocess.run([str(DRIVER),"native"],input=offset_calls.encode(),
+                        capture_output=True)
+assert compiled.returncode==0,compiled.stderr.decode()
+asm=compiled.stdout.decode()
+assert "lda #<__g" in asm and "lda #>__g" in asm
+assert "\tadc " in asm and "\tjsr " in asm
+assert "INVALID_HOME" not in asm
+print("original parser: global array decay plus byte/word pointer offsets accepted")
