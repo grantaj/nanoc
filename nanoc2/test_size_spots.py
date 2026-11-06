@@ -290,11 +290,14 @@ def main():
     # Keep each actual source calling unit together with its callee.
     # When production nanoc1 cannot translate this source, report the
     # missing baseline explicitly rather than inventing a ratio.
-    for tag,filename in (
-        ("array_offset_unit","array-offset-call.c"),
-        ("indexed_word_call_unit","indexed-word-call.c"),
+    for tag,source in (
+        ("array_offset_unit",
+         (ROOT/"tests"/"nanoc2"/"array-offset-call.c").read_text()),
+        ("indexed_word_call_unit",
+         (ROOT/"tests"/"nanoc2"/"indexed-word-call.c").read_text()),
+        ("ass_close_source_tree_unit",
+         ass_prefix+"\n"+ass_function("close_source_tree")),
     ):
-        source=(ROOT/"tests"/"nanoc2"/filename).read_text()
         new_asm=compile_host(new_driver,source,"native")
         new_size,_,new_body=measure_assembled(new_asm,False,tag)
         (OUT/(tag+"-new-body.asm")).write_text(new_body)
