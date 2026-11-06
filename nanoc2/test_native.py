@@ -894,6 +894,8 @@ def main():
     run_array_offset_call_tests(driver)
     from test_indexed_word_call_native import run_indexed_word_call_tests
     run_indexed_word_call_tests(driver)
+    from test_ass_close_native import run_ass_close_tests
+    run_ass_close_tests(driver)
     # One source unit, two real Phase-1 definitions. The parser must emit
     # each bounded function tape before it is reset for the next function.
     multi_source = (
