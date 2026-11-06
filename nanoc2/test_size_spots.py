@@ -52,7 +52,8 @@ def measure_assembled(asm, old, name):
     if name in ("word_call_unit", "ass_scope_find_unit",
                 "ass_allocate_unit", "ass_symbol_api_unit",
                 "ass_prefix15", "ass_prefix32", "ass_prefix33",
-                "io_builtin_unit", "pointer_sum_unit"):
+                "io_builtin_unit", "pointer_sum_unit",
+                "array_offset_unit"):
         assert nlabels > 1, (name,nlabels)
     else:
         assert nlabels == 1, (name,nlabels)
@@ -285,6 +286,26 @@ def main():
         else:
             print("EXACT ass.c first %d functions: nanoc2 %d B; nanoc1 unavailable (compiler exit %d); no same-source ratio"%
                   (depth,new_size,old_attempt.returncode),flush=True)
+
+    # Array-decay + offset must be measured together with its callee.
+    # The original compiler may reject this newer source form: report an
+    # unavailable baseline explicitly rather than forging a reduction.
+    source=(ROOT/"tests"/"nanoc2"/"array-offset-call.c").read_text()
+    new_asm=compile_host(new_driver,source,"native")
+    new_size,_,new_body=measure_assembled(new_asm,False,"array_offset_unit")
+    (OUT/"array_offset_unit-new-body.asm").write_text(new_body)
+    old_attempt=subprocess.run([str(old_driver)],input=source.encode(),
+                               stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    if old_attempt.returncode==0:
+        old_size,_,old_body=measure_assembled(old_attempt.stdout.decode(),
+                                              True,"array_offset_unit")
+        (OUT/"array_offset_unit-old-body.asm").write_text(old_body)
+        print("ARRAY OFFSET CALL UNIT: nanoc1 %d B, nanoc2 %d B; saved %d B (%.1f%%)" %
+              (old_size,new_size,old_size-new_size,
+               100.0*(old_size-new_size)/old_size),flush=True)
+    else:
+        print("ARRAY OFFSET CALL UNIT: nanoc2 %d B; nanoc1 unavailable (compiler exit %d)" %
+              (new_size,old_attempt.returncode),flush=True)
 
     results = []
     for name, source in targets:
