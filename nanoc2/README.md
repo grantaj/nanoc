@@ -1,55 +1,31 @@
 # nanoc2 — traversal-first 6502 compiler
 
 **Status: original Phase-1 parser and one C-written 6502 emitter, now accepting
-32 of 44 consecutive original `ass.c` functions. Representative real routines
-execute under native VICE. This is not yet a complete Phase-1, self-hosting
-compiler or whole-image benchmark. Draft PR #131.**
+at least 33 of 44 consecutive original `ass.c` functions. Selected original
+routines execute under native VICE. This is not yet a complete Phase-1,
+self-hosting compiler or whole-image benchmark. Draft PR #131.**
 
 ## Source-driven acceptance: `bootstrap/ass.c`
 
-`python3 nanoc2/test_ass_frontier.py` is a fast-CI gate against the
-**complete unmodified** 1,792-line original Phase-1 assembler. It
-reports the first failed function, retaining all original global
-declarations, and rejects regressions below the verified prefix.
+`python3 nanoc2/test_ass_frontier.py` tests the complete, **unmodified**
+1,792-line Phase-1 assembler and finds the first consecutive original
+function rejected by the compiler, retaining all original global declarations.
+The mandatory fast-CI gate requires **at least 33/44 original functions**,
+through `open_include`. Later functions remain live targets, not synthetic
+replacements. Full-source acceptance alone is not native correctness.
 
-**4 November 2026: 32/44 consecutive original functions compile**,
-from `upper_char` through `assemble_string`. The new general
-comparison lowering evaluates pure +/− arithmetic on the RHS to a full
-16-bit value; this unlocks the original `while (i < length - 1)`.
-The next rejected function is #33, `open_include`, at line 1385:
-`handle = io_open(source_path, output)`, where the original semantic
-parser's builtin-I/O capture is not yet supported (tape fault 11).
+The native `test_io_builtin_native.py` exercises all five I/O entry points
+and the real `open_include` from the first 33 original source functions.
+The last recorded native run passed these two fixtures but subsequently
+failed on the newer `pointer_sum` fixture (before five further lowering/test
+commits). Re-run the complete native suite on the current head before
+claiming a clean native baseline. The next real-source targets are
+`read_source_line`, `close_source_tree`, `scan_argument`, and the
+remaining parser/dispatch/assembly routines, concluding with `ass_assemble`.
 
-Target-native VICE exercises the **verbatim 32-function prefix**,
-including string copying, page-crossing input, unterminated strings,
-long 255-byte inputs and output-capacity boundaries. The new
-`comparison-rhs.c` oracle also verifies all six relations, signed/
-unsigned 16-bit values and arithmetic chains. Native tests verify
-these specific behaviours; **full assembler runtime and I/O are not yet
-implemented**.
-
-The work was driven by real C constructs: typed 16-bit array
-loads/stores; `base_word + byte_index` addressing through separate
-6502 ZP pointer lanes; char-pointer forwarding and restoration across
-JSR; initializing live X/Y from incoming parameter homes; bounded
-source-ordered calls with up to eight typed arguments; full-width
-negative comparisons; and direct low-byte/high-byte-shifted word
-packing. The latter maps the common `lo | (hi << 8)` source idiom to
-two reads/stores, without a generic optimizer or IR.
-
-Native tests exercise the original assembler's fixup tables, symbol
-lookup/allocation and scope, `intern_label`/`define_constant`,
-byte/word linked patches, and `define_label` carrying a pending fixup
-through the actual resolver. Boundary tests include byte addresses
-255/256, 511/512, end-of-buffer writes, and symbol indexes 255/256
-and 895. Unlike source-acceptance testing, these execute on a 6510
-in VICE with an independently assembled caller.
-
-Initialized globals are emitted as physical data labels, distinct
-from uninitialized `NC_BSS`. The complete `ass.c` runtime, entry
-point, self-hosting and whole linked image are **not yet implemented**;
-the numbers below are physically assembled function-body spans,
-not equivalent to the handwritten assembler's full image.
+Architecture and native-correctness limitations are detailed below.
+All size figures below are physically assembled function-body spans
+unless explicitly identified as whole images.
 
 ## Architecture
 
