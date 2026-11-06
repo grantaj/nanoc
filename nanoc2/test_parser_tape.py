@@ -257,3 +257,14 @@ assert "lda #<__g" in asm and "lda #>__g" in asm
 assert "\tadc " in asm and "\tjsr " in asm
 assert "INVALID_HOME" not in asm
 print("original parser: global array decay plus byte/word pointer offsets accepted")
+
+# Indexed char values promoted to int/unsigned parameters must fill the
+# high byte with zero, including when the char array index is a full word.
+indexed_call=(ROOT.parent/"tests"/"nanoc2"/"indexed-word-call.c").read_text()
+compiled=subprocess.run([str(DRIVER),"native"],input=indexed_call.encode(),
+                        capture_output=True)
+assert compiled.returncode==0,compiled.stderr.decode()
+asm=compiled.stdout.decode()
+assert "INVALID_HOME" not in asm
+assert "\tlda #$00" in asm and "\tjsr " in asm
+print("original parser: indexed char to word call arguments accepted")
