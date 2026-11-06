@@ -785,27 +785,25 @@ char nd_call(unsigned node, char callee)
                 if(nd_add(77,callee,i,0,0)==0) return 0;
             } else {nd_error=28;return 0;}
         } else if(expected==4) {
-            /* A char array expression supplies its linker-resolved 16-bit
-             * base. Ordinary pointer variables still use their own
-             * two-byte static homes below. Neither is the ZP cursor. */
-            if(nc2_kind[argument]==3 & nc2_a[argument]==2) {
-                if(nd_add(108,callee,i,0,nc2_number[argument])==0)
-                    return 0;
-            } else {
+            /* Array-to-pointer decay and pointer plus a pure scalar
+             * displacement share the same 16-bit callee parameter home.
+             * Form the base first, then add the typed offset with carry.
+             * An array's base is a linker address, not a pointer variable
+             * or a live zero-page dereference cursor. */
             left_arg=argument;
             right_arg=0;
             if(nc2_kind[argument]==6 & nc2_a[argument]=='+') {
                 left_arg=nc2_left[argument];
                 right_arg=nc2_right[argument];
             }
-            if(nc2_kind[left_arg]!=2 | nc2_number[left_arg]!=4) {
-                nd_error=28;return 0;
-            }
-            /* The pointer value lives in its two-byte static home,
-             * never in the shared zero-page dereference cursor.
-             * Copy the base into the callee's parameter home first. */
-            if(nd_add(86,callee,i,nc2_a[left_arg],
-                      nc2_b[left_arg])==0) return 0;
+            if(nc2_kind[left_arg]==3 & nc2_a[left_arg]==2) {
+                if(nd_add(108,callee,i,0,nc2_number[left_arg])==0)
+                    return 0;
+            } else if(nc2_kind[left_arg]==2 &
+                      nc2_number[left_arg]==4) {
+                if(nd_add(86,callee,i,nc2_a[left_arg],
+                          nc2_b[left_arg])==0) return 0;
+            } else {nd_error=28;return 0;}
             if(right_arg!=0) {
                 if(nc2_kind[right_arg]==1) {
                     if(nd_add(106,callee,i,0,
@@ -821,7 +819,6 @@ char nd_call(unsigned node, char callee)
                     if(nd_add(99,callee,i,value,actual)==0) return 0;
                 }
             }
-            } /* mutable pointer argument */
         } else {nd_error=28;return 0;}
         i=i+1;
     }
