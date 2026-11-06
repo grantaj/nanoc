@@ -771,6 +771,14 @@ char nd_call(unsigned node, char callee)
                     if(value<0) return 0;
                     if(nd_add(46,callee,i,value,0)==0) return 0;
                 } else {nd_error=28;return 0;}
+            } else if((nc2_kind[argument]==4 |
+                       nc2_kind[argument]==5) &
+                      nc2_number[argument]==1) {
+                /* Indexed char to int: evaluate its address exactly once,
+                 * then zero-extend A into the callee's word parameter.
+                 * This also handles a 16-bit array subscript. */
+                if(nd_index(argument,0)==0) return 0;
+                if(nd_add(110,callee,i,0,0)==0) return 0;
             } else if(nc2_kind[argument]==6) {
                 /* The word argument is evaluated into the private
                  * two-byte accumulator, then copied into its static
