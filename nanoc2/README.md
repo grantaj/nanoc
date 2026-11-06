@@ -27,6 +27,30 @@ Architecture and native-correctness limitations are detailed below.
 All size figures below are physically assembled function-body spans
 unless explicitly identified as whole images.
 
+## 6 November 2026 development tranche (pending test execution)
+
+- Pointer-valued call arguments now accept an ordinary global `char`
+  array followed by a pure byte or word `+` offset. They copy the
+  linker-resolved array address into the existing callee static parameter
+  home before applying the existing full 16-bit carry chain, just as
+  named pointer variables already do. The new `array-offset-call.c`
+  fixture exercises direct array decay, byte/word offsets, page
+  crossings, and pointer-variable offsets.
+- An indexed `char` value may now be passed to an `int`/`unsigned`
+  parameter by directly staging A into the low callee parameter byte
+  and zeroing the high byte (operation 110). This addresses the
+  original `close_source_tree` call
+  `io_close(source_handle[source_depth])`; `indexed-word-call.c`
+  and a verbatim `close_source_tree` native test cover the feature.
+- The fast parser suite and physical vasm comparison harness now include
+  these cases, measuring complete calling units and reporting an
+  unavailable production-`nanoc1` baseline without fabricating ratios.
+
+These commits have **not yet passed a newly executed fast or native run**
+on this exact branch head. The mandatory verbatim-source frontier
+remains at least 33/44, and the full assembler image remains unfinished.
+Do not merge on the basis of these unexecuted fixtures.
+
 ## Architecture
 
 `parser_tape.c` retains the original `nanoc1` scanner, bounded expression
