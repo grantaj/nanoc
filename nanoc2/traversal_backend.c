@@ -1193,6 +1193,12 @@ char tb_compile()
             if(tb_param("sta",d,a,"")==0) return 0;
             if(tb_immediate("lda",0)==0) return 0;
             if(tb_param("sta",d,a,"+1")==0) return 0;
+        } else if (op == 110) {
+            /* A contains the single indexed char value. C integer
+             * promotion fills the high parameter byte with zero. */
+            if(tb_param("sta",d,a,"")==0) return 0;
+            if(tb_immediate("lda",0)==0) return 0;
+            if(tb_param("sta",d,a,"+1")==0) return 0;
         } else if (op == 47) {
             if(tb_location("lda",1,b,"")==0) return 0;
             if(tb_param("sta",d,a,"")==0) return 0;
