@@ -268,3 +268,16 @@ asm=compiled.stdout.decode()
 assert "INVALID_HOME" not in asm
 assert "\tlda #$00" in asm and "\tjsr " in asm
 print("original parser: indexed char to word call arguments accepted")
+
+# The original assembler's close_source_tree requires both new paths:
+# a word subscript to a char array, then promotion to io_close(int).
+# Compile its unmodified source with the complete original globals.
+ass_text=(ROOT.parent/"bootstrap"/"ass.c").read_text()
+ass_globals=ass_text[:ass_text.index("char upper_char(")]
+close_body=ass_text[ass_text.index("char close_source_tree("):
+                    ass_text.index("/* ---------------- Statement recognition")].strip()
+compiled=subprocess.run([str(DRIVER),"native"],
+                        input=(ass_globals+"\n"+close_body+"\n").encode(),
+                        capture_output=True)
+assert compiled.returncode==0,compiled.stderr.decode()
+print("original ass.c: close_source_tree indexed io_close argument accepted")
